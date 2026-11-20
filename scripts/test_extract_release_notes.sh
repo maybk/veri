@@ -49,6 +49,19 @@ if grep -Fq "install.sh" <<<"$rolling_md"; then
   exit 1
 fi
 
-# 校验仓库真实 CHANGELOG.md 当前待发布段落可提取且非空
+# 校验仓库真实 CHANGELOG.md：待发布版本标题合法（允许刚发版时为空返回 2），且 build/config.yml 当前版本说明非空
 pending_ver="$(bash "$repo_root/scripts/extract_pending_version.sh" "$repo_root/CHANGELOG.md")"
-bash "$extractor" "$pending_ver" "$repo_root/CHANGELOG.md" >/dev/null
+set +e
+bash "$extractor" "$pending_ver" "$repo_root/CHANGELOG.md" >/dev/null 2>&1
+pending_rc="$?"
+set -e
+if [ "$pending_rc" -ne 0 ] && [ "$pending_rc" -ne 2 ]; then
+  echo "Unexpected failure extracting pending changelog section $pending_ver (rc=$pending_rc)" >&2
+  exit 1
+fi
+current_ver="$(awk '/^[^[:space:]#]/{in_info=($1=="info:")} in_info && /^[[:space:]]+version:/{sub(/.*version:[[:space:]]*"/,""); sub(/".*/,""); print; exit}' "$repo_root/build/config.yml")"
+current_notes="$(bash "$extractor" "$current_ver" "$repo_root/CHANGELOG.md")"
+if ! grep -Eq '^### .+' <<<"$current_notes" || ! grep -Eq '^- .+' <<<"$current_notes"; then
+  echo "Repository changelog section for $current_ver must contain a heading and at least one entry" >&2
+  exit 1
+fi
