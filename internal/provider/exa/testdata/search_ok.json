@@ -1,0 +1,21 @@
+{
+  "requestId": "exa-req-1",
+  "results": [
+    {
+      "title": "Exa Neural Search",
+      "url": "https://exa.ai/blog/search",
+      "publishedDate": "2026-10-01T12:00:00Z",
+      "author": "Alice",
+      "highlights": [
+        "First highlight chunk.",
+        "Second chunk."
+      ],
+      "highlightScores": [
+        0.92
+      ]
+    }
+  ],
+  "costDollars": {
+    "total": 0.004
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "rerank_score": 2.4,
+      "title": "Model Context​ Protocol &amp; Go",
+      "url": "https://github.com/modelcontextprotocol/go-sdk",
+      "snippet": "Official Go SDK",
+      "summary": "Long summary about MCP Go SDK v1.8.0.",
+      "content": "Full body markdown",
+      "site_name": "GitHub",
+      "site_icon": "https://github.com/favicon.ico",
+      "date": "2026-09-14T10:00:00Z",
+      "authority": 3
+    },
+    {
+      "rerank_score": 1.2,
+      "title": "Unknown Authority",
+      "url": "https://example.com/post",
+      "snippet": "Short snippet",
+      "summary": "",
+      "authority": -1
+    }
+  ]
+}

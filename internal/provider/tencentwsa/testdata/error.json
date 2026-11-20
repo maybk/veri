@@ -1,0 +1,9 @@
+{
+  "Response": {
+    "Error": {
+      "Code": "ResourceNotFound",
+      "Message": "service not opened"
+    },
+    "RequestId": "wsa-err-1"
+  }
+}

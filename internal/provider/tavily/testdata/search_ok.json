@@ -1,0 +1,17 @@
+{
+  "query": "tavily",
+  "request_id": "tv-1",
+  "response_time": 0.42,
+  "results": [
+    {
+      "title": "Tavily Doc",
+      "url": "https://docs.tavily.com/a",
+      "content": "Semantic chunk text",
+      "score": 0.88,
+      "published_date": "Thu, 18 Sep 2025 15:19:00 GMT"
+    }
+  ],
+  "usage": {
+    "credits": 1
+  }
+}

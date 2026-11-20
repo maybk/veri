@@ -1,0 +1,9 @@
+{
+  "results": [],
+  "errors": [
+    {
+      "url": "https://spa.example.com",
+      "error": "bot_blocked"
+    }
+  ]
+}

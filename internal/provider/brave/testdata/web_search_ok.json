@@ -1,0 +1,27 @@
+{
+  "web": {
+    "results": [
+      {
+        "title": "Brave Web Hit",
+        "url": "https://example.com/web-1",
+        "description": "Primary description snippet",
+        "extra_snippets": [
+          "Extra snippet chunk"
+        ],
+        "page_age": "2026-10-15T08:00:00Z",
+        "profile": {
+          "name": "Example Docs"
+        },
+        "meta_url": {
+          "favicon": "https://example.com/favicon.ico"
+        }
+      },
+      {
+        "title": "Relative Age Hit",
+        "url": "https://example.com/web-2",
+        "description": "Fallback age description",
+        "age": "2 days ago"
+      }
+    ]
+  }
+}

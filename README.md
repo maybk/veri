@@ -1,0 +1,199 @@
+# veri
+
+> 🔍 **veri** 是面向 AI Agent 与开发者的多源联网检索与网页 Markdown 提取工具，纯 Go 单二进制、零运行时依赖，一体化提供 **CLI**、**MCP Server** 与 **Agent Skill**。
+
+<div align="center">
+
+**[简体中文](./README.md)** | **[English](./README.en.md)**
+
+![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-stdio-4A5568)
+![macOS](https://img.shields.io/badge/macOS-13.0+-000000?logo=apple&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-Static-FCC624?logo=linux&logoColor=black)
+
+</div>
+
+<details>
+  <summary>点击查看终端演示</summary>
+  <img src="assets/demo-zh.svg" alt="veri 终端演示">
+</details>
+
+---
+
+## 📦 下载与安装
+
+### 一键脚本安装
+
+**macOS / Linux**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/maybk/veri/main/scripts/install.sh | sh
+```
+
+**Windows（PowerShell）**
+
+```powershell
+irm https://raw.githubusercontent.com/maybk/veri/main/scripts/install.ps1 | iex
+```
+
+### 包管理器安装
+
+**Homebrew（macOS / Linux）**
+
+```bash
+brew install maybk/tap/veri
+```
+
+**Scoop（Windows）**
+
+```powershell
+scoop bucket add maybk https://github.com/maybk/homebrew-tap
+scoop install maybk/veri
+```
+
+<!--
+**WinGet（Windows）**
+
+```powershell
+winget install maybk.Veri
+```
+-->
+
+### 手动下载与源码编译
+
+各平台预编译压缩包（macOS / Windows / Linux，`amd64` / `arm64`）与 `SHA256SUMS.txt` 校验文件可从 [GitHub Releases](https://github.com/maybk/veri/releases) 下载，独立安装后支持通过 `veri update` 直接检测并升级。
+
+从源码编译静态二进制：
+
+```bash
+CGO_ENABLED=0 go build -trimpath -o bin/veri .
+```
+
+## 🚀 快速开始
+
+> 网页正文与 GitHub 页面提取（`veri fetch`）**无需任何 API Key，开箱即用**；只需配置任意一个检索源密钥，即可解锁联网搜索与云端增强提取。完整使用教程与各源 API Key 申请入口见 [使用指南](./docs/guide/usage.md)。
+
+### 1. 配置 API Key（联网搜索所需）
+
+凭据统一加密保存在 `~/.config/veri/`，由 CLI 与 `veri mcp` 自动共享：
+
+```bash
+veri key set deepseek
+veri key list
+```
+
+也可直接通过环境变量或 `~/.config/veri/config.toml` 配置，环境变量优先级最高：
+
+```bash
+export DEEPSEEK_API_KEY="sk-..."
+```
+
+查看已启用的源与环境状态：
+
+```bash
+veri providers
+veri doctor
+```
+
+### 2. 命令行使用
+
+```bash
+# 提取网页或 GitHub 仓库/文件/Issue/PR/Discussion/Commit（无需密钥即可使用）
+veri fetch https://github.com/modelcontextprotocol/go-sdk
+veri fetch https://example.com/article --section "Authentication" --max-chars 20000
+
+# 联网检索（需配置任意一个检索源密钥）
+veri "golang mcp sdk official"
+veri search "go 1.27 release notes" -t 6m -s go.dev -n 5
+
+# 多源并发融合检索与 JSON 输出
+veri search "raft leader lease" --fusion -p deepseek,exa --json
+```
+
+### 3. 接入 MCP 客户端
+
+在客户端配置中注册 `veri mcp`（可执行 `veri mcp config` 导出配置片段）。已在 `~/.config/veri/` 配置密钥时无需重复填写 `env`；若在 MCP 配置中传入 `env`，则以传入的环境变量为准：
+
+```json
+{
+  "mcpServers": {
+    "veri": {
+      "command": "veri",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### 4. 安装 Agent Skill
+
+推荐使用 [`npx skills`](https://skills.sh) 统一安装与更新（支持多 Agent 宿主）：
+
+```bash
+npx skills add maybk/veri
+```
+
+离线或无 Node.js 环境可直接使用内置命令：
+
+```bash
+veri skill install   # 写入标准 .agents/skills 目录
+veri skill print     # 输出内置 SKILL.md 原文
+```
+
+## ✨ 功能特性
+
+### 🎯 核心功能
+
+- **多源检索与自动回退** - 内置 `deepseek`、`exa`、`tinyfish`、`tencent_wsa`、`tavily`、`brave` 检索源，按已配置密钥自动启用；支持自动故障回退、中英文分链选路与多源并发融合去重
+- **网页与 GitHub 正文提取** - 内置 GitHub 结构化读取器与纯 Go 本地提取器，零密钥即可将网页及仓库/Issue/PR/Commit 转为干净 Markdown；配置云端源后扩展动态渲染与 PDF 提取，并支持批量抓取、章节截取与关键词定位
+- **统一过滤语法** - 一套参数跨检索源控制时间范围、站点包含/排除与语言过滤，屏蔽各家接口差异，也支持 `--strict` 严格原生匹配
+- **三端形态合一** - 单个静态二进制同时提供命令行工具、标准 stdio MCP 服务端与 Agent Skill，开箱接入各类 AI Agent
+
+### 🔧 安全与可靠性
+
+- **内网隔离与代理兼容** - 本地抓取默认拦截本机、内网与云元数据地址以防范 SSRF，同时兼容透明代理（TUN）网络环境
+- **防误扣费与多密钥轮换** - 请求超时或断连不盲目重放，避免重复计费；支持同源多密钥轮询与失败冷却，仅在有真实账单或显式单价时记录成本
+- **本地加密与安全输出** - API 密钥本地加密存储，日志与诊断输出自动脱敏；MCP 文本输出自带外部内容隔离边界，降低提示词注入风险
+- **中英文界面自适应** - 终端交互按系统语言自动切换中英文，JSON 输出、MCP 协议与 `SKILL.md` 保持稳定英文契约
+
+## 🖥️ 支持平台
+
+- **macOS** - macOS 13.0（Ventura）及以上，支持 Apple Silicon（`arm64`）与 Intel（`amd64`）
+- **Windows** - Windows 10 / 11（`amd64` / `arm64`）
+- **Linux** - 主流发行版纯静态二进制（`amd64` / `arm64`）
+
+## 🏗️ 技术架构
+
+- **Go 1.27+** - 纯静态单二进制编译，无外部运行时依赖
+- **`modelcontextprotocol/go-sdk`** - 标准 MCP stdio 服务端与输入/输出 Schema
+- **`spf13/cobra` + `BurntSushi/toml`** - 命令行解析与配置校验
+- **`go-readability` + `x/net/html`** - 纯 Go 本地网页正文抽取与紧凑 Markdown 转换
+
+```text
+main.go -> internal/cli | internal/mcpserver -> internal/app -> internal/router -> internal/provider/* -> internal/httpx
+```
+
+## 📚 项目文档
+
+- [使用指南](./docs/guide/usage.md)
+- [项目概览与目录结构](./docs/guide/overview.md)
+- [配置说明](./docs/guide/configuration.md)
+- [检索与提取源说明](./docs/guide/providers.md)
+- [开发与构建](./docs/guide/development.md)
+- [发布指南](./docs/guide/release.md)
+- [更新日志](./CHANGELOG.md)
+
+## ⚠️ 免责声明
+
+1. **合规使用** - 请在遵守当地法律法规、目标站点服务条款及各上游 API 使用协议的前提下使用本工具。
+2. **数据隐私** - 配置文件与 API 密钥仅保存在本机 `~/.config/veri/` 并仅发往已配置的对应上游服务端，不包含任何遥测或数据收集行为。
+3. **使用风险** - 检索结果与网页正文均来自第三方公开网络，开发者不对外部内容的准确性或调用上游接口产生的费用承担责任。
+
+---
+
+<div align="center">
+  <p>如果这个项目对您有帮助，请给个 ⭐️ 支持一下！</p>
+</div>
+
+[![Star History Chart](https://api.star-history.com/svg?repos=maybk/veri&type=Date)](https://www.star-history.com/#maybk/veri&Date)

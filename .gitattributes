@@ -1,0 +1,14 @@
+# 统一文本换行归一化为 LF，保障 macOS / Windows / Linux 构建与 Shell 脚本一致
+* text=auto eol=lf
+*.sh text eol=lf
+
+# Windows 批处理脚本要求 CRLF 换行以兼容 cmd.exe 标签跳转
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Git 内置语义化 diff 块标题驱动
+*.go diff=golang
+*.md diff=markdown
+
+# 锁文件标记为生成内容
+go.sum linguist-generated=true

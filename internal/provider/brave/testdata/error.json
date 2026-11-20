@@ -1,0 +1,9 @@
+{
+  "type": "ErrorResponse",
+  "error": {
+    "id": "err-1",
+    "status": 422,
+    "code": "VALIDATION",
+    "detail": "Unable to validate request parameter(s)"
+  }
+}

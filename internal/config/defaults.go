@@ -1,0 +1,126 @@
+package config
+
+import (
+	"veri/internal/core"
+	"veri/internal/spec"
+)
+
+// Default 返回完整的内置默认配置树。
+func Default() Config {
+	return Config{
+		UI: UIConfig{
+			Lang: spec.LangAuto,
+		},
+		Search: SearchConfig{
+			Providers:       spec.DefaultSearchProviders(),
+			Strategy:        string(core.StrategyAuto),
+			Count:           spec.DefaultSearchCount,
+			Detail:          string(core.DetailSummary),
+			Timeout:         Duration{spec.DefaultSearchTimeout},
+			FallbackOnEmpty: true,
+			StrictFilters:   false,
+			FusionK:         spec.DefaultFusionK,
+			SummaryMaxRunes: spec.DefaultSummaryMaxRunes,
+			ContentMaxRunes: 0,
+			MaxChars:        0,
+		},
+		Fetch: FetchConfig{
+			Strategy:        string(core.DefaultFetchStrategy),
+			Providers:       spec.DefaultFetchProviders(),
+			Timeout:         Duration{spec.DefaultFetchTimeout},
+			MaxBytes:        ByteSize(spec.DefaultFetchMaxBytes),
+			MinContentRunes: spec.DefaultMinContentRunes,
+			RespectRobots:   false,
+			UserAgent:       spec.UserAgentBrowserMode,
+			MaxChars:        0,
+		},
+		MCP: MCPConfig{
+			TextFormat:      spec.TextFormatMarkdown,
+			SearchMaxChars:  spec.DefaultMCPSearchMaxChars,
+			FetchMaxChars:   spec.DefaultMCPFetchMaxChars,
+			ContentMaxRunes: spec.DefaultMCPContentMaxRunes,
+			MaxCount:        spec.DefaultMCPMaxCount,
+			CacheTTL:        Duration{spec.DefaultMCPCacheTTL},
+			CacheSize:       spec.DefaultMCPCacheSize,
+		},
+		Network: NetworkConfig{
+			Proxy:        "",
+			FakeIPCIDRs:  spec.DefaultFakeIPCIDRs(),
+			AllowPrivate: false,
+		},
+		Providers: ProvidersConfig{
+			DeepSeek: DeepSeekConfig{
+				Enabled:      true,
+				APIKey:       spec.DefaultEnvRef(spec.ProviderDeepSeek),
+				BaseURL:      spec.DefaultDeepSeekBaseURL,
+				Timeout:      Duration{spec.DefaultProviderSearchTimeout},
+				FetchTimeout: Duration{spec.DefaultProviderFetchTimeout},
+				Concurrency:  spec.DefaultProviderConcurrency,
+				Weight:       1.0,
+			},
+			Exa: ExaConfig{
+				Enabled:      true,
+				APIKey:       spec.DefaultEnvRef(spec.ProviderExa),
+				BaseURL:      spec.DefaultExaBaseURL,
+				SearchType:   spec.ExaTypeAuto,
+				AllowOver10:  false,
+				Timeout:      Duration{spec.DefaultProviderSearchTimeout},
+				FetchTimeout: Duration{spec.DefaultProviderFetchTimeout},
+				Concurrency:  spec.DefaultProviderConcurrency,
+				Weight:       1.0,
+			},
+			TinyFish: TinyFishConfig{
+				Enabled:      true,
+				APIKey:       spec.DefaultEnvRef(spec.ProviderTinyFish),
+				SearchURL:    spec.DefaultTinyFishSearchURL,
+				FetchURL:     spec.DefaultTinyFishFetchURL,
+				Timeout:      Duration{spec.DefaultProviderSearchTimeout},
+				FetchTimeout: Duration{spec.DefaultProviderFetchTimeout},
+				Concurrency:  spec.DefaultProviderConcurrency,
+				Weight:       1.0,
+			},
+			TencentWSA: TencentWSAConfig{
+				Enabled:     true,
+				APIKey:      spec.DefaultEnvRef(spec.ProviderTencentWSA),
+				Edition:     spec.WSAEditionStandard,
+				BaseURL:     spec.DefaultTencentWSABaseURL,
+				Timeout:     Duration{spec.DefaultProviderSearchTimeout},
+				Concurrency: spec.DefaultProviderConcurrency,
+				Weight:      1.0,
+			},
+			Tavily: TavilyConfig{
+				Enabled:      true,
+				APIKey:       spec.DefaultEnvRef(spec.ProviderTavily),
+				BaseURL:      spec.DefaultTavilyBaseURL,
+				SearchDepth:  spec.TavilyDepthBasic,
+				ExtractDepth: spec.TavilyDepthBasic,
+				Timeout:      Duration{spec.DefaultProviderSearchTimeout},
+				FetchTimeout: Duration{spec.DefaultProviderFetchTimeout},
+				Concurrency:  spec.DefaultProviderConcurrency,
+				Weight:       1.0,
+			},
+			Brave: BraveConfig{
+				Enabled:     true,
+				APIKey:      spec.DefaultEnvRef(spec.ProviderBrave),
+				BaseURL:     spec.DefaultBraveBaseURL,
+				Mode:        spec.BraveModeAuto,
+				Timeout:     Duration{spec.DefaultProviderSearchTimeout},
+				Concurrency: spec.DefaultProviderConcurrency,
+				Weight:      1.0,
+			},
+			GitHub: GitHubConfig{
+				Enabled:     true,
+				Token:       spec.DefaultEnvRef(spec.ProviderGitHub),
+				APIBaseURL:  spec.DefaultGitHubAPIBaseURL,
+				RawBaseURL:  spec.DefaultGitHubRawBaseURL,
+				Timeout:     Duration{spec.DefaultProviderSearchTimeout},
+				Concurrency: spec.DefaultProviderConcurrency,
+			},
+			Local: LocalConfig{
+				Enabled:     true,
+				Timeout:     Duration{spec.DefaultProviderSearchTimeout},
+				Concurrency: spec.DefaultProviderConcurrency,
+			},
+		},
+	}
+}

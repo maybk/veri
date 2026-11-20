@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://spa.test/app",
+      "final_url": "https://spa.test/app/home",
+      "title": "Rendered App",
+      "published_date": "2026-10-01",
+      "format": "markdown",
+      "text": "# Rendered App\n\nDynamic SPA content"
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,14 @@
+# veri · "golang context" · deepseek · 3 results · $0.007 · 0.45s
+
+1. Package context — Go Packages · Go Team · 2026-09-14
+   https://pkg.go.dev/context
+   Defines the Context type.
+   Carries deadlines and cancellation signals.
+
+2. The Go Programming Language
+   https://tip.golang.org/src/context/context.go?m=text
+   // Package context defines the Context type.
+
+3. docs.example.org
+   https://docs.example.org/guide
+   Full body text when detail=content.

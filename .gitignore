@@ -1,0 +1,22 @@
+# 构建产物与临时目录
+/bin/
+/dist/
+/veri
+/veri.exe
+*.out
+coverage.txt
+coverage.html
+
+# 工具与系统缓存
+/.planning/
+/references/
+.task/
+.DS_Store
+Thumbs.db
+
+# 本地敏感配置（严禁提交任何真实密钥）
+config.local.toml
+secrets.json
+secret.key
+.env
+.env.*

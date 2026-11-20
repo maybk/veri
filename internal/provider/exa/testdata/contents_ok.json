@@ -1,0 +1,22 @@
+{
+  "requestId": "exa-c-ok",
+  "results": [
+    {
+      "title": "Clean Doc",
+      "url": "https://exa.ai/doc",
+      "publishedDate": "2026-10-01T12:00:00Z",
+      "author": "Alice",
+      "text": "# Clean Doc\n\nBody"
+    }
+  ],
+  "statuses": [
+    {
+      "id": "https://exa.ai/doc",
+      "status": "success",
+      "source": "cached"
+    }
+  ],
+  "costDollars": {
+    "total": 0.001
+  }
+}

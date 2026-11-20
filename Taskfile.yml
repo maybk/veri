@@ -1,0 +1,204 @@
+version: '3'
+
+vars:
+  DEFAULT_APP_NAME:
+    sh: |
+      in_info=0
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          ""|\#*) continue ;;
+          info:*) in_info=1; continue ;;
+          " "*|"	"*) ;;
+          *) in_info=0; continue ;;
+        esac
+        if [ "$in_info" = 1 ]; then
+          case "$line" in
+            *productName:*)
+              val="${line#*productName:}"
+              val="${val#*\"}"
+              val="${val%%\"*}"
+              printf '%s' "$val"
+              break
+              ;;
+          esac
+        fi
+      done < build/config.yml
+  APP_NAME: '{{.APP_NAME | default .DEFAULT_APP_NAME}}'
+  BIN_DIR: '{{.BIN_DIR | default "bin"}}'
+  DIST_DIR: '{{.DIST_DIR | default "dist"}}'
+  GOOS: '{{.GOOS | default OS}}'
+  GOARCH: '{{.GOARCH | default ARCH}}'
+  GOLANGCI_LINT_VERSION: v2.15.0
+  GOVULNCHECK_VERSION: v1.10.0
+
+env:
+  CGO_ENABLED: '0'
+
+includes:
+  common:
+    taskfile: ./build/Taskfile.yml
+    dir: .
+  darwin:
+    taskfile: ./build/darwin/Taskfile.yml
+    dir: .
+  windows:
+    taskfile: ./build/windows/Taskfile.yml
+    dir: .
+  linux:
+    taskfile: ./build/linux/Taskfile.yml
+    dir: .
+
+tasks:
+  build:
+    desc: 编译当前宿主机架构静态二进制（支持 GOOS / GOARCH 交叉编译）
+    cmds:
+      - task: "{{.GOOS}}:build"
+        vars:
+          ARCH: '{{.GOARCH}}'
+          OUTPUT: '{{.OUTPUT}}'
+
+  run:
+    desc: 编译并运行当前宿主机架构 CLI 子命令
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: '{{OS}}'
+          TARGET_ARCH: '{{ARCH}}'
+          OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}}'
+      - ./{{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}} {{.CLI_ARGS}}
+
+  dev:
+    desc: 编译当前宿主机架构二进制并启动 MCP Inspector 调试面板
+    preconditions:
+      - sh: command -v npx >/dev/null 2>&1
+        msg: "未检测到 npx（Node.js），请先安装 Node.js，或先执行 task build 再运行 {{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}} mcp。"
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: '{{OS}}'
+          TARGET_ARCH: '{{ARCH}}'
+          OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}}'
+      - npx @modelcontextprotocol/inspector ./{{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}} mcp
+
+  package:
+    desc: 打包当前宿主机架构发布归档至 dist/（支持 GOOS / GOARCH 交叉打包）
+    cmds:
+      - task: "{{.GOOS}}:package"
+        vars:
+          ARCH: '{{.GOARCH}}'
+
+  package:all:
+    desc: 交叉编译打包三端六架构全部归档与 SHA256SUMS.txt 至 dist/
+    cmds:
+      - rm -rf "{{.DIST_DIR}}"
+      - task: darwin:package:arm64
+      - task: darwin:package:amd64
+      - task: linux:package:amd64
+      - task: linux:package:arm64
+      - task: windows:package:amd64
+      - task: windows:package:arm64
+      - task: common:checksums
+        vars:
+          APP_NAME: '{{.APP_NAME}}'
+          DIST_DIR: '{{.DIST_DIR}}'
+
+  check:
+    desc: 运行格式、静态扫描、漏洞扫描、单元测试与发布契约检查
+    cmds:
+      - task: gofmt:exec
+        vars:
+          MODE: check
+      - task: lint
+      - go test -tags live -c -o {{if eq OS "windows"}}NUL{{else}}/dev/null{{end}} ./internal/provider/providertest
+      - task: test
+      - bash scripts/test_extract_pending_version.sh
+      - bash scripts/test_extract_release_notes.sh
+      - bash scripts/test_prepare_release.sh
+      - bash scripts/test_package_manifests.sh
+      - bash scripts/test_install_scripts.sh
+      - bash scripts/test_ci_config.sh
+      - bash scripts/test_rolling_release_config.sh
+      - git diff --check
+
+  test:
+    desc: 运行全量单元测试与竞态检测
+    cmds:
+      - '{{if eq OS "windows"}}go test ./...{{else}}go test -race ./...{{end}}'
+
+  test:cover:
+    desc: 运行测试并输出各包覆盖率报告
+    cmds:
+      - '{{if eq OS "windows"}}go test -coverprofile=coverage.out ./...{{else}}go test -race -coverprofile=coverage.out ./...{{end}}'
+      - go tool cover -func=coverage.out
+
+  test:live:
+    desc: 使用环境变量中的真实密钥执行 Provider 联调测试
+    cmds:
+      - go test -v -tags live {{if .RUN}}-run "{{.RUN}}"{{end}} ./internal/provider/...
+
+  lint:
+    desc: 运行静态代码检查与漏洞扫描（未预装工具时自动通过 go run 执行）
+    cmds:
+      - go vet ./...
+      - cmd: |
+          if command -v golangci-lint >/dev/null 2>&1; then
+            printf '==> golangci-lint run\n'
+            golangci-lint run
+          else
+            printf '==> go run golangci-lint@%s run\n' "{{.GOLANGCI_LINT_VERSION}}"
+            go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} run
+          fi
+        silent: true
+      - cmd: |
+          if command -v govulncheck >/dev/null 2>&1; then
+            printf '==> govulncheck ./...\n'
+            govulncheck ./...
+          else
+            printf '==> go run govulncheck@%s ./...\n' "{{.GOVULNCHECK_VERSION}}"
+            go run golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}} ./...
+          fi
+        silent: true
+
+  fmt:
+    desc: 格式化全部 Go 源码
+    cmds:
+      - task: gofmt:exec
+        vars:
+          MODE: write
+
+  gofmt:exec:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        cr="$(printf '\r')"
+        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          list="$(git ls-files --cached --others --exclude-standard '*.go')"
+        else
+          list="$(go list -f '{{$d := .Dir}}{{range .GoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}{{range .TestGoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}{{range .XTestGoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}{{range .IgnoredGoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}' ./...)"
+        fi
+        files=()
+        while IFS= read -r f || [ -n "$f" ]; do
+          f="${f%"$cr"}"
+          [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+        done <<EOF
+        $list
+        EOF
+        if [ "${#files[@]}" -eq 0 ]; then
+          printf 'no Go source files found\n' >&2
+          exit 1
+        fi
+        if [ "{{.MODE}}" = "check" ]; then
+          unformatted="$(gofmt -l "${files[@]}")"
+          if [ -n "$unformatted" ]; then
+            printf 'Unformatted Go files:\n%s\n' "$unformatted" >&2
+            exit 1
+          fi
+        else
+          gofmt -s -w "${files[@]}"
+        fi
+
+  release:prepare:
+    desc: 同步更新 build/config.yml 与 CHANGELOG.md 准备正式发版
+    cmds:
+      - bash scripts/prepare_release.sh {{.CLI_ARGS}}

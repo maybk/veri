@@ -1,0 +1,9 @@
+# 应用元信息与构建配置
+version: '1'
+
+info:
+  companyName: "maybk"
+  productName: "veri"
+  description: "Multi-provider web search and Markdown extraction (CLI, MCP, Agent Skill)"
+  copyright: "(c) 2026, maybk"
+  version: "0.1.0"

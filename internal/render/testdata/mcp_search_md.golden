@@ -1,0 +1,19 @@
+Results for "golang context" (deepseek, 3 results, $0.007):
+
+<untrusted_web_content id="TEST">
+[1] Package context
+URL: https://pkg.go.dev/context
+Site: Go Packages | Authors: Go Team | Published: 2026-09-14
+Defines the Context type.
+Carries deadlines and cancellation signals.
+
+[2] The Go Programming Language
+URL: https://tip.golang.org/src/context/context.go?m=text
+// Package context defines the Context type.
+
+[3] docs.example.org
+URL: https://docs.example.org/guide
+Full body text when detail=content.
+</untrusted_web_content>
+
+Notes: cache miss

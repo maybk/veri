@@ -1,0 +1,15 @@
+{
+  "query": "go concurrency",
+  "results": [
+    {
+      "position": 1,
+      "title": "Go Concurrency",
+      "url": "https://go.dev/blog/pipelines",
+      "snippet": "Pipelines in Go",
+      "site_name": "Go Blog",
+      "date": "2026-08-15"
+    }
+  ],
+  "total_results": 1,
+  "page": 0
+}

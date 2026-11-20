@@ -1,0 +1,10 @@
+{
+  "request_id": "tv-ext-1",
+  "results": [
+    {
+      "url": "https://docs.tavily.com/a",
+      "raw_content": "# Extracted Heading\n\nClean content"
+    }
+  ],
+  "failed_results": []
+}

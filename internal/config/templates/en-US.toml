@@ -1,0 +1,83 @@
+# veri configuration file. All fields are optional and fall back to built-in defaults.
+# Store API keys securely via "veri key set <provider>", or reference env vars via "env:VAR_NAME".
+
+[ui]
+lang = "auto"                           # auto | zh | en
+
+[search]
+providers = ["deepseek", "exa", "tinyfish", "tencent_wsa", "tavily", "brave"]
+# providers_en = ["exa", "tinyfish", "brave", "tavily", "deepseek"]
+strategy = "auto"                       # auto | fusion
+count = 8                               # default result count (1-50)
+detail = "summary"                      # snippet | summary | content
+timeout = "20s"                         # overall search timeout
+fallback_on_empty = true                # try next provider on empty results
+strict_filters = false                  # true disables local filter emulation
+fusion_k = 60                           # RRF constant
+summary_max_runes = 800
+
+[fetch]
+strategy = "api_first"                  # api_first | smart_local | local_only | api_only
+providers = ["deepseek", "tinyfish", "tavily", "exa"]
+# providers_global = ["tinyfish", "tavily", "exa", "deepseek"]
+timeout = "30s"
+max_bytes = "5MB"                       # max decompressed response size for local fetch
+min_content_runes = 300                 # minimum runes required to pass local quality gate
+respect_robots = false
+user_agent = "browser"                  # browser | veri | custom string
+
+[mcp]
+text_format = "markdown"                # markdown | json
+search_max_chars = 24000
+fetch_max_chars = 30000
+max_count = 20
+cache_ttl = "5m"                        # set "0s" to disable in-process MCP cache
+cache_size = 256
+
+[network]
+proxy = ""                              # empty respects HTTPS_PROXY / HTTP_PROXY / NO_PROXY
+fake_ip_cidrs = ["198.18.0.0/15"]       # TUN Fake-IP CIDR allowlist
+allow_private = false                   # allow private/loopback IPs in local fetch (keep false for SSRF guard)
+
+[providers.deepseek]
+api_key = "env:DEEPSEEK_API_KEY"        # supports plaintext keys (comma-separated for rotation)
+base_url = "https://api.deepseek.com"
+timeout = "10s"
+concurrency = 4
+weight = 1.0
+# price_search = "CNY:0.005"            # optional reference unit price for cost estimation
+# price_fetch = "CNY:0.005"
+
+[providers.exa]
+api_key = "env:EXA_API_KEY"
+search_type = "auto"                    # lite | auto | fast | instant | deep-lite | deep | deep-reasoning
+allow_over_10 = false
+
+[providers.tinyfish]
+api_key = "env:TINYFISH_API_KEY"
+search_url = "https://api.search.tinyfish.ai"
+fetch_url = "https://api.fetch.tinyfish.ai"
+
+[providers.tencent_wsa]
+api_key = "env:TENCENT_WSA_API_KEY"
+edition = "standard"                    # lite | standard | flagship
+base_url = "https://api.wsa.cloud.tencent.com"
+timeout = "10s"
+
+[providers.tavily]
+api_key = "env:TAVILY_API_KEY"
+search_depth = "basic"                  # ultra-fast | fast | basic | advanced
+extract_depth = "basic"                 # basic | advanced
+
+[providers.brave]
+api_key = "env:BRAVE_API_KEY"
+mode = "auto"                           # auto | context | web
+
+[providers.github]
+enabled = true
+token = "env:GITHUB_TOKEN"              # optional token for higher GitHub API rate limits
+
+[providers.local]
+enabled = true                          # set false to completely disable the local extractor
+timeout = "10s"
+concurrency = 4

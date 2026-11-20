@@ -1,0 +1,247 @@
+version: '3'
+
+vars:
+  BIN_DIR: '{{.BIN_DIR | default "bin"}}'
+  DIST_DIR: '{{.DIST_DIR | default "dist"}}'
+  DEFAULT_APP_NAME:
+    sh: |
+      in_info=0
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          ""|\#*) continue ;;
+          info:*) in_info=1; continue ;;
+          " "*|"	"*) ;;
+          *) in_info=0; continue ;;
+        esac
+        if [ "$in_info" = 1 ]; then
+          case "$line" in
+            *productName:*)
+              val="${line#*productName:}"
+              val="${val#*\"}"
+              val="${val%%\"*}"
+              printf '%s' "$val"
+              break
+              ;;
+          esac
+        fi
+      done < "{{.ROOT_DIR}}/build/config.yml"
+  APP_NAME: '{{.APP_NAME | default .DEFAULT_APP_NAME}}'
+  DEFAULT_VERSION:
+    sh: |
+      in_info=0
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          ""|\#*) continue ;;
+          info:*) in_info=1; continue ;;
+          " "*|"	"*) ;;
+          *) in_info=0; continue ;;
+        esac
+        if [ "$in_info" = 1 ]; then
+          case "$line" in
+            *version:*)
+              val="${line#*version:}"
+              val="${val#*\"}"
+              val="${val%%\"*}"
+              printf '%s' "$val"
+              break
+              ;;
+          esac
+        fi
+      done < "{{.ROOT_DIR}}/build/config.yml"
+  VERSION: '{{.VERSION | default .DEFAULT_VERSION}}'
+  DEFAULT_COMMIT:
+    sh: git -C "{{.ROOT_DIR}}" rev-parse --short=12 HEAD 2>/dev/null || printf 'none'
+  COMMIT: '{{.COMMIT | default .DEFAULT_COMMIT}}'
+  BUILD_DATE: '{{.BUILD_DATE | default (now.UTC.Format "2006-01-02T15:04:05Z")}}'
+
+tasks:
+  build:bin:
+    internal: true
+    dir: '{{.ROOT_DIR}}'
+    label: "build:bin ({{.TARGET_OS}}/{{.TARGET_ARCH}})"
+    vars:
+      TARGET_OS: '{{.TARGET_OS | default OS}}'
+      TARGET_ARCH: '{{.TARGET_ARCH | default ARCH}}'
+      EXT: '{{if eq .TARGET_OS "windows"}}.exe{{end}}'
+      AUTO_OUTPUT: '{{if and (ne .STANDALONE "true") (eq .TARGET_OS OS) (eq .TARGET_ARCH ARCH)}}{{.BIN_DIR}}/{{.APP_NAME}}{{.EXT}}{{else}}{{.BIN_DIR}}/{{.APP_NAME}}-{{.TARGET_OS}}-{{.TARGET_ARCH}}{{.EXT}}{{end}}'
+      RESOLVED_OUTPUT: '{{.OUTPUT | default .AUTO_OUTPUT}}'
+    cmds:
+      - >-
+        GOOS="{{.TARGET_OS}}" GOARCH="{{.TARGET_ARCH}}" CGO_ENABLED=0 go build -trimpath
+        -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.buildDate={{.BUILD_DATE}}"
+        -o "{{.RESOLVED_OUTPUT}}" .
+
+  archive:
+    internal: true
+    dir: '{{.ROOT_DIR}}'
+    label: "archive ({{.TARGET_OS}}/{{.TARGET_ARCH}})"
+    vars:
+      TARGET_OS: '{{.TARGET_OS | default OS}}'
+      TARGET_ARCH: '{{.TARGET_ARCH | default ARCH}}'
+    cmds:
+      - task: '{{if eq .TARGET_OS "windows"}}archive:windows{{else}}archive:unix{{end}}'
+        vars:
+          TARGET_OS: '{{.TARGET_OS}}'
+          TARGET_ARCH: '{{.TARGET_ARCH}}'
+          APP_NAME: '{{.APP_NAME}}'
+          VERSION: '{{.VERSION}}'
+          COMMIT: '{{.COMMIT}}'
+          BUILD_DATE: '{{.BUILD_DATE}}'
+          DIST_DIR: '{{.DIST_DIR}}'
+
+  archive:unix:
+    internal: true
+    silent: true
+    dir: '{{.ROOT_DIR}}'
+    label: "archive:unix ({{.TARGET_OS}}/{{.TARGET_ARCH}})"
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          mkdir -p "{{.DIST_DIR}}"
+          stage="$(mktemp -d)"
+          trap 'rm -rf "$stage"' EXIT
+          GOOS="{{.TARGET_OS}}" GOARCH="{{.TARGET_ARCH}}" CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.buildDate={{.BUILD_DATE}}" \
+            -o "$stage/{{.APP_NAME}}" .
+          items=("{{.APP_NAME}}")
+          for doc in LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md; do
+            if [ -f "$doc" ]; then
+              cp "$doc" "$stage/"
+              items+=("$doc")
+            fi
+          done
+          if [ -f "skills/{{.APP_NAME}}/SKILL.md" ]; then
+            mkdir -p "$stage/skills/{{.APP_NAME}}"
+            cp "skills/{{.APP_NAME}}/SKILL.md" "$stage/skills/{{.APP_NAME}}/SKILL.md"
+            items+=("skills")
+          fi
+          out="{{.DIST_DIR}}/{{.APP_NAME}}-{{.VERSION}}-{{.TARGET_OS}}-{{.TARGET_ARCH}}.tar.gz"
+          if tar --version 2>/dev/null | grep -qi 'GNU tar'; then
+            (cd "$stage" && tar --owner=0 --group=0 --numeric-owner -czf "{{.ROOT_DIR}}/$out" "${items[@]}")
+          else
+            (cd "$stage" && COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname "" --gname "" -czf "{{.ROOT_DIR}}/$out" "${items[@]}")
+          fi
+          printf 'packaged %s\n' "$out"
+        platforms: [darwin, linux]
+      - cmd: |
+          powershell -NoProfile -Command '
+            $ErrorActionPreference = "Stop";
+            $distDir = Join-Path "{{.ROOT_DIR}}" "{{.DIST_DIR}}";
+            New-Item -ItemType Directory -Path $distDir -Force | Out-Null;
+            $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("{{.APP_NAME}}-stage-" + [guid]::NewGuid().ToString("N"));
+            New-Item -ItemType Directory -Path $stage -Force | Out-Null;
+            try {
+              $env:GOOS = "{{.TARGET_OS}}"; $env:GOARCH = "{{.TARGET_ARCH}}"; $env:CGO_ENABLED = "0";
+              go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.buildDate={{.BUILD_DATE}}" -o (Join-Path $stage "{{.APP_NAME}}") .;
+              $items = @("{{.APP_NAME}}");
+              foreach ($f in @("LICENSE","THIRD_PARTY_NOTICES.md","README.md","README.en.md")) {
+                if (Test-Path -LiteralPath $f) {
+                  Copy-Item -LiteralPath $f -Destination (Join-Path $stage $f) -Force;
+                  $items += $f;
+                }
+              };
+              if (Test-Path -LiteralPath "skills/{{.APP_NAME}}/SKILL.md") {
+                New-Item -ItemType Directory -Path (Join-Path $stage "skills/{{.APP_NAME}}") -Force | Out-Null;
+                Copy-Item -LiteralPath "skills/{{.APP_NAME}}/SKILL.md" -Destination (Join-Path $stage "skills/{{.APP_NAME}}/SKILL.md") -Force;
+                $items += "skills";
+              };
+              $name = "{{.APP_NAME}}-{{.VERSION}}-{{.TARGET_OS}}-{{.TARGET_ARCH}}.tar.gz";
+              $archive = Join-Path $distDir $name;
+              $tarVer = (tar --version 2>$null | Out-String);
+              if ($tarVer -match "GNU tar") {
+                tar --owner=0 --group=0 --numeric-owner -czf $archive -C $stage @items;
+              } else {
+                tar --uid 0 --gid 0 --uname "" --gname "" -czf $archive -C $stage @items;
+              };
+              Write-Host "packaged {{.DIST_DIR}}/$name";
+            } finally {
+              Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue;
+            }
+          '
+        platforms: [windows]
+
+  archive:windows:
+    internal: true
+    silent: true
+    dir: '{{.ROOT_DIR}}'
+    label: "archive:windows (windows/{{.TARGET_ARCH}})"
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          mkdir -p "{{.DIST_DIR}}"
+          stage="$(mktemp -d)"
+          trap 'rm -rf "$stage"' EXIT
+          GOOS=windows GOARCH="{{.TARGET_ARCH}}" CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.buildDate={{.BUILD_DATE}}" \
+            -o "$stage/{{.APP_NAME}}.exe" .
+          items=("{{.APP_NAME}}.exe")
+          for doc in LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md; do
+            if [ -f "$doc" ]; then
+              cp "$doc" "$stage/"
+              items+=("$doc")
+            fi
+          done
+          if [ -f "skills/{{.APP_NAME}}/SKILL.md" ]; then
+            mkdir -p "$stage/skills/{{.APP_NAME}}"
+            cp "skills/{{.APP_NAME}}/SKILL.md" "$stage/skills/{{.APP_NAME}}/SKILL.md"
+            items+=("skills")
+          fi
+          out="{{.DIST_DIR}}/{{.APP_NAME}}-{{.VERSION}}-windows-{{.TARGET_ARCH}}.zip"
+          if command -v zip >/dev/null 2>&1; then
+            (cd "$stage" && zip -qr "{{.ROOT_DIR}}/$out" "${items[@]}")
+          elif command -v python3 >/dev/null 2>&1; then
+            (cd "$stage" && python3 -m zipfile -c "{{.ROOT_DIR}}/$out" "${items[@]}")
+          else
+            echo "missing 'zip' (or python3) required to package Windows .zip archive" >&2
+            exit 1
+          fi
+          printf 'packaged %s\n' "$out"
+        platforms: [darwin, linux]
+      - cmd: |
+          powershell -NoProfile -Command '
+            $ErrorActionPreference = "Stop";
+            New-Item -ItemType Directory -Path "{{.DIST_DIR}}" -Force | Out-Null;
+            $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("{{.APP_NAME}}-stage-" + [guid]::NewGuid().ToString("N"));
+            New-Item -ItemType Directory -Path $stage -Force | Out-Null;
+            try {
+              $env:GOOS = "windows"; $env:GOARCH = "{{.TARGET_ARCH}}"; $env:CGO_ENABLED = "0";
+              go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.buildDate={{.BUILD_DATE}}" -o (Join-Path $stage "{{.APP_NAME}}.exe") .;
+              foreach ($f in @("LICENSE","THIRD_PARTY_NOTICES.md","README.md","README.en.md")) {
+                if (Test-Path -LiteralPath $f) { Copy-Item -LiteralPath $f -Destination (Join-Path $stage $f) -Force }
+              };
+              if (Test-Path -LiteralPath "skills/{{.APP_NAME}}/SKILL.md") {
+                New-Item -ItemType Directory -Path (Join-Path $stage "skills/{{.APP_NAME}}") -Force | Out-Null;
+                Copy-Item -LiteralPath "skills/{{.APP_NAME}}/SKILL.md" -Destination (Join-Path $stage "skills/{{.APP_NAME}}/SKILL.md") -Force;
+              };
+              $out = "{{.DIST_DIR}}/{{.APP_NAME}}-{{.VERSION}}-windows-{{.TARGET_ARCH}}.zip";
+              Compress-Archive -Path "$stage/*" -DestinationPath $out -Force;
+              Write-Host "packaged $out";
+            } finally {
+              Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue;
+            }
+          '
+        platforms: [windows]
+
+  checksums:
+    internal: true
+    silent: true
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          cd "{{.DIST_DIR}}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum {{.APP_NAME}}-* > SHA256SUMS.txt
+          else
+            shasum -a 256 {{.APP_NAME}}-* > SHA256SUMS.txt
+          fi
+          printf 'generated %s/SHA256SUMS.txt\n' "{{.DIST_DIR}}"
+        platforms: [darwin, linux]
+      - cmd: >-
+          powershell -NoProfile -Command "$ErrorActionPreference='Stop';
+          Set-Location '{{.DIST_DIR}}';
+          Get-ChildItem -File -Filter '{{.APP_NAME}}-*' | Sort-Object Name |
+          ForEach-Object { '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant(), $_.Name } |
+          Set-Content -Encoding ascii SHA256SUMS.txt;
+          Write-Host 'generated {{.DIST_DIR}}/SHA256SUMS.txt'"
+        platforms: [windows]

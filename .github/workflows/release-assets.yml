@@ -1,0 +1,424 @@
+name: Build Release Assets
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Full commit SHA to build
+        required: true
+        type: string
+      version:
+        description: Version string embedded in binaries and archives
+        required: true
+        type: string
+      retention_days:
+        description: Artifact retention period
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  darwin:
+    name: Build & test macOS archives (arm64 & amd64)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      APP_VERSION: ${{ inputs.version }}
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: true
+
+      - name: Run native macOS arm64 analysis and test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(go env GOARCH)" != "arm64" ]; then
+            echo "Expected native arm64 Go toolchain on macos-latest, got: $(go env GOARCH)" >&2
+            exit 1
+          fi
+          go vet ./...
+          go test -race ./...
+
+      - name: Build, smoke-test, and package darwin arm64 & amd64 archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          short_commit="$(git rev-parse --short=12 HEAD)"
+          build_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          for arch in arm64 amd64; do
+            stage="$RUNNER_TEMP/veri-darwin-$arch"
+            rm -rf "$stage"
+            mkdir -p "$stage"
+            GOOS=darwin GOARCH="$arch" go build -trimpath \
+              -ldflags "-s -w -X main.version=$APP_VERSION -X main.commit=$short_commit -X main.buildDate=$build_date" \
+              -o "$stage/veri" .
+            meta="$(go version -m "$stage/veri")"
+            grep -Fq "GOOS=darwin" <<<"$meta"
+            grep -Fq "GOARCH=$arch" <<<"$meta"
+            grep -Fq "CGO_ENABLED=0" <<<"$meta"
+            if [ "$arch" = "arm64" ]; then
+              "$stage/veri" version | grep -Fq "veri $APP_VERSION"
+              "$stage/veri" providers --json >/dev/null
+              "$stage/veri" skill print >/dev/null
+            fi
+            items=("veri")
+            for doc in LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md; do
+              cp "$doc" "$stage/"
+              items+=("$doc")
+            done
+            if [ -f skills/veri/SKILL.md ]; then
+              mkdir -p "$stage/skills/veri"
+              cp skills/veri/SKILL.md "$stage/skills/veri/SKILL.md"
+              items+=("skills")
+            fi
+            archive="dist/veri-$APP_VERSION-darwin-$arch.tar.gz"
+            (cd "$stage" && COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname "" --gname "" -czf "$GITHUB_WORKSPACE/$archive" "${items[@]}")
+            test -s "$archive"
+            entries="$(tar -tzf "$archive")"
+            for req_entry in veri LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md skills/veri/SKILL.md; do
+              grep -Fq "$req_entry" <<<"$entries"
+            done
+          done
+
+      - name: Upload darwin release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-darwin
+          path: |
+            dist/veri-*-darwin-arm64.tar.gz
+            dist/veri-*-darwin-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+
+  linux-amd64:
+    name: Build & test Linux archive (amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      APP_VERSION: ${{ inputs.version }}
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: true
+
+      - name: Run native Linux amd64 analysis and test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(go env GOARCH)" != "amd64" ]; then
+            echo "Expected native amd64 Go toolchain on ubuntu-24.04, got: $(go env GOARCH)" >&2
+            exit 1
+          fi
+          go vet ./...
+          go test -race ./...
+
+      - name: Build, smoke-test, and package linux amd64 archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          short_commit="$(git rev-parse --short=12 HEAD)"
+          build_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          stage="$RUNNER_TEMP/veri-linux-amd64"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X main.version=$APP_VERSION -X main.commit=$short_commit -X main.buildDate=$build_date" \
+            -o "$stage/veri" .
+          meta="$(go version -m "$stage/veri")"
+          grep -Fq "GOOS=linux" <<<"$meta"
+          grep -Fq "GOARCH=amd64" <<<"$meta"
+          grep -Fq "CGO_ENABLED=0" <<<"$meta"
+          if ldd "$stage/veri" >/dev/null 2>&1; then
+            echo "Expected static Linux binary without dynamic libc linkage" >&2
+            exit 1
+          fi
+          "$stage/veri" version | grep -Fq "veri $APP_VERSION"
+          "$stage/veri" providers --json >/dev/null
+          "$stage/veri" skill print >/dev/null
+          items=("veri")
+          for doc in LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md; do
+            cp "$doc" "$stage/"
+            items+=("$doc")
+          done
+          if [ -f skills/veri/SKILL.md ]; then
+            mkdir -p "$stage/skills/veri"
+            cp skills/veri/SKILL.md "$stage/skills/veri/SKILL.md"
+            items+=("skills")
+          fi
+          archive="dist/veri-$APP_VERSION-linux-amd64.tar.gz"
+          (cd "$stage" && tar --owner=0 --group=0 --numeric-owner -czf "$GITHUB_WORKSPACE/$archive" "${items[@]}")
+          test -s "$archive"
+          entries="$(tar -tzf "$archive")"
+          for req_entry in veri LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md skills/veri/SKILL.md; do
+            grep -Fq "$req_entry" <<<"$entries"
+          done
+
+      - name: Upload linux amd64 release asset
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux-amd64
+          path: dist/veri-*-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+
+  linux-arm64:
+    name: Build & test Linux archive (arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      APP_VERSION: ${{ inputs.version }}
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: true
+
+      - name: Run native Linux arm64 analysis and test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(go env GOARCH)" != "arm64" ]; then
+            echo "Expected native arm64 Go toolchain on ubuntu-24.04-arm, got: $(go env GOARCH)" >&2
+            exit 1
+          fi
+          go vet ./...
+          go test -race ./...
+
+      - name: Build, smoke-test, and package linux arm64 archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          short_commit="$(git rev-parse --short=12 HEAD)"
+          build_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          stage="$RUNNER_TEMP/veri-linux-arm64"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          GOOS=linux GOARCH=arm64 go build -trimpath \
+            -ldflags "-s -w -X main.version=$APP_VERSION -X main.commit=$short_commit -X main.buildDate=$build_date" \
+            -o "$stage/veri" .
+          meta="$(go version -m "$stage/veri")"
+          grep -Fq "GOOS=linux" <<<"$meta"
+          grep -Fq "GOARCH=arm64" <<<"$meta"
+          grep -Fq "CGO_ENABLED=0" <<<"$meta"
+          if ldd "$stage/veri" >/dev/null 2>&1; then
+            echo "Expected static Linux binary without dynamic libc linkage" >&2
+            exit 1
+          fi
+          "$stage/veri" version | grep -Fq "veri $APP_VERSION"
+          "$stage/veri" providers --json >/dev/null
+          "$stage/veri" skill print >/dev/null
+          items=("veri")
+          for doc in LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md; do
+            cp "$doc" "$stage/"
+            items+=("$doc")
+          done
+          if [ -f skills/veri/SKILL.md ]; then
+            mkdir -p "$stage/skills/veri"
+            cp skills/veri/SKILL.md "$stage/skills/veri/SKILL.md"
+            items+=("skills")
+          fi
+          archive="dist/veri-$APP_VERSION-linux-arm64.tar.gz"
+          (cd "$stage" && tar --owner=0 --group=0 --numeric-owner -czf "$GITHUB_WORKSPACE/$archive" "${items[@]}")
+          test -s "$archive"
+          entries="$(tar -tzf "$archive")"
+          for req_entry in veri LICENSE THIRD_PARTY_NOTICES.md README.md README.en.md skills/veri/SKILL.md; do
+            grep -Fq "$req_entry" <<<"$entries"
+          done
+
+      - name: Upload linux arm64 release asset
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux-arm64
+          path: dist/veri-*-linux-arm64.tar.gz
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+
+  windows-amd64:
+    name: Build & test Windows archive (amd64)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      APP_VERSION: ${{ inputs.version }}
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: true
+
+      - name: Run native Windows amd64 analysis and test suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((go env GOARCH) -ne "amd64") {
+            throw "Expected native amd64 Go toolchain on windows-latest, got: $(go env GOARCH)"
+          }
+          go vet ./...
+          go test ./...
+
+      - name: Build, smoke-test, and package windows amd64 ZIP archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path "dist" -Force | Out-Null
+          $shortCommit = (git rev-parse --short=12 HEAD).Trim()
+          $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $stage = Join-Path $env:RUNNER_TEMP "veri-windows-amd64"
+          if (Test-Path -LiteralPath $stage) {
+            Remove-Item -LiteralPath $stage -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          $exePath = Join-Path $stage "veri.exe"
+          go build -trimpath `
+            -ldflags "-s -w -X main.version=$env:APP_VERSION -X main.commit=$shortCommit -X main.buildDate=$buildDate" `
+            -o $exePath .
+          $meta = go version -m $exePath | Out-String
+          if ($meta -notmatch "GOOS=windows" -or $meta -notmatch "GOARCH=amd64" -or $meta -notmatch "CGO_ENABLED=0") {
+            throw "Unexpected target metadata for windows/amd64:`n$meta"
+          }
+          $verOut = & $exePath version | Out-String
+          if ($verOut -notmatch [regex]::Escape("veri $env:APP_VERSION")) {
+            throw "Unexpected Windows amd64 smoke version output: $verOut"
+          }
+          & $exePath providers --json | Out-Null
+          & $exePath skill print | Out-Null
+          foreach ($doc in @("LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "README.en.md")) {
+            Copy-Item -LiteralPath $doc -Destination (Join-Path $stage $doc) -Force
+          }
+          if (Test-Path -LiteralPath "skills/veri/SKILL.md") {
+            New-Item -ItemType Directory -Path (Join-Path $stage "skills/veri") -Force | Out-Null
+            Copy-Item -LiteralPath "skills/veri/SKILL.md" -Destination (Join-Path $stage "skills/veri/SKILL.md") -Force
+          }
+          $archive = "dist/veri-$env:APP_VERSION-windows-amd64.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $archive -Force
+          if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+            throw "Windows amd64 archive was not created: $archive"
+          }
+
+      - name: Upload windows amd64 release asset
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows-amd64
+          path: dist/veri-*-windows-amd64.zip
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+
+  windows-arm64:
+    name: Build & test Windows archive (arm64)
+    runs-on: windows-11-arm
+    timeout-minutes: 25
+    env:
+      APP_VERSION: ${{ inputs.version }}
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: true
+
+      - name: Run native Windows arm64 analysis and test suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((go env GOARCH) -ne "arm64") {
+            throw "Expected native arm64 Go toolchain on windows-11-arm, got: $(go env GOARCH)"
+          }
+          go vet ./...
+          go test ./...
+
+      - name: Build, smoke-test, and package windows arm64 ZIP archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path "dist" -Force | Out-Null
+          $shortCommit = (git rev-parse --short=12 HEAD).Trim()
+          $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $stage = Join-Path $env:RUNNER_TEMP "veri-windows-arm64"
+          if (Test-Path -LiteralPath $stage) {
+            Remove-Item -LiteralPath $stage -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          $env:GOOS = "windows"
+          $env:GOARCH = "arm64"
+          $exePath = Join-Path $stage "veri.exe"
+          go build -trimpath `
+            -ldflags "-s -w -X main.version=$env:APP_VERSION -X main.commit=$shortCommit -X main.buildDate=$buildDate" `
+            -o $exePath .
+          $meta = go version -m $exePath | Out-String
+          if ($meta -notmatch "GOOS=windows" -or $meta -notmatch "GOARCH=arm64" -or $meta -notmatch "CGO_ENABLED=0") {
+            throw "Unexpected target metadata for windows/arm64:`n$meta"
+          }
+          $verOut = & $exePath version | Out-String
+          if ($verOut -notmatch [regex]::Escape("veri $env:APP_VERSION")) {
+            throw "Unexpected Windows arm64 smoke version output: $verOut"
+          }
+          & $exePath providers --json | Out-Null
+          & $exePath skill print | Out-Null
+          foreach ($doc in @("LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "README.en.md")) {
+            Copy-Item -LiteralPath $doc -Destination (Join-Path $stage $doc) -Force
+          }
+          if (Test-Path -LiteralPath "skills/veri/SKILL.md") {
+            New-Item -ItemType Directory -Path (Join-Path $stage "skills/veri") -Force | Out-Null
+            Copy-Item -LiteralPath "skills/veri/SKILL.md" -Destination (Join-Path $stage "skills/veri/SKILL.md") -Force
+          }
+          $archive = "dist/veri-$env:APP_VERSION-windows-arm64.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $archive -Force
+          if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+            throw "Windows arm64 archive was not created: $archive"
+          }
+
+      - name: Upload windows arm64 release asset
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows-arm64
+          path: dist/veri-*-windows-arm64.zip
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}

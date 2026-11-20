@@ -1,0 +1,354 @@
+name: Rolling
+
+on:
+  schedule:
+    - cron: '37 18 * * *' # 每日 02:37 (UTC+8)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 强制重新打包（即使没有新提交）
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rolling
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Select current main commit
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      short_sha: ${{ steps.source.outputs.short_sha }}
+      build_version: ${{ steps.source.outputs.build_version }}
+      app_version: ${{ steps.source.outputs.app_version }}
+      rolling_version: ${{ steps.source.outputs.rolling_version }}
+      should_publish: ${{ steps.source.outputs.should_publish }}
+      needs_ci: ${{ steps.source.outputs.needs_ci }}
+    steps:
+      - name: Check out candidate source and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate source commit
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && (inputs.force == true || inputs.force == 'true') && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_REF" != refs/heads/main ]; then
+            echo "Rolling 只能从 main 分支运行: $EVENT_REF" >&2
+            exit 1
+          fi
+
+          git fetch origin main:refs/remotes/origin/main --no-tags
+          git fetch origin --force --tags
+          source_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Rolling source must be a full commit SHA: $source_sha" >&2
+            exit 1
+          fi
+          git checkout --detach --quiet "$source_sha"
+
+          formal_tag="$(git tag --points-at "$source_sha" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          if [ -n "$formal_tag" ]; then
+            echo "正式发布提交，跳过 Rolling: $formal_tag"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "needs_ci=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          config_version="$(awk '/^[^[:space:]#]/{in_info=($1=="info:")} in_info && /^[[:space:]]+version:/{sub(/.*version:[[:space:]]*"/,""); sub(/".*/,""); print; exit}' build/config.yml)"
+          if [[ ! "$config_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid info.version in build/config.yml: ${config_version:-<missing>}" >&2
+            exit 1
+          fi
+          rolling_version="$(bash scripts/extract_pending_version.sh CHANGELOG.md)"
+          app_version="${rolling_version}-pre"
+          build_version="${rolling_version}-pre"
+          rolling_tag="v${rolling_version}-pre"
+
+          notes_error_file="$RUNNER_TEMP/pending-release-notes-error.log"
+          set +e
+          bash scripts/extract_release_notes.sh "$rolling_version" CHANGELOG.md >/dev/null 2>"$notes_error_file"
+          notes_status="$?"
+          set -e
+          if [ "$notes_status" -eq 2 ]; then
+            rm -f "$notes_error_file"
+            echo "待发布版本暂无内容，跳过 Rolling: $rolling_version"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "needs_ci=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$notes_status" -ne 0 ]; then
+            cat "$notes_error_file" >&2
+            exit "$notes_status"
+          fi
+          rm -f "$notes_error_file"
+
+          short_sha="${source_sha:0:12}"
+          published_sha="$(git rev-parse --verify --quiet "refs/tags/${rolling_tag}^{commit}" || true)"
+          if [ "$FORCE_PUBLISH" != true ] && [ "$published_sha" = "$source_sha" ]; then
+            releases_json="$(gh api "repos/$GH_REPO/releases?per_page=100")"
+            release_status="$(
+              jq -r \
+                --arg tag "$rolling_tag" \
+                --arg prefix "veri-${rolling_version}-rolling-${short_sha}-" \
+                '
+                  ([.[] | select(.tag_name == $tag)] | first) as $rel |
+                  if $rel == null then
+                    "missing"
+                  elif ($rel.draft == false)
+                    and ($rel.prerelease == true)
+                    and (($rel.assets | length) == 7)
+                    and ($rel.assets | all(.state == "uploaded"))
+                    and ([$rel.assets[].name] | index("SHA256SUMS.txt") != null)
+                    and ([$rel.assets[].name | select(. != "SHA256SUMS.txt")] | length == 6)
+                    and ([$rel.assets[].name | select(. != "SHA256SUMS.txt")] | all(startswith($prefix)))
+                  then
+                    "complete"
+                  else
+                    "incomplete"
+                  end
+                ' <<<"$releases_json"
+            )"
+            if [ "$release_status" = complete ]; then
+              echo "当前 main 提交已发布完整 Rolling ($rolling_tag @ $short_sha)，跳过重复构建"
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              echo "needs_ci=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          needs_ci=true
+          if ci_runs_json="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?head_sha=$source_sha&status=completed&per_page=20" 2>/dev/null)"; then
+            latest_push_ci="$(
+              jq -r '
+                [.workflow_runs[] | select(.event == "push" and .head_branch == "main")]
+                | first
+                | .conclusion // ""
+              ' <<<"$ci_runs_json"
+            )"
+            if [ "$latest_push_ci" = success ]; then
+              needs_ci=false
+            fi
+          fi
+
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+          echo "build_version=$build_version" >> "$GITHUB_OUTPUT"
+          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
+          echo "rolling_version=$rolling_version" >> "$GITHUB_OUTPUT"
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "needs_ci=$needs_ci" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: Run Rolling CI gate
+    needs: prepare
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      needs.prepare.outputs.should_publish == 'true' &&
+      needs.prepare.outputs.needs_ci == 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      source_sha: ${{ needs.prepare.outputs.source_sha }}
+
+  build:
+    name: Build Rolling assets
+    needs:
+      - prepare
+      - ci
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.should_publish == 'true' &&
+      (needs.ci.result == 'success' || needs.ci.result == 'skipped')
+    uses: ./.github/workflows/release-assets.yml
+    with:
+      source_sha: ${{ needs.prepare.outputs.source_sha }}
+      version: ${{ needs.prepare.outputs.build_version }}
+      retention_days: 1
+
+  publish:
+    name: Replace Rolling prerelease
+    needs:
+      - prepare
+      - build
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.should_publish == 'true' &&
+      needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: rolling-release-mutation
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+      SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+      BUILD_VERSION: ${{ needs.prepare.outputs.build_version }}
+      APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+      ROLLING_VERSION: ${{ needs.prepare.outputs.rolling_version }}
+    steps:
+      - name: Check out Rolling source and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Revalidate source before replacing Rolling
+        id: revalidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main --no-tags
+          git fetch origin --force --tags
+          if [ "$SOURCE_SHA" != "$(git rev-parse refs/remotes/origin/main)" ]; then
+            echo "should_replace=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          formal_tag="$(git tag --points-at "$SOURCE_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          if [ -n "$formal_tag" ]; then
+            echo "should_replace=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should_replace=true" >> "$GITHUB_OUTPUT"
+
+      - name: Download verified assets
+        if: steps.revalidate.outputs.should_replace == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release-files
+          merge-multiple: true
+
+      - name: Validate and rename Rolling assets
+        if: steps.revalidate.outputs.should_replace == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffixes=(
+            darwin-arm64.tar.gz
+            darwin-amd64.tar.gz
+            linux-amd64.tar.gz
+            linux-arm64.tar.gz
+            windows-amd64.zip
+            windows-arm64.zip
+          )
+          for suffix in "${suffixes[@]}"; do
+            test -s "release-files/veri-$BUILD_VERSION-$suffix"
+            mv "release-files/veri-$BUILD_VERSION-$suffix" \
+              "release-files/veri-$ROLLING_VERSION-rolling-$SHORT_SHA-$suffix"
+          done
+
+          renamed=()
+          for suffix in "${suffixes[@]}"; do
+            asset="veri-$ROLLING_VERSION-rolling-$SHORT_SHA-$suffix"
+            test -s "release-files/$asset"
+            renamed+=("$asset")
+          done
+          (
+            cd release-files
+            sha256sum "${renamed[@]}" > SHA256SUMS.txt
+          )
+          local_asset_count="$(find release-files -maxdepth 1 -type f | wc -l | tr -d '[:space:]')"
+          [ "$local_asset_count" -eq 7 ]
+
+      - name: Prepare Rolling notes
+        if: steps.revalidate.outputs.should_replace == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_notes_file="$RUNNER_TEMP/rolling-notes.md"
+          built_at="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          bash scripts/render_release_notes.sh \
+            --rolling \
+            --version "$ROLLING_VERSION" \
+            --app-version "$APP_VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --built-at "$built_at" \
+            --repo "$GITHUB_REPOSITORY" \
+            --server-url "$GITHUB_SERVER_URL" \
+            --changelog CHANGELOG.md > "$release_notes_file"
+          test -s "$release_notes_file"
+
+      - name: Update Rolling prerelease and prune superseded tags
+        if: steps.revalidate.outputs.should_replace == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_notes_file="$RUNNER_TEMP/rolling-notes.md"
+          rolling_tag="v${ROLLING_VERSION}-pre"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a --force "$rolling_tag" -m "veri $ROLLING_VERSION Rolling ($SHORT_SHA)" "$SOURCE_SHA"
+          git push --force origin "refs/tags/$rolling_tag"
+
+          if gh release view "$rolling_tag" >/dev/null 2>&1; then
+            gh release upload "$rolling_tag" release-files/* --clobber
+            expected_names="$(cd release-files && printf '%s\n' *)"
+            while IFS= read -r existing_asset; do
+              [ -n "$existing_asset" ] || continue
+              if ! grep -Fxq "$existing_asset" <<<"$expected_names"; then
+                gh release delete-asset "$rolling_tag" "$existing_asset" --yes
+              fi
+            done < <(gh release view "$rolling_tag" --json assets --jq '.assets[].name')
+            gh release edit "$rolling_tag" \
+              --notes-file "$release_notes_file" \
+              --title "veri $ROLLING_VERSION Rolling" \
+              --draft=false \
+              --prerelease
+          else
+            gh release create "$rolling_tag" \
+              --verify-tag \
+              --draft \
+              --prerelease \
+              --notes-file "$release_notes_file" \
+              --title "veri $ROLLING_VERSION Rolling"
+            gh release upload "$rolling_tag" release-files/*
+            draft_view="$(gh release view "$rolling_tag" --json assets,isDraft,isPrerelease)"
+            jq -e '(.isDraft == true) and (.isPrerelease == true) and ((.assets | length) == 7) and (.assets | all(.state == "uploaded"))' <<<"$draft_view" >/dev/null
+            gh release edit "$rolling_tag" --draft=false --prerelease
+          fi
+
+          live_view="$(gh release view "$rolling_tag" --json assets,isDraft,isPrerelease)"
+          jq -e '(.isDraft == false) and (.isPrerelease == true) and ((.assets | length) == 7) and (.assets | all(.state == "uploaded"))' <<<"$live_view" >/dev/null
+
+          while IFS= read -r old_rel_tag; do
+            [ -n "$old_rel_tag" ] || continue
+            [ "$old_rel_tag" != "$rolling_tag" ] || continue
+            gh release delete "$old_rel_tag" --yes
+          done < <(gh release list --limit 100 --json tagName --jq '.[] | select(.tagName == "rolling" or (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-pre$"))) | .tagName')
+
+          while read -r remote_sha remote_ref; do
+            [ -n "$remote_ref" ] || continue
+            [ "$remote_ref" != "refs/tags/$rolling_tag" ] || continue
+            git push --force-with-lease="$remote_ref:$remote_sha" origin ":$remote_ref"
+          done < <(git ls-remote --refs --tags origin 'refs/tags/rolling' 'refs/tags/v*-pre' || true)

@@ -1,0 +1,58 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    desc: 编译 Linux 静态二进制（默认跟随当前架构）
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: linux
+          TARGET_ARCH: '{{.ARCH | default ARCH}}'
+          OUTPUT: '{{.OUTPUT}}'
+
+  build:amd64:
+    desc: 编译 Linux x86_64 (amd64) 独立静态二进制
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: linux
+          TARGET_ARCH: amd64
+          STANDALONE: 'true'
+          OUTPUT: '{{.OUTPUT}}'
+
+  build:arm64:
+    desc: 编译 Linux ARM64 独立静态二进制
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: linux
+          TARGET_ARCH: arm64
+          STANDALONE: 'true'
+          OUTPUT: '{{.OUTPUT}}'
+
+  package:
+    desc: 打包 Linux .tar.gz 发布归档（默认跟随当前架构）
+    cmds:
+      - task: common:archive
+        vars:
+          TARGET_OS: linux
+          TARGET_ARCH: '{{.ARCH | default ARCH}}'
+
+  package:amd64:
+    desc: 打包 Linux x86_64 (amd64) .tar.gz 发布归档
+    cmds:
+      - task: common:archive
+        vars:
+          TARGET_OS: linux
+          TARGET_ARCH: amd64
+
+  package:arm64:
+    desc: 打包 Linux ARM64 .tar.gz 发布归档
+    cmds:
+      - task: common:archive
+        vars:
+          TARGET_OS: linux
+          TARGET_ARCH: arm64

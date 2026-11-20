@@ -1,0 +1,5 @@
+{
+  "requestId": "exa-err-403",
+  "error": "Feature is not enabled on this plan",
+  "tag": "FEATURE_DISABLED"
+}

@@ -1,0 +1,12 @@
+{
+  "Response": {
+    "Pages": [
+      "{\"title\":\"央行报告\",\"url\":\"https://www.pbc.gov.cn/a\",\"date\":\"2026/10/12 09:30:00\",\"passage\":\"标准摘要\",\"content\":\"动态长摘要\",\"site\":\"中国人民银行\",\"score\":0.91,\"authority_level\":4}",
+      "{bad-json}"
+    ],
+    "Query": "货币政策",
+    "Version": "flagship",
+    "Msg": "partial hint",
+    "RequestId": "wsa-1"
+  }
+}

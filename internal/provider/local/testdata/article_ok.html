@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><title>Go Memory Model</title></head>
+<body>
+  <article>
+    <h1>The Go Memory Model</h1>
+    <p>The Go memory model specifies the conditions under which reads of a variable in one goroutine can be guaranteed to observe values produced by writes to the same variable in a different goroutine.</p>
+    <p>Programs that modify data being simultaneously accessed by multiple goroutines must serialize such access. To serialize access, protect the data with channel operations or other synchronization primitives such as those in the sync and sync/atomic packages.</p>
+    <p>If a package p imports package q, the completion of q's init functions happens before the start of any of p's. The start of the main.main function happens after all init functions have finished.</p>
+  </article>
+</body>
+</html>

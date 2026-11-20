@@ -1,0 +1,19 @@
+Fetched 3 pages (tinyfish, $0.002):
+
+[1] Source: generic (tinyfish)
+<untrusted_web_content id="TEST">
+URL: https://example.com/a
+
+# Alpha
+
+Body A.
+</untrusted_web_content>
+
+[2] https://example.com/missing — Error [not_found]: 404 not found
+
+[3] Source: generic (tinyfish)
+<untrusted_web_content id="TEST">
+URL: https://example.com/notitle
+
+Plain content without title.
+</untrusted_web_content>

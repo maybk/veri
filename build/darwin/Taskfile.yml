@@ -1,0 +1,58 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    desc: 编译 macOS 静态二进制（默认跟随当前架构）
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: darwin
+          TARGET_ARCH: '{{.ARCH | default ARCH}}'
+          OUTPUT: '{{.OUTPUT}}'
+
+  build:arm64:
+    desc: 编译 macOS Apple Silicon (arm64) 独立静态二进制
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: darwin
+          TARGET_ARCH: arm64
+          STANDALONE: 'true'
+          OUTPUT: '{{.OUTPUT}}'
+
+  build:amd64:
+    desc: 编译 macOS Intel (amd64) 独立静态二进制
+    cmds:
+      - task: common:build:bin
+        vars:
+          TARGET_OS: darwin
+          TARGET_ARCH: amd64
+          STANDALONE: 'true'
+          OUTPUT: '{{.OUTPUT}}'
+
+  package:
+    desc: 打包 macOS .tar.gz 发布归档（默认跟随当前架构）
+    cmds:
+      - task: common:archive
+        vars:
+          TARGET_OS: darwin
+          TARGET_ARCH: '{{.ARCH | default ARCH}}'
+
+  package:arm64:
+    desc: 打包 macOS Apple Silicon (arm64) .tar.gz 发布归档
+    cmds:
+      - task: common:archive
+        vars:
+          TARGET_OS: darwin
+          TARGET_ARCH: arm64
+
+  package:amd64:
+    desc: 打包 macOS Intel (amd64) .tar.gz 发布归档
+    cmds:
+      - task: common:archive
+        vars:
+          TARGET_OS: darwin
+          TARGET_ARCH: amd64

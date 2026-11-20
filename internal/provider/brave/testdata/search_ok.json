@@ -1,0 +1,37 @@
+{
+  "grounding": {
+    "generic": [
+      {
+        "url": "https://example.com/1",
+        "title": "With Date",
+        "snippets": [
+          "Chunk A",
+          "Chunk B"
+        ]
+      },
+      {
+        "url": "https://example.com/2",
+        "title": "Empty Age Array",
+        "snippets": [
+          "Chunk C"
+        ]
+      }
+    ]
+  },
+  "sources": {
+    "https://example.com/1": {
+      "site_name": "Example",
+      "favicon": "https://example.com/fav.ico",
+      "age": [
+        "Thursday, August 1, 2026",
+        "2026-08-01",
+        "107d ago",
+        "2026-08-01T12:00:00Z"
+      ]
+    },
+    "https://example.com/2": {
+      "site_name": "Example",
+      "age": []
+    }
+  }
+}

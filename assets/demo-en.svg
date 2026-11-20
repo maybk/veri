@@ -1,0 +1,455 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 492" width="960" height="492" role="img" aria-label="veri CLI Demo">
+  <title>veri CLI Demo (English)</title>
+  <style>
+    svg {
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+    .cmd-line { font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13.5px; }
+    .term     { font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12.5px; }
+    .tbl      { font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+    .ui       { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11.5px; }
+    .ui-mono  { font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 11px; }
+
+    .dir    { fill: #38BDF8; font-weight: 600; }
+    .prompt { fill: #34D399; font-weight: 700; }
+    .cmd    { fill: #F8FAFC; font-weight: 600; }
+    .sub    { fill: #E2E8F0; }
+    .flag   { fill: #A78BFA; }
+    .val    { fill: #FBBF24; }
+    .str    { fill: #6EE7B7; }
+    .url    { fill: #38BDF8; }
+    .head   { fill: #F8FAFC; font-weight: 700; }
+    .h2     { fill: #C4B5FD; font-weight: 700; }
+    .bold   { fill: #F1F5F9; font-weight: 600; }
+    .bright { fill: #E2E8F0; }
+    .body   { fill: #CBD5E1; }
+    .muted  { fill: #94A3B8; }
+    .dim    { fill: #64748B; }
+    .ok     { fill: #34D399; font-weight: 600; }
+    .warn   { fill: #FBBF24; }
+    .kw     { fill: #F472B6; }
+    .fn     { fill: #7DD3FC; }
+    .num    { fill: #FBBF24; }
+    .cmt    { fill: #64748B; }
+
+    /* Default static state: Scene 1 fully visible (never blank in static preview) */
+    .scene-1 { opacity: 1; animation: show1 15s infinite; }
+    .scene-2 { opacity: 0; animation: show2 15s infinite; }
+    .scene-3 { opacity: 0; animation: show3 15s infinite; }
+
+    @keyframes show1 {
+      0%, 31.8% { opacity: 1; }
+      33.3%, 98.5% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes show2 {
+      0%, 32.3% { opacity: 0; }
+      33.8%, 65.2% { opacity: 1; }
+      66.7%, 100% { opacity: 0; }
+    }
+    @keyframes show3 {
+      0%, 65.7% { opacity: 0; }
+      67.2%, 98.5% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* Character-stepped command typing + tracked terminal cursor */
+    .clip-1 { transform: translateX(0px); animation: clip1 15s infinite; }
+    .clip-2 { transform: translateX(0px); animation: clip2 15s infinite; }
+    .clip-3 { transform: translateX(0px); animation: clip3 15s infinite; }
+
+    @keyframes clip1 {
+      0%, 0.8% { transform: translateX(-760px); animation-timing-function: steps(38, end); }
+      6.8% { transform: translateX(-423px); animation-timing-function: step-end; }
+      7.0%, 33.3% { transform: translateX(0px); }
+      33.4%, 100% { transform: translateX(-760px); }
+    }
+    @keyframes clip2 {
+      0%, 34.0% { transform: translateX(-760px); animation-timing-function: steps(58, end); }
+      41.2% { transform: translateX(-220px); animation-timing-function: step-end; }
+      41.4%, 66.7% { transform: translateX(0px); }
+      66.8%, 100% { transform: translateX(-760px); }
+    }
+    @keyframes clip3 {
+      0%, 67.4% { transform: translateX(-760px); animation-timing-function: steps(14, end); }
+      71.4% { transform: translateX(-642px); animation-timing-function: step-end; }
+      71.6%, 100% { transform: translateX(0px); }
+    }
+
+    .cur-1 { opacity: 0; animation: cur1 15s infinite; }
+    .cur-2 { opacity: 0; animation: cur2 15s infinite; }
+    .cur-3 { opacity: 0; animation: cur3 15s infinite; }
+
+    @keyframes cur1 {
+      0%, 0.8% { transform: translateX(0px); opacity: 1; animation-timing-function: steps(38, end); }
+      6.8% { transform: translateX(337px); opacity: 1; animation-timing-function: linear; }
+      7.5% { transform: translateX(337px); opacity: 1; }
+      8.0%, 100% { transform: translateX(337px); opacity: 0; }
+    }
+    @keyframes cur2 {
+      0%, 33.4% { transform: translateX(0px); opacity: 0; }
+      33.8%, 34.0% { transform: translateX(0px); opacity: 1; animation-timing-function: steps(58, end); }
+      41.2% { transform: translateX(540px); opacity: 1; animation-timing-function: linear; }
+      41.9% { transform: translateX(540px); opacity: 1; }
+      42.4%, 100% { transform: translateX(540px); opacity: 0; }
+    }
+    @keyframes cur3 {
+      0%, 66.8% { transform: translateX(0px); opacity: 0; }
+      67.2%, 67.4% { transform: translateX(0px); opacity: 1; animation-timing-function: steps(14, end); }
+      71.4% { transform: translateX(118px); opacity: 1; animation-timing-function: linear; }
+      72.1% { transform: translateX(118px); opacity: 1; }
+      72.6%, 100% { transform: translateX(118px); opacity: 0; }
+    }
+
+    /* Staggered streaming outputs (default visible for Scene 1 static fallback) */
+    .out-1a { opacity: 1; animation: o1a 15s ease-out infinite; }
+    .out-1b { opacity: 1; animation: o1b 15s ease-out infinite; }
+    .out-1c { opacity: 1; animation: o1c 15s ease-out infinite; }
+    .out-1d { opacity: 1; animation: o1d 15s ease-out infinite; }
+
+    .out-2a { opacity: 0; animation: o2a 15s ease-out infinite; }
+    .out-2b { opacity: 0; animation: o2b 15s ease-out infinite; }
+    .out-2c { opacity: 0; animation: o2c 15s ease-out infinite; }
+
+    .out-3a { opacity: 0; animation: o3a 15s ease-out infinite; }
+    .out-3b { opacity: 0; animation: o3b 15s ease-out infinite; }
+    .out-3c { opacity: 0; animation: o3c 15s ease-out infinite; }
+    .out-3d { opacity: 0; animation: o3d 15s ease-out infinite; }
+
+    @keyframes o1a { 0%, 7.8% { opacity: 0; transform: translateY(3px); } 9.2%, 33.3% { opacity: 1; transform: translateY(0); } 33.4%, 100% { opacity: 0; } }
+    @keyframes o1b { 0%, 9.4% { opacity: 0; transform: translateY(3px); } 10.8%, 33.3% { opacity: 1; transform: translateY(0); } 33.4%, 100% { opacity: 0; } }
+    @keyframes o1c { 0%, 11.0% { opacity: 0; transform: translateY(3px); } 12.4%, 33.3% { opacity: 1; transform: translateY(0); } 33.4%, 100% { opacity: 0; } }
+    @keyframes o1d { 0%, 12.6% { opacity: 0; transform: translateY(3px); } 14.0%, 33.3% { opacity: 1; transform: translateY(0); } 33.4%, 100% { opacity: 0; } }
+
+    @keyframes o2a { 0%, 42.2% { opacity: 0; transform: translateY(3px); } 43.8%, 66.7% { opacity: 1; transform: translateY(0); } 66.8%, 100% { opacity: 0; } }
+    @keyframes o2b { 0%, 44.4% { opacity: 0; transform: translateY(3px); } 46.0%, 66.7% { opacity: 1; transform: translateY(0); } 66.8%, 100% { opacity: 0; } }
+    @keyframes o2c { 0%, 46.6% { opacity: 0; transform: translateY(3px); } 48.2%, 66.7% { opacity: 1; transform: translateY(0); } 66.8%, 100% { opacity: 0; } }
+
+    @keyframes o3a { 0%, 72.4% { opacity: 0; transform: translateY(3px); } 73.6%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes o3b { 0%, 73.8% { opacity: 0; transform: translateY(3px); } 75.0%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes o3c { 0%, 75.2% { opacity: 0; transform: translateY(3px); } 76.4%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes o3d { 0%, 76.6% { opacity: 0; transform: translateY(3px); } 77.8%, 100% { opacity: 1; transform: translateY(0); } }
+
+    /* Unified single-layer terminal tabs (zero overlap, zero shift) */
+    .tab-bg-1  { opacity: 1; animation: tab1 15s infinite; }
+    .tab-bg-2  { opacity: 0; animation: tab2 15s infinite; }
+    .tab-bg-3  { opacity: 0; animation: tab3 15s infinite; }
+
+    .tab-lbl-1 { fill: #F8FAFC; font-weight: 600; animation: tlbl1 15s infinite; }
+    .tab-lbl-2 { fill: #64748B; font-weight: 500; animation: tlbl2 15s infinite; }
+    .tab-lbl-3 { fill: #64748B; font-weight: 500; animation: tlbl3 15s infinite; }
+
+    .tab-dot-1 { fill: #34D399; opacity: 1;    animation: tdot1 15s infinite; }
+    .tab-dot-2 { fill: #475569; opacity: 0.45; animation: tdot2 15s infinite; }
+    .tab-dot-3 { fill: #475569; opacity: 0.45; animation: tdot3 15s infinite; }
+
+    .foot-1    { opacity: 1; animation: tab1 15s infinite; }
+    .foot-2    { opacity: 0; animation: tab2 15s infinite; }
+    .foot-3    { opacity: 0; animation: tab3 15s infinite; }
+
+    @keyframes tab1  { 0%, 32.5% { opacity: 1; } 33.5%, 99.0% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes tab2  { 0%, 32.5% { opacity: 0; } 33.5%, 65.8% { opacity: 1; } 66.8%, 100% { opacity: 0; } }
+    @keyframes tab3  { 0%, 65.8% { opacity: 0; } 66.8%, 99.0% { opacity: 1; } 100% { opacity: 0; } }
+
+    @keyframes tlbl1 { 0%, 32.5% { fill: #F8FAFC; } 33.5%, 99.0% { fill: #64748B; } 100% { fill: #F8FAFC; } }
+    @keyframes tlbl2 { 0%, 32.5% { fill: #64748B; } 33.5%, 65.8% { fill: #F8FAFC; } 66.8%, 100% { fill: #64748B; } }
+    @keyframes tlbl3 { 0%, 65.8% { fill: #64748B; } 66.8%, 99.0% { fill: #F8FAFC; } 100% { fill: #64748B; } }
+
+    @keyframes tdot1 { 0%, 32.5% { fill: #34D399; opacity: 1; } 33.5%, 99.0% { fill: #475569; opacity: 0.45; } 100% { fill: #34D399; opacity: 1; } }
+    @keyframes tdot2 { 0%, 32.5% { fill: #475569; opacity: 0.45; } 33.5%, 65.8% { fill: #38BDF8; opacity: 1; } 66.8%, 100% { fill: #475569; opacity: 0.45; } }
+    @keyframes tdot3 { 0%, 65.8% { fill: #475569; opacity: 0.45; } 66.8%, 99.0% { fill: #A78BFA; opacity: 1; } 100% { fill: #475569; opacity: 0.45; } }
+
+    /* Subtle hairline timeline indicator (1/3 in static fallback) */
+    .prog { transform-origin: 32px 0px; transform: scaleX(0.333); animation: prog 15s linear infinite; }
+    @keyframes prog {
+      0% { transform: scaleX(0); }
+      100% { transform: scaleX(1); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+    }
+  </style>
+
+  <defs>
+    <!-- Studio ambient stage gradients -->
+    <linearGradient id="stage-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#131D33"/>
+      <stop offset="50%" stop-color="#162036"/>
+      <stop offset="100%" stop-color="#0E1526"/>
+    </linearGradient>
+    <radialGradient id="glow-cyan" cx="14%" cy="10%" r="58%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.28"/>
+      <stop offset="55%" stop-color="#0EA5E9" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-indigo" cx="88%" cy="94%" r="56%">
+      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.30"/>
+      <stop offset="55%" stop-color="#6366F1" stop-opacity="0.09"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-emerald" cx="84%" cy="12%" r="38%">
+      <stop offset="0%" stop-color="#34D399" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#34D399" stop-opacity="0"/>
+    </radialGradient>
+
+    <pattern id="stage-dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="0.85" fill="#FFFFFF" fill-opacity="0.065"/>
+    </pattern>
+
+    <!-- Glass & terminal surface gradients -->
+    <linearGradient id="stage-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.12"/>
+    </linearGradient>
+    <linearGradient id="win-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0E121B"/>
+      <stop offset="100%" stop-color="#090C13"/>
+    </linearGradient>
+    <linearGradient id="win-rim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="top-glint" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="prog-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+
+    <!-- Layered elevation shadow -->
+    <filter id="win-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.65"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#020617" flood-opacity="0.45"/>
+    </filter>
+
+    <!-- Concentric clips -->
+    <clipPath id="stage-clip">
+      <rect x="0" y="0" width="960" height="492" rx="20"/>
+    </clipPath>
+    <clipPath id="win-clip">
+      <rect x="32" y="28" width="896" height="436" rx="14"/>
+    </clipPath>
+
+    <!-- Command typing clips -->
+    <clipPath id="clip-cmd-1">
+      <rect class="clip-1" x="92" y="84" width="760" height="32"/>
+    </clipPath>
+    <clipPath id="clip-cmd-2">
+      <rect class="clip-2" x="92" y="84" width="760" height="32"/>
+    </clipPath>
+    <clipPath id="clip-cmd-3">
+      <rect class="clip-3" x="92" y="84" width="760" height="32"/>
+    </clipPath>
+  </defs>
+
+  <!-- ==================== Outer Studio Backdrop ==================== -->
+  <g clip-path="url(#stage-clip)">
+    <rect x="0" y="0" width="960" height="492" fill="url(#stage-bg)"/>
+    <rect x="0" y="0" width="960" height="492" fill="url(#glow-cyan)"/>
+    <rect x="0" y="0" width="960" height="492" fill="url(#glow-indigo)"/>
+    <rect x="0" y="0" width="960" height="492" fill="url(#glow-emerald)"/>
+    <rect x="0" y="0" width="960" height="492" fill="url(#stage-dots)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="959" height="491" rx="19.5" fill="none" stroke="url(#stage-rim)"/>
+
+  <!-- ==================== Floating Terminal Window ==================== -->
+  <rect x="32" y="28" width="896" height="436" rx="14" fill="url(#win-bg)" filter="url(#win-shadow)"/>
+
+  <g clip-path="url(#win-clip)">
+    <!-- Title Bar -->
+    <rect x="32" y="28" width="896" height="44" fill="#141925"/>
+    <line x1="32" y1="72.5" x2="928" y2="72.5" stroke="#FFFFFF" stroke-opacity="0.07"/>
+
+    <!-- macOS Traffic Lights -->
+    <circle cx="56" cy="50" r="5.5" fill="#FF5F57" stroke="#E0443E" stroke-width="0.75"/>
+    <circle cx="74" cy="50" r="5.5" fill="#FEBC2E" stroke="#D89E24" stroke-width="0.75"/>
+    <circle cx="92" cy="50" r="5.5" fill="#28C840" stroke="#1AAB29" stroke-width="0.75"/>
+
+    <!-- Centered Unified Terminal Tabs -->
+    <rect class="tab-bg-1" x="331" y="38" width="88" height="24" rx="7" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <circle class="tab-dot-1" cx="348" cy="50" r="2.6"/>
+    <text x="380" y="54" text-anchor="middle" class="ui-mono tab-lbl-1">search</text>
+
+    <rect class="tab-bg-2" x="429" y="38" width="82" height="24" rx="7" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <circle class="tab-dot-2" cx="446" cy="50" r="2.6"/>
+    <text x="475" y="54" text-anchor="middle" class="ui-mono tab-lbl-2">fetch</text>
+
+    <rect class="tab-bg-3" x="521" y="38" width="108" height="24" rx="7" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <circle class="tab-dot-3" cx="538" cy="50" r="2.6"/>
+    <text x="580" y="54" text-anchor="middle" class="ui-mono tab-lbl-3">providers</text>
+
+    <!-- Right Shell Indicator -->
+    <text x="902" y="54" text-anchor="end" class="ui-mono dim">veri — zsh</text>
+
+    <!-- ==================== Scene 1: veri search ==================== -->
+    <g class="scene-1">
+      <text x="60" y="106" class="cmd-line"><tspan class="dir">~</tspan> <tspan class="prompt">❯</tspan></text>
+      <g clip-path="url(#clip-cmd-1)">
+        <text x="92" y="106" class="cmd-line"><tspan class="cmd">veri</tspan> <tspan class="str">"golang mcp sdk official"</tspan> <tspan class="flag">-t</tspan> <tspan class="val">6m</tspan> <tspan class="flag">-n</tspan> <tspan class="val">3</tspan></text>
+      </g>
+      <rect class="cur-1" x="92" y="93" width="7.5" height="16" rx="1.5" fill="#34D399"/>
+
+      <g class="out-1a">
+        <text x="60" y="142" class="term head"># veri · "golang mcp sdk official" · exa · 3 results · 0.58s</text>
+      </g>
+
+    <g class="out-1b">
+      <text x="60" y="178" class="term"><tspan class="dim">1.</tspan> <tspan class="bold">modelcontextprotocol/go-sdk</tspan> <tspan class="dim">— github.com · 2026-09-14</tspan></text>
+      <text x="82" y="199" class="term url">https://github.com/modelcontextprotocol/go-sdk</text>
+      <text x="82" y="220" class="term body">Official Go SDK for the Model Context Protocol with stdio server and typed schemas.</text>
+    </g>
+
+    <g class="out-1c">
+      <text x="60" y="262" class="term"><tspan class="dim">2.</tspan> <tspan class="bold">Model Context Protocol Specification</tspan> <tspan class="dim">— modelcontextprotocol.io · 2026-08-22</tspan></text>
+      <text x="82" y="283" class="term url">https://modelcontextprotocol.io/specification</text>
+      <text x="82" y="304" class="term body">Defines JSON-RPC transport, tool discovery, structured results, and security boundaries.</text>
+    </g>
+
+    <g class="out-1d">
+      <text x="60" y="346" class="term"><tspan class="dim">3.</tspan> <tspan class="bold">Building Single-Binary MCP Servers in Pure Go</tspan> <tspan class="dim">— go.dev · 2026-07-18</tspan></text>
+      <text x="82" y="367" class="term url">https://go.dev/blog/mcp-server-guide</text>
+      <text x="82" y="388" class="term body">Ship a single static binary for CLI and MCP workflows with local encrypted credentials.</text>
+    </g>
+    </g>
+
+    <!-- ==================== Scene 2: veri fetch ==================== -->
+    <g class="scene-2">
+      <text x="60" y="106" class="cmd-line"><tspan class="dir">~</tspan> <tspan class="prompt">❯</tspan></text>
+      <g clip-path="url(#clip-cmd-2)">
+        <text x="92" y="106" class="cmd-line"><tspan class="cmd">veri</tspan> <tspan class="sub">fetch</tspan> <tspan class="url">https://go.dev/doc/effective_go</tspan> <tspan class="flag">--section</tspan> <tspan class="str">"Concurrency"</tspan></text>
+      </g>
+      <rect class="cur-2" x="92" y="93" width="7.5" height="16" rx="1.5" fill="#38BDF8"/>
+
+      <g class="out-2a">
+        <text x="60" y="144" class="term h2">## Concurrency</text>
+        <text x="60" y="172" class="term bold">### Share by communicating</text>
+        <text x="60" y="198" class="term body">Do not communicate by sharing memory; instead, share memory by</text>
+        <text x="60" y="220" class="term body">communicating. Only one goroutine has access to the value at any given time.</text>
+      </g>
+
+      <g class="out-2b">
+        <line x1="62" y1="242" x2="62" y2="365" stroke="#334155" stroke-width="2" stroke-linecap="round"/>
+        <text x="76" y="252" class="term dim">```go</text>
+        <text x="76" y="274" class="term"><tspan class="kw">go func</tspan><tspan class="bright">() {</tspan></text>
+        <text x="100" y="296" class="term"><tspan class="bright">list.</tspan><tspan class="fn">Sort</tspan><tspan class="bright">()</tspan></text>
+        <text x="100" y="318" class="term" xml:space="preserve"><tspan class="bright">c &lt;- </tspan><tspan class="num">1</tspan><tspan class="cmt">  // Send a signal; value does not matter.</tspan></text>
+        <text x="76" y="340" class="term bright">}()</text>
+        <text x="76" y="362" class="term dim">```</text>
+      </g>
+
+      <g class="out-2c">
+        <text x="60" y="396" class="tbl warn">note: content truncated (1200/8420 chars shown); pass `--offset 1200` to continue.</text>
+      </g>
+    </g>
+
+    <!-- ==================== Scene 3: veri providers ==================== -->
+    <g class="scene-3">
+      <text x="60" y="106" class="cmd-line"><tspan class="dir">~</tspan> <tspan class="prompt">❯</tspan></text>
+      <g clip-path="url(#clip-cmd-3)">
+        <text x="92" y="106" class="cmd-line"><tspan class="cmd">veri</tspan> <tspan class="sub">providers</tspan></text>
+      </g>
+      <rect class="cur-3" x="92" y="93" width="7.5" height="16" rx="1.5" fill="#A78BFA"/>
+
+      <g class="out-3a">
+        <text x="60" y="142" class="tbl bold">NAME</text>
+        <text x="160" y="142" class="tbl bold">ROLE</text>
+        <text x="272" y="142" class="tbl bold">STATUS</text>
+        <text x="356" y="142" class="tbl bold">AUTH</text>
+        <text x="442" y="142" class="tbl bold">ENDPOINT</text>
+        <text x="656" y="142" class="tbl bold">DETAILS</text>
+      </g>
+
+      <g class="out-3b">
+      <text x="60" y="174" class="tbl bright">deepseek</text>
+      <text x="160" y="174" class="tbl body">search,fetch</text>
+      <text x="272" y="174" class="tbl ok">enabled</text>
+      <text x="356" y="174" class="tbl body">vault</text>
+      <text x="442" y="174" class="tbl muted">api.deepseek.com</text>
+      <text x="656" y="174" class="tbl dim">timeout=10s/25s · concurrency=4</text>
+      <text x="60" y="204" class="tbl bright">exa</text>
+      <text x="160" y="204" class="tbl body">search,fetch</text>
+      <text x="272" y="204" class="tbl ok">enabled</text>
+      <text x="356" y="204" class="tbl body">env</text>
+      <text x="442" y="204" class="tbl muted">api.exa.ai</text>
+      <text x="656" y="204" class="tbl dim">type=auto · timeout=10s</text>
+      <text x="60" y="234" class="tbl bright">tinyfish</text>
+      <text x="160" y="234" class="tbl body">search,fetch</text>
+      <text x="272" y="234" class="tbl ok">enabled</text>
+      <text x="356" y="234" class="tbl body">vault</text>
+      <text x="442" y="234" class="tbl muted">api.search.tinyfish.ai</text>
+      <text x="656" y="234" class="tbl dim">timeout=10s/25s · concurrency=4</text>
+      </g>
+
+      <g class="out-3c">
+      <text x="60" y="264" class="tbl dim">tencent_wsa</text>
+      <text x="160" y="264" class="tbl dim">search</text>
+      <text x="272" y="264" class="tbl dim">disabled</text>
+      <text x="356" y="264" class="tbl dim">missing</text>
+      <text x="442" y="264" class="tbl muted">api.wsa.cloud.tencent.com</text>
+      <text x="656" y="264" class="tbl dim">veri key set tencent_wsa</text>
+      <text x="60" y="294" class="tbl bright">tavily</text>
+      <text x="160" y="294" class="tbl body">search,fetch</text>
+      <text x="272" y="294" class="tbl ok">enabled</text>
+      <text x="356" y="294" class="tbl body">vault</text>
+      <text x="442" y="294" class="tbl muted">api.tavily.com</text>
+      <text x="656" y="294" class="tbl dim">depth=basic/basic · timeout=10s</text>
+      <text x="60" y="324" class="tbl dim">brave</text>
+      <text x="160" y="324" class="tbl dim">search</text>
+      <text x="272" y="324" class="tbl dim">disabled</text>
+      <text x="356" y="324" class="tbl dim">missing</text>
+      <text x="442" y="324" class="tbl muted">api.search.brave.com</text>
+      <text x="656" y="324" class="tbl dim">veri key set brave</text>
+      </g>
+
+      <g class="out-3d">
+      <text x="60" y="354" class="tbl bright">github</text>
+      <text x="160" y="354" class="tbl body">fetch</text>
+      <text x="272" y="354" class="tbl ok">enabled</text>
+      <text x="356" y="354" class="tbl body">optional</text>
+      <text x="442" y="354" class="tbl muted">api.github.com</text>
+      <text x="656" y="354" class="tbl dim">token=none · timeout=10s</text>
+      <text x="60" y="384" class="tbl bright">local</text>
+      <text x="160" y="384" class="tbl body">fetch</text>
+      <text x="272" y="384" class="tbl ok">enabled</text>
+      <text x="356" y="384" class="tbl dim">-</text>
+      <text x="442" y="384" class="tbl muted">-</text>
+      <text x="656" y="384" class="tbl dim">readability · min_runes=300</text>
+      </g>
+    </g>
+
+    <!-- Subtle Bottom Status Bar -->
+    <rect x="32" y="428" width="896" height="36" fill="#0D111A"/>
+    <line x1="32" y1="428.5" x2="928" y2="428.5" stroke="#FFFFFF" stroke-opacity="0.06"/>
+    <rect class="prog" x="32" y="428" width="896" height="1.5" fill="url(#prog-grad)" opacity="0.75"/>
+
+    <g class="foot-1">
+      <circle cx="64" cy="446" r="6" fill="#34D399" fill-opacity="0.16"/>
+      <circle cx="64" cy="446" r="2.8" fill="#34D399"/>
+      <text x="78" y="450" class="ui muted">Multi-provider search · unified time &amp; site filters</text>
+    </g>
+    <g class="foot-2">
+      <circle cx="64" cy="446" r="6" fill="#38BDF8" fill-opacity="0.16"/>
+      <circle cx="64" cy="446" r="2.8" fill="#38BDF8"/>
+      <text x="78" y="450" class="ui muted">Zero-key Markdown fetch · targeted section slicing</text>
+    </g>
+    <g class="foot-3">
+      <circle cx="64" cy="446" r="6" fill="#A78BFA" fill-opacity="0.16"/>
+      <circle cx="64" cy="446" r="2.8" fill="#A78BFA"/>
+      <text x="78" y="450" class="ui muted">Encrypted vault · 6 search providers + keyless local / GitHub</text>
+    </g>
+
+    <text x="902" y="450" text-anchor="end" class="ui-mono dim">CLI · MCP · Agent Skill</text>
+  </g>
+
+  <!-- Crisp Specular Window Rim -->
+  <rect x="32.5" y="28.5" width="895" height="435" rx="13.5" fill="none" stroke="url(#win-rim)"/>
+  <line x1="120" y1="29" x2="840" y2="29" stroke="url(#top-glint)" stroke-width="1"/>
+</svg>
