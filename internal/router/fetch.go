@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"veri/internal/core"
+	"veri/internal/mdscan"
 	"veri/internal/spec"
 	"veri/internal/urlnorm"
 )
@@ -40,7 +41,7 @@ func (r *Router) Fetch(ctx context.Context, rawReq *core.FetchRequest) (*core.En
 
 	// 本地/回环/私网/内网后缀目标强制钉死本地通道，严禁向公网云端提取源泄露内部 URL。
 	if urlnorm.IsLocalOrPrivateTarget(parsedURL) {
-		return r.fetchLocalPinned(overallCtx, &req, start)
+		return r.fetchLocalPinned(overallCtx, &req, parsedURL, start)
 	}
 
 	if len(req.Providers) == 1 {
@@ -51,7 +52,9 @@ func (r *Router) Fetch(ctx context.Context, rawReq *core.FetchRequest) (*core.En
 				WithHint("Verify extractor name or save its API key via `veri key set <provider>`.")
 			return buildFetchErrorEnvelope(req.URL, string(core.StrategySingle), nil, false, nil, start, se), se
 		}
-		return r.runFetchSequence(overallCtx, &req, []core.Fetcher{f}, fetchExecPolicy{
+		seq := []core.Fetcher{f}
+		r.logFetchRoute(string(core.StrategySingle), parsedURL, seq)
+		return r.runFetchSequence(overallCtx, &req, seq, fetchExecPolicy{
 			strategyLabel:     string(core.StrategySingle),
 			singleLocked:      true,
 			explicitProviders: true,
@@ -68,6 +71,7 @@ func (r *Router) Fetch(ctx context.Context, rawReq *core.FetchRequest) (*core.En
 			WithHint("Run `veri key set <provider>` for a cloud extractor, or set `providers.local.enabled = true` in config.toml.")
 		return buildFetchErrorEnvelope(req.URL, string(req.Strategy), nil, false, nil, start, se), se
 	}
+	r.logFetchRoute(string(req.Strategy), parsedURL, sequence)
 
 	return r.runFetchSequence(overallCtx, &req, sequence, fetchExecPolicy{
 		strategyLabel:     string(req.Strategy),
@@ -76,7 +80,20 @@ func (r *Router) Fetch(ctx context.Context, rawReq *core.FetchRequest) (*core.En
 	}, start)
 }
 
-func (r *Router) fetchLocalPinned(ctx context.Context, req *core.FetchRequest, start time.Time) (*core.Envelope, error) {
+func (r *Router) logFetchRoute(strategy string, u *url.URL, seq []core.Fetcher) {
+	if r.logger == nil || u == nil {
+		return
+	}
+	r.logger.Debug("router.fetch",
+		"strategy", strategy,
+		"host", u.Hostname(),
+		"cn_host", urlnorm.IsLikelyChineseHost(u),
+		"pdf", urlnorm.LooksLikePDFURL(u),
+		"providers", providerNames(seq),
+	)
+}
+
+func (r *Router) fetchLocalPinned(ctx context.Context, req *core.FetchRequest, parsedURL *url.URL, start time.Time) (*core.Envelope, error) {
 	strategyLabel := string(req.Strategy)
 	if len(req.Providers) == 1 {
 		strategyLabel = string(core.StrategySingle)
@@ -96,7 +113,9 @@ func (r *Router) fetchLocalPinned(ctx context.Context, req *core.FetchRequest, s
 			WithI18n("err.local_disabled_private_url", "hint.local_disabled_private_url")
 		return buildFetchErrorEnvelope(req.URL, strategyLabel, nil, false, nil, start, se), se
 	}
-	return r.runFetchSequence(ctx, req, []core.Fetcher{r.localFetch}, fetchExecPolicy{
+	seq := []core.Fetcher{r.localFetch}
+	r.logFetchRoute(strategyLabel, parsedURL, seq)
+	return r.runFetchSequence(ctx, req, seq, fetchExecPolicy{
 		strategyLabel:     strategyLabel,
 		singleLocked:      len(req.Providers) == 1,
 		explicitProviders: len(req.Providers) > 0,
@@ -148,6 +167,9 @@ func (r *Router) normalizeFetchRequest(rawReq *core.FetchRequest) (core.FetchReq
 
 func buildFetchSuccessEnvelope(page *core.Page, req *core.FetchRequest, strategy string, reports []core.ProviderReport, fallback bool, notes []string, costs []*core.Cost, start time.Time) *core.Envelope {
 	paged, viewNotes := ApplyPageView(page, req)
+	if paged != nil && strings.TrimSpace(paged.Title) == "" {
+		paged.Title = resolveFallbackPageTitle(page)
+	}
 	notes = append(notes, viewNotes...)
 	return &core.Envelope{
 		Schema: spec.SchemaVersion,
@@ -158,12 +180,22 @@ func buildFetchSuccessEnvelope(page *core.Page, req *core.FetchRequest, strategy
 			Strategy:     strategy,
 			Providers:    reports,
 			FallbackUsed: fallback,
-			Truncated:    paged.NextOffset != nil,
+			Truncated:    paged != nil && paged.NextOffset != nil,
 			Notes:        notes,
 			Cost:         core.SumCosts(costs),
 			DurationMS:   time.Since(start).Milliseconds(),
 		},
 	}
+}
+
+func resolveFallbackPageTitle(full *core.Page) string {
+	if full == nil {
+		return ""
+	}
+	if h1 := cleanHeadingText(mdscan.FirstH1(full.Content)); h1 != "" {
+		return h1
+	}
+	return core.FallbackTitleFromURL(full.URL)
 }
 
 func rawFetchURL(req *core.FetchRequest) string {

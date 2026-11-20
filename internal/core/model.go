@@ -112,7 +112,7 @@ type SearchRequest struct {
 	Providers     []string          // 显式指定的 Provider 列表；为空时使用路由默认链
 	Strategy      Strategy          // auto | single | fusion
 	StrictFilters bool              // 为 true 时禁止本地模拟过滤，不支持即跳过或报错
-	IncludeExtra  bool              // 为 true 时在 Extra 中保留厂商特有扩展元数据
+	IncludeExtra  bool              // 为 true 时保留站点 Icon 与 Extra 中的厂商特有扩展元数据
 	MaxChars      int               // 整次检索响应字符预算，0 表示使用场景默认值或不限
 	Timeout       time.Duration     // 可选单次检索超时覆盖，0 表示使用路由默认超时
 	Options       map[string]string // 厂商专属参数，键格式为 "<provider>.<key>"
@@ -288,9 +288,36 @@ func ValidateTargetURL(rawURL, providerName string, maxLen int) (*url.URL, error
 	return u, nil
 }
 
+// FallbackTitleFromURL 从 URL 路径末段或主机名推导可读兜底标题，供裸源码、纯文本及无标题网页统一使用。
+func FallbackTitleFromURL(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	rawPath := strings.Trim(u.EscapedPath(), "/")
+	if rawPath != "" {
+		for _, seg := range slices.Backward(strings.Split(rawPath, "/")) {
+			if seg == "" {
+				continue
+			}
+			decoded, uErr := url.PathUnescape(seg)
+			if uErr != nil {
+				decoded = seg
+			}
+			if cleaned := textnorm.CleanInline(decoded); cleaned != "" {
+				return cleaned
+			}
+		}
+	}
+	return textnorm.CleanInline(u.Hostname())
+}
+
 // AlignResultDetail 按请求的 Detail 粒度执行字段回退补齐与多余字段裁剪。
 func AlignResultDetail(r *Result, detail Detail, keepExtra bool) {
 	r.Title = textnorm.CleanInline(r.Title)
+	if r.Title == "" && r.URL != "" {
+		r.Title = FallbackTitleFromURL(r.URL)
+	}
 	r.Site = textnorm.CleanInline(r.Site)
 	r.Authors = cleanAuthors(r.Authors)
 	r.Snippet = textnorm.CleanInline(r.Snippet)
@@ -324,8 +351,20 @@ func AlignResultDetail(r *Result, detail Detail, keepExtra bool) {
 		r.Content = ""
 	}
 
-	if !keepExtra || len(r.Extra) == 0 {
+	if !keepExtra {
+		r.Icon = ""
 		r.Extra = nil
+	} else {
+		icon := textnorm.CleanInline(r.Icon)
+		if icon != "" {
+			if _, err := ValidateTargetURL(icon, "", 0); err != nil {
+				icon = ""
+			}
+		}
+		r.Icon = icon
+		if len(r.Extra) == 0 {
+			r.Extra = nil
+		}
 	}
 }
 

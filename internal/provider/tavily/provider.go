@@ -107,9 +107,9 @@ func (p *Provider) Capabilities() core.Capabilities {
 	}
 }
 
-// FetchProfile 声明 Tavily Extract 支持高级动态渲染页面提取。
+// FetchProfile 声明 Tavily Extract 支持 PDF 与高级动态渲染页面提取。
 func (p *Provider) FetchProfile() core.FetchProfile {
-	return core.FetchProfile{DynamicRender: true}
+	return core.FetchProfile{PDF: true, DynamicRender: true}
 }
 
 func (p *Provider) costFromUsage(usage *wireUsage, fallbackMicros int64) *core.Cost {

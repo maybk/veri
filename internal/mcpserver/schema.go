@@ -139,7 +139,7 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		},
 		"extra": map[string]any{
 			"type":        "boolean",
-			"description": "Include provider-specific metadata under results[].extra.",
+			"description": "Include site icon and provider-specific metadata under results[].extra.",
 		},
 		"timeout_ms": map[string]any{
 			"type":        "integer",
@@ -205,7 +205,7 @@ func buildFetchInputSchema(def fetchSchemaDefaults, enabledFetchers []string) ma
 		},
 		"match": map[string]any{
 			"type":        "string",
-			"description": "Optional keyword/phrase to extract matching passages with heading context (when combined with section, searches within that section).",
+			"description": "Optional keyword/phrase to extract matching passages or compact code line windows with context (combinable with section).",
 		},
 		"max_chars": map[string]any{
 			"type":        "integer",
@@ -216,7 +216,7 @@ func buildFetchInputSchema(def fetchSchemaDefaults, enabledFetchers []string) ma
 		"offset": map[string]any{
 			"type":        "integer",
 			"minimum":     0,
-			"description": "Character offset for paginated continuation (default: 0).",
+			"description": "Character offset for paginated continuation (scoped to section/match when set; default: 0).",
 		},
 		"strategy": map[string]any{
 			"type":        "string",

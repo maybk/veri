@@ -215,6 +215,19 @@ func (p *Provider) searchWeb(ctx context.Context, req *core.SearchRequest, baseQ
 		if pub == nil {
 			pub = textnorm.ParseFlexibleTimeAt(item.Age, time.UTC, now)
 		}
+		var extra map[string]any
+		if req.IncludeExtra {
+			ex := make(map[string]any, 2)
+			if lang := textnorm.CleanInline(item.Language); lang != "" {
+				ex["language"] = lang
+			}
+			if sub := textnorm.CleanInline(item.Subtype); sub != "" {
+				ex["subtype"] = sub
+			}
+			if len(ex) > 0 {
+				extra = ex
+			}
+		}
 		mapped = append(mapped, core.Result{
 			Title:     item.Title,
 			URL:       item.URL,
@@ -223,6 +236,7 @@ func (p *Provider) searchWeb(ctx context.Context, req *core.SearchRequest, baseQ
 			Published: pub,
 			Snippet:   item.Description,
 			Summary:   summary,
+			Extra:     extra,
 		})
 	}
 

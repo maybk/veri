@@ -16,7 +16,8 @@
 - `fetch_exec.go`：提取序列执行、404 独立确认短路、挑战盾升档与低质量优雅保底。
 - `health.go`：进程内连续瞬态故障（超时 / 5xx）软降权熔断器。
 - `page.go`：围栏代码块安全的 Unicode 码点流式分页续读（`SlicePage`）。
-- `outline.go`：Markdown 章节大纲（`Outline`）提取及可组合的章节子树（`Section`）与页内关键词匹配窗口（`Match`）管线。
+- `outline.go`：Markdown 章节大纲（`Outline`）提取、层级裁剪重算与章节子树（`Section`）视图管线。
+- `match.go`：页内关键词匹配窗口（`Match`）及超大单围栏代码块行窗口二次切片。
 - `capability.go`：静态与按请求动态能力判定、`--strict` 严格筛选及本地后过滤模拟。
 - `budget.go`：面向 Agent 上下文窗口的四级渐进字符预算裁剪。
 

@@ -81,6 +81,24 @@ func TestExaLiteWhitelistCostAndContentsTags(t *testing.T) {
 		t.Fatalf("expected exact costDollars $0.004, got %+v", out.Cost)
 	}
 
+	// 验证 IncludeExtra 门控与不安全 image URL 过滤
+	extraSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"requestId":"ex-extra","results":[{"title":"Doc","url":"https://exa.ai/doc","favicon":"https://exa.ai/fav.ico","image":"https://exa.ai/og.png","highlights":["hi"]},{"title":"Unsafe","url":"https://exa.ai/u","favicon":"javascript:alert(1)","image":"javascript:alert(2)","highlights":["hi"]}]}`))
+	}))
+	defer extraSrv.Close()
+	pe, _, _ := New(Options{Keys: []string{"exa-key"}, BaseURL: extraSrv.URL}, providertest.NewTestAPIClient(t))
+	noExtra, err := pe.Search(context.Background(), &core.SearchRequest{Query: "doc", IncludeExtra: false})
+	if err != nil || len(noExtra.Results) != 2 || noExtra.Results[0].Icon != "" || noExtra.Results[0].Extra != nil {
+		t.Fatalf("expected icon & extra stripped without --extra, got %+v err=%v", noExtra, err)
+	}
+	withExtra, err := pe.Search(context.Background(), &core.SearchRequest{Query: "doc", IncludeExtra: true})
+	if err != nil || len(withExtra.Results) != 2 || withExtra.Results[0].Icon != "https://exa.ai/fav.ico" || withExtra.Results[0].Extra["image"] != "https://exa.ai/og.png" {
+		t.Fatalf("expected icon & extra.image with --extra, got %+v err=%v", withExtra, err)
+	}
+	if withExtra.Results[1].Icon != "" || withExtra.Results[1].Extra != nil {
+		t.Fatalf("expected unsafe javascript: icon/image rejected, got %+v", withExtra.Results[1])
+	}
+
 	mode = "empty"
 	eOut, err := p.Search(context.Background(), &core.SearchRequest{Query: "none"})
 	if err != nil || len(eOut.Results) != 0 {

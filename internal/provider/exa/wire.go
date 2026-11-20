@@ -40,6 +40,7 @@ type searchWireItem struct {
 	PublishedDate   string    `json:"publishedDate"`
 	Author          string    `json:"author"`
 	Favicon         string    `json:"favicon"`
+	Image           string    `json:"image"`
 	Highlights      []string  `json:"highlights"`
 	HighlightScores []float64 `json:"highlightScores"`
 	Text            string    `json:"text"`

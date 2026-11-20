@@ -43,9 +43,13 @@ type DoctorReport struct {
 	DNSError         string            `json:"dns_error,omitempty"`
 	EnabledSearcher  int               `json:"enabled_searchers"`
 	EnabledFetcher   int               `json:"enabled_fetchers"`
+	SearchStrategy   string            `json:"search_strategy,omitempty"`
 	SearchChain      []string          `json:"search_chain"`
 	SearchChainEN    []string          `json:"search_chain_en,omitempty"`
+	FusionChain      []string          `json:"fusion_chain,omitempty"`
+	FetchStrategy    string            `json:"fetch_strategy,omitempty"`
 	FetchChain       []string          `json:"fetch_chain"`
+	FetchChainGlobal []string          `json:"fetch_chain_global,omitempty"`
 	Providers        []ProviderStatus  `json:"providers"`
 	LiveChecks       []LiveCheckResult `json:"live_checks,omitempty"`
 	Issues           int               `json:"issues"`
@@ -77,9 +81,13 @@ func (a *App) RunDoctor(ctx context.Context, uiLocale, uiSource string, live boo
 		ProbeHost:        selectProbeHost(statuses),
 		EnabledSearcher:  len(enabledSearchers),
 		EnabledFetcher:   len(enabledFetchers),
+		SearchStrategy:   string(a.cliRouter.DefaultSearchStrategy()),
 		SearchChain:      enabledSearchers,
 		SearchChainEN:    a.cliRouter.ActiveSearchChainEN(),
+		FusionChain:      a.cliRouter.ActiveFusionChain(),
+		FetchStrategy:    string(a.cliRouter.FetchStrategy()),
 		FetchChain:       enabledFetchers,
+		FetchChainGlobal: a.cliRouter.ActiveFetchChainGlobal(),
 		Providers:        statuses,
 	}
 	if a.loaded.FileExists && runtime.GOOS != "windows" {

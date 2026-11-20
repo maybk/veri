@@ -12,5 +12,10 @@ const (
 	searchEmptyQuorum              = 2
 	maxOutlineSections             = 24
 	maxMatchSnippets               = 8
+	defaultViewMissPreviewChars    = 2000
+	maxWholeFenceMatchRunes        = 1500
+	codeMatchContextLines          = 12
+	maxCodeMatchWindows            = 5
+	compactBudgetSnippetRunes      = 100
 	rrfScoreEpsilon                = 1e-9
 )

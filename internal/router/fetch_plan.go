@@ -28,8 +28,7 @@ func (r *Router) buildFetchSequence(u *url.URL, strategy core.FetchStrategy, exp
 	}
 
 	apiNames := r.opts.FetchProviders
-	customGlobal := len(r.opts.FetchProvidersGlobal) > 0
-	if customGlobal && !urlnorm.IsLikelyChineseHost(u) {
+	if len(r.opts.FetchProvidersGlobal) > 0 && !urlnorm.IsLikelyChineseHost(u) {
 		apiNames = r.opts.FetchProvidersGlobal
 	}
 	var apiChain []core.Fetcher
@@ -43,8 +42,6 @@ func (r *Router) buildFetchSequence(u *url.URL, strategy core.FetchStrategy, exp
 	isPDFTarget := urlnorm.LooksLikePDFURL(u)
 	if isPDFTarget {
 		apiChain = prioritizeFetchersWhere(apiChain, isPDFFetcher)
-	} else if !customGlobal && slices.Equal(r.opts.FetchProviders, spec.DefaultFetchProviders()) && !urlnorm.IsLikelyChineseHost(u) {
-		apiChain = prioritizeFetchersByOrder(apiChain, spec.DefaultFetchProvidersGlobal())
 	}
 	apiChain = orderByHealth(r.health, apiChain)
 
@@ -125,30 +122,4 @@ func promoteFetcherByName(slice []core.Fetcher, name string) bool {
 		}
 	}
 	return false
-}
-
-func prioritizeFetchersByOrder(chain []core.Fetcher, preferred []string) []core.Fetcher {
-	if len(chain) <= 1 || len(preferred) == 0 {
-		return chain
-	}
-	rank := make(map[string]int, len(preferred))
-	for i, name := range preferred {
-		rank[name] = i
-	}
-	out := slices.Clone(chain)
-	slices.SortStableFunc(out, func(a, b core.Fetcher) int {
-		ra, oka := rank[a.Name()]
-		rb, okb := rank[b.Name()]
-		switch {
-		case oka && okb:
-			return ra - rb
-		case oka:
-			return -1
-		case okb:
-			return 1
-		default:
-			return 0
-		}
-	})
-	return out
 }

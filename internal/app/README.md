@@ -5,7 +5,9 @@
 ## 目录结构
 
 - `doc.go`：包职责说明。
-- `app.go`：应用生命周期容器（`App`），封装 `Search` / `Fetch` 入口、MCP 路由与缓存按需懒加载及全字段凭据脱敏。
+- `app.go`：应用生命周期容器（`App`）、客户端与路由装配、CLI `Search` / `Fetch` 入口及调用日志。
+- `mcp.go`：MCP 专属路由按需懒加载、进程内缓存检索/抓取（`SearchMCP` / `FetchMCP`）与动态分页视图构造。
+- `scrub.go`：应用层文本、错误对象及响应信封全字段凭据脱敏。
 - `batch.go`：有界并发保序批量网页抓取（`FetchBatch` / `FetchBatchMCP`）与单页局部错误隔离。
 - `registry.go`：显式构造 8 个内置适配器并生成运行期状态列表（`ProviderStatus`）。
 - `cache.go`：并发安全的双上限（条数与字符总量）泛型 TTL-LRU 内存缓存及带引用计数取消与异常恢复的 `flightGroup` 并发合并器。

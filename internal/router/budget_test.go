@@ -242,3 +242,31 @@ func TestRouterStrictDegradationAndAllFetchStrategies(t *testing.T) {
 		t.Fatalf("expected functional param m=text preserved, got %q", tracked[1].URL)
 	}
 }
+
+func TestTightSearchBudgetPreservesTopSnippetsByTrimmingTail(t *testing.T) {
+	items := make([]core.Result, 8)
+	for i := range items {
+		items[i] = core.Result{
+			Rank:    i + 1,
+			Title:   "Golang Context Package Documentation Guide",
+			URL:     "https://pkg.go.dev/context#Example" + string(rune('A'+i)),
+			Site:    "pkg.go.dev",
+			Snippet: "Package context defines the Context type, which carries deadlines, cancellation signals, and other request-scoped values across API boundaries.",
+			Summary: "Package context defines the Context type, which carries deadlines, cancellation signals, and other request-scoped values across API boundaries and between processes.",
+		}
+	}
+
+	got, truncated, notes := applyFieldCapsAndBudget(items, 800, 0, 600)
+	if !truncated {
+		t.Fatal("expected truncated=true under 600-char budget for 8 results")
+	}
+	if len(got) == 0 || len(got) >= len(items) {
+		t.Fatalf("expected tight budget to trim tail results rather than returning %d skeleton URLs", len(got))
+	}
+	if got[0].Snippet == "" {
+		t.Fatalf("expected top result to retain compact non-empty snippet under 600-char budget, got %+v", got[0])
+	}
+	if len(notes) == 0 {
+		t.Fatal("expected truncation note")
+	}
+}

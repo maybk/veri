@@ -106,4 +106,19 @@ func TestBraveLangNormalizationAgeGuardAndGogglesFallback(t *testing.T) {
 	if err != nil || len(wOut.Results) != 2 || wOut.Results[0].Site != "Example Docs" || wOut.Results[1].Published == nil {
 		t.Fatalf("unexpected web/search result (expected web_search_ok.json & age fallback parsed): %+v err=%v", wOut, err)
 	}
+
+	// 验证 web/search 在 IncludeExtra 下透传 language / subtype 与 favicon，默认剥离
+	extraSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"web":{"results":[{"title":"Go","url":"https://go.dev/doc","description":"Go docs","language":"en","subtype":"generic","meta_url":{"favicon":"https://go.dev/favicon.ico"}}]}}`))
+	}))
+	defer extraSrv.Close()
+	pb, _, _ := New(Options{Keys: []string{"brave-key"}, BaseURL: extraSrv.URL, Mode: "web"}, providertest.NewTestAPIClient(t))
+	noEx, err := pb.Search(context.Background(), &core.SearchRequest{Query: "go", Detail: core.DetailSnippet, IncludeExtra: false})
+	if err != nil || len(noEx.Results) != 1 || noEx.Results[0].Icon != "" || noEx.Results[0].Extra != nil {
+		t.Fatalf("expected brave icon & extra stripped without --extra, got %+v err=%v", noEx, err)
+	}
+	withEx, err := pb.Search(context.Background(), &core.SearchRequest{Query: "go", Detail: core.DetailSnippet, IncludeExtra: true})
+	if err != nil || len(withEx.Results) != 1 || withEx.Results[0].Icon != "https://go.dev/favicon.ico" || withEx.Results[0].Extra["language"] != "en" || withEx.Results[0].Extra["subtype"] != "generic" {
+		t.Fatalf("expected brave icon & language/subtype with --extra, got %+v err=%v", withEx, err)
+	}
 }

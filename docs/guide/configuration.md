@@ -51,7 +51,7 @@ veri config show                               # 输出合并并脱敏后的生�
 | `ui.lang` | `"auto"` | 终端界面语言：`auto`（跟随系统，非中文环境回退英文）、`zh`、`en`（兼容 `zh_CN.UTF-8` 等标准 Locale） |
 | `search.providers` | `["deepseek", "exa", "tinyfish", "tencent_wsa", "tavily", "brave"]` | 默认检索优先级链（仅已配置密钥的源参与路由） |
 | `search.providers_en` | `[]` | 可选；查询词不含中日韩字符时优先使用的英文检索链 |
-| `search.fusion_providers` | `[]` | 可选；`--fusion` 模式默认并发检索源集合（为空时取前 3 个已启用源） |
+| `search.fusion_providers` | `[]` | 可选；`--fusion` 模式默认并发检索源集合（如 `["deepseek", "exa", "tavily", "brave"]`；为空时取前 3 个已启用源） |
 | `search.strategy` | `"auto"` | `auto`（链式回退）或 `fusion`（多源并发 RRF 融合） |
 | `search.count` | `8` | 默认返回条数，范围 `1`–`50` |
 | `search.detail` | `"summary"` | 结果详略级别：`snippet`、`summary`、`content` |
@@ -63,8 +63,8 @@ veri config show                               # 输出合并并脱敏后的生�
 | `search.content_max_runes` | `0` | 单条结果 `content` 最大字符数（`0` 表示不限制） |
 | `search.max_chars` | `0` | CLI 检索整包字符预算上限（`0` 表示不限制） |
 | `fetch.strategy` | `"api_first"` | 提取路由策略：`api_first`（云端优先、本地回退）、`smart_local`、`local_only`、`api_only` |
-| `fetch.providers` | `["deepseek", "tinyfish", "tavily", "exa"]` | 默认云端网页提取链 |
-| `fetch.providers_global` | `[]` | 可选；非中文站点优先使用的云端提取链 |
+| `fetch.providers` | `["deepseek", "tinyfish", "tavily", "exa"]` | 默认云端网页提取链（中文站点优先使用；显式配置且未配置 `providers_global` 时统一按此顺序执行） |
+| `fetch.providers_global` | `["exa", "tavily", "tinyfish", "deepseek"]` | 非中文站点优先使用的云端提取链（设为空数组 `[]` 可关闭分链） |
 | `fetch.timeout` | `"30s"` | 单次网页提取总超时 |
 | `fetch.max_bytes` | `"5MB"` | 本地抓取解压后响应体上限 |
 | `fetch.min_content_runes` | `300` | 本地提取正文质量闸门最少字符阈值 |
@@ -88,7 +88,7 @@ veri config show                               # 输出合并并脱敏后的生�
 | `network.allow_private` | `false` | 是否允许本地提取器访问回环或内网地址（默认拦截以防御 SSRF） |
 | `providers.<name>.enabled` | `true` | 是否启用该 Provider（设为 `false` 可单独禁用任意检索或提取源） |
 | `providers.<name>.api_key` | `"env:..."` | 支持 `env:VAR` 引用或明文密钥，多密钥用逗号分隔以启用轮询与分级冷却 |
-| `providers.<name>.timeout` | 各源默认 | 单次上游 HTTP 调用超时 |
+| `providers.<name>.timeout` / `fetch_timeout` | 各源默认 | 单次上游搜索/提取超时（搜索默认 `10s`；提取 `deepseek` 默认 `10s`，其余云端提取源默认 `25s`） |
 | `providers.<name>.concurrency` | `4` | 进程内对该上游的最大并发请求数 |
 | `providers.<name>.qps` | `0` | 可选进程内速率限制（`0` 表示不限速） |
 | `providers.<name>.price_*` | `""` | 可选成本估算单价（如 `USD:0.005`、`CNY:0.005`）；未配置且上游未返回账单时不展示费用 |

@@ -111,19 +111,19 @@ func newFetchCmd(rt *runtimeEnv) *cobra.Command {
 				if outFormat != spec.FormatJSON && env.Page != nil && env.Page.NextOffset != nil {
 					shown := strconv.Itoa(textnorm.RuneCount(env.Page.Content))
 					total := strconv.Itoa(env.Page.TotalChars)
-					offset := strconv.Itoa(*env.Page.NextOffset)
+					cont := formatFetchContinueArgs(req.Section, req.Match, env.Meta.Notes, *env.Page.NextOffset)
 					if preview := render.FormatOutlinePreview(env.Page.Outline, 5); preview != "" {
 						_, _ = fmt.Fprintln(rt.stderr, rt.cat.T("note.fetch_truncated_outline",
 							"shown", shown,
 							"total", total,
-							"offset", offset,
+							"continue", cont,
 							"outline", preview,
 						))
 					} else {
 						_, _ = fmt.Fprintln(rt.stderr, rt.cat.T("note.fetch_truncated",
 							"shown", shown,
 							"total", total,
-							"offset", offset,
+							"continue", cont,
 						))
 					}
 				}
@@ -188,4 +188,26 @@ func resolveFetchCLIURLs(args []string, stdin io.Reader) ([]string, error) {
 			WithI18n("err.missing_fetch_url", "hint.missing_fetch_url")
 	}
 	return out, nil
+}
+
+func formatFetchContinueArgs(section, match string, notes []string, nextOffset int) string {
+	sectionMissed := false
+	matchMissed := false
+	for _, n := range notes {
+		if strings.Contains(n, "not found; showing page preview") {
+			sectionMissed = true
+		}
+		if strings.Contains(n, "had 0 hits") {
+			matchMissed = true
+		}
+	}
+	var parts []string
+	if section != "" && !sectionMissed {
+		parts = append(parts, "--section "+strconv.Quote(section))
+	}
+	if match != "" && !matchMissed {
+		parts = append(parts, "--match "+strconv.Quote(match))
+	}
+	parts = append(parts, "--offset "+strconv.Itoa(nextOffset))
+	return strings.Join(parts, " ")
 }

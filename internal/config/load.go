@@ -20,18 +20,19 @@ import (
 
 // Loaded 携带合并校验后的完整配置、来源元数据与安全审计警告。
 type Loaded struct {
-	Config           Config
-	Path             string
-	Dir              string
-	FileExists       bool
-	FileMode         os.FileMode
-	PermWarning      bool // 配置文件含明文密钥且权限宽于 0600
-	VaultPermWarning bool // secrets.json 或 secret.key 权限宽于 0600
-	LogLevel         string
-	LogFormat        string
-	Credentials      map[string]Credential
-	VaultProviders   map[string]bool
-	AllSecrets       []string
+	Config                 Config
+	Path                   string
+	Dir                    string
+	FileExists             bool
+	FileMode               os.FileMode
+	FetchProvidersExplicit bool // 用户在 config.toml 或 VERI_FETCH_PROVIDERS 中显式配置了 fetch.providers
+	PermWarning            bool // 配置文件含明文密钥且权限宽于 0600
+	VaultPermWarning       bool // secrets.json 或 secret.key 权限宽于 0600
+	LogLevel               string
+	LogFormat              string
+	Credentials            map[string]Credential
+	VaultProviders         map[string]bool
+	AllSecrets             []string
 }
 
 // PeekUILang 仅从配置文件轻量读取 [ui] lang 字段，不校验完整配置树，也绝不访问或解密 secrets.json / secret.key。
@@ -99,6 +100,7 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		Credentials:    make(map[string]Credential, 8),
 		VaultProviders: make(map[string]bool, 8),
 	}
+	fetchGlobalDefined := false
 
 	if info, statErr := os.Stat(cfgPath); statErr == nil {
 		if info.IsDir() {
@@ -126,6 +128,12 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 				WithParam("path", cfgPath).
 				WithParam("detail", safeDetail)
 		}
+		if meta.IsDefined("fetch", "providers") {
+			out.FetchProvidersExplicit = true
+		}
+		if meta.IsDefined("fetch", "providers_global") {
+			fetchGlobalDefined = true
+		}
 		if undecoded := meta.Undecoded(); len(undecoded) > 0 {
 			keys := make([]string, len(undecoded))
 			for i, k := range undecoded {
@@ -144,8 +152,13 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 			WithParam("path", cfgPath)
 	}
 
-	if err := applyBehaviorEnv(&cfg, getenv); err != nil {
+	if err := applyBehaviorEnv(&cfg, out, getenv); err != nil {
 		return nil, err
+	}
+	// 用户显式指定了 fetch.providers（文件或环境变量）而未显式指定 fetch.providers_global 时，
+	// 关闭内置默认全球分链，严格尊重用户指定的统一顺序。
+	if out.FetchProvidersExplicit && !fetchGlobalDefined {
+		cfg.Fetch.ProvidersGlobal = nil
 	}
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
@@ -240,7 +253,7 @@ func resolveLogFormat(raw string) string {
 	return "text"
 }
 
-func applyBehaviorEnv(cfg *Config, getenv func(string) string) error {
+func applyBehaviorEnv(cfg *Config, loaded *Loaded, getenv func(string) string) error {
 	if v := strings.TrimSpace(getenv(spec.EnvLang)); v != "" {
 		cfg.UI.Lang = v
 	}
@@ -249,6 +262,9 @@ func applyBehaviorEnv(cfg *Config, getenv func(string) string) error {
 	}
 	if list := splitEnvList(getenv(spec.EnvFetchProviders)); len(list) > 0 {
 		cfg.Fetch.Providers = list
+		if loaded != nil {
+			loaded.FetchProvidersExplicit = true
+		}
 	}
 	if v := strings.TrimSpace(getenv(spec.EnvFetchStrategy)); v != "" {
 		cfg.Fetch.Strategy = v

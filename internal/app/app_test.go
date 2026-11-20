@@ -80,7 +80,7 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 	}
 
 	wantTimeout := map[string]string{
-		spec.ProviderDeepSeek:   "10s/25s",
+		spec.ProviderDeepSeek:   "10s",
 		spec.ProviderExa:        "10s/25s",
 		spec.ProviderTinyFish:   "10s/25s",
 		spec.ProviderTencentWSA: "10s",

@@ -10,8 +10,8 @@ const (
 	DefaultBaseURL = spec.DefaultDeepSeekBaseURL
 	// DefaultSearchTimeout 是单次检索默认超时时间。
 	DefaultSearchTimeout = spec.DefaultProviderSearchTimeout
-	// DefaultFetchTimeout 是单次网页抓取默认超时时间。
-	DefaultFetchTimeout = spec.DefaultProviderFetchTimeout
+	// DefaultFetchTimeout 是单次网页抓取默认超时时间（缓存命中约 120ms，冷抓超时后尽快回退）。
+	DefaultFetchTimeout = spec.DefaultDeepSeekFetchTimeout
 	// DefaultConcurrency 是默认最大并发数。
 	DefaultConcurrency = spec.DefaultProviderConcurrency
 

@@ -73,17 +73,44 @@ func applyFieldCapsAndBudget(results []core.Result, summaryMaxRunes, contentMaxR
 		}
 	}
 
-	// 第 4 步：从末尾开始去掉全部正文字段，只保留 title 与 url
+	// 第 4 步：紧预算下先压缩为紧凑 snippet，再从尾部裁剪整条低排名结果（保底至少保留第 1 条），避免输出全空摘要的 URL 骨架。
 	for i := len(out) - 1; i >= 0 && currentChars > totalMaxChars; i-- {
-		if out[i].Summary != "" || out[i].Snippet != "" {
-			before := resultBodyChars(out[i])
+		before := resultBodyChars(out[i])
+		changed := false
+		if out[i].Summary != "" {
+			if out[i].Snippet == "" {
+				out[i].Snippet = textnorm.TruncateRunes(textnorm.CleanInline(out[i].Summary), compactBudgetSnippetRunes)
+			}
 			out[i].Summary = ""
-			out[i].Snippet = ""
+			changed = true
+		}
+		if textnorm.RuneCount(out[i].Snippet) > compactBudgetSnippetRunes {
+			out[i].Snippet = textnorm.TruncateRunes(out[i].Snippet, compactBudgetSnippetRunes)
+			changed = true
+		}
+		if changed {
 			currentChars -= before - resultBodyChars(out[i])
 			mark(i)
 		}
 	}
 
+	origCount := len(out)
+	for len(out) > 1 && currentChars > totalMaxChars {
+		last := out[len(out)-1]
+		currentChars -= estimateResultChars(last)
+		out = out[:len(out)-1]
+	}
+
+	if currentChars > totalMaxChars && len(out) == 1 && (out[0].Summary != "" || out[0].Snippet != "") {
+		out[0].Summary = ""
+		out[0].Snippet = ""
+		mark(0)
+	}
+
+	if len(out) < origCount {
+		note := fmt.Sprintf("Response trimmed to %d of %d results to fit %d-char budget; fetch specific URLs directly for full text.", len(out), origCount, totalMaxChars)
+		return out, true, []string{note}
+	}
 	if firstAffectedRank == 0 {
 		firstAffectedRank = 1
 	}
@@ -94,9 +121,13 @@ func applyFieldCapsAndBudget(results []core.Result, summaryMaxRunes, contentMaxR
 func estimateResultsChars(results []core.Result) int {
 	total := 0
 	for _, r := range results {
-		total += textnorm.RuneCount(r.Title) + len(r.URL) + textnorm.RuneCount(r.Site) + resultBodyChars(r) + 32
+		total += estimateResultChars(r)
 	}
 	return total
+}
+
+func estimateResultChars(r core.Result) int {
+	return textnorm.RuneCount(r.Title) + len(r.URL) + textnorm.RuneCount(r.Site) + resultBodyChars(r) + 32
 }
 
 func resultBodyChars(r core.Result) int {

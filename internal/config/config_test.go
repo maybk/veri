@@ -309,6 +309,24 @@ func TestAllProviderSecretsRedactedAndRegisteredInConfig(t *testing.T) {
 		t.Fatalf("unexpected enabled flags: local=%v github=%v", loadedCustom.Config.Providers.Local.Enabled, loadedCustom.Config.Providers.GitHub.Enabled)
 	}
 
+	// 显式写入与默认同序的 fetch.providers（且未写 providers_global）时，关闭默认全球分链
+	explicitPath := filepath.Join(t.TempDir(), "explicit.toml")
+	explicitBody := "[fetch]\nproviders = [\"deepseek\", \"tinyfish\", \"tavily\", \"exa\"]\n"
+	if err := os.WriteFile(explicitPath, []byte(explicitBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadedExplicit, err := LoadWithEnv(explicitPath, func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("LoadWithEnv explicit: %v", err)
+	}
+	if !loadedExplicit.FetchProvidersExplicit || len(loadedExplicit.Config.Fetch.ProvidersGlobal) != 0 {
+		t.Fatalf("expected explicit fetch.providers without providers_global to disable default global reorder, got explicit=%v global=%v",
+			loadedExplicit.FetchProvidersExplicit, loadedExplicit.Config.Fetch.ProvidersGlobal)
+	}
+	if Default().Providers.DeepSeek.FetchTimeout.Duration != spec.DefaultDeepSeekFetchTimeout {
+		t.Fatalf("default deepseek fetch_timeout = %v, want %v", Default().Providers.DeepSeek.FetchTimeout.Duration, spec.DefaultDeepSeekFetchTimeout)
+	}
+
 	loaded := &Loaded{Config: cfg}
 	tomlOut, err := loaded.FormatRedactedTOML()
 	if err != nil {

@@ -67,9 +67,12 @@ func TestDeepSeekSearchMappingAndEmptyNoCost(t *testing.T) {
 		t.Fatalf("Search failed: %v", err)
 	}
 	providertest.AssertSearchOutcomeInvariants(t, ProviderName, out)
+	if p.Capabilities().Lang {
+		t.Fatal("expected DeepSeek Capabilities().Lang to be false (upstream does not strictly enforce lang: operator)")
+	}
 	if !strings.Contains(captured.Query, "site:github.com OR site:example.com") ||
 		!strings.Contains(captured.Query, "-site:spam.com") ||
-		!strings.Contains(captured.Query, "lang:zh,en") ||
+		strings.Contains(captured.Query, "lang:") ||
 		!strings.Contains(captured.Query, "after:2026-08-01") {
 		t.Fatalf("unexpected composed query: %q", captured.Query)
 	}

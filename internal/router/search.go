@@ -27,6 +27,12 @@ func (r *Router) Search(ctx context.Context, rawReq *core.SearchRequest) (*core.
 		se := core.AsError(chainErr)
 		return buildSearchErrorEnvelope(req.Query, string(strategy), nil, false, nil, start, se), se
 	}
+	if r.logger != nil {
+		r.logger.Debug("router.search",
+			"strategy", string(strategy),
+			"providers", providerNames(chain),
+		)
+	}
 
 	timeout := r.opts.SearchTimeout
 	if req.Timeout > 0 {

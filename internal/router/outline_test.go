@@ -207,6 +207,204 @@ func TestEffectiveGoInlineBacktickRegression(t *testing.T) {
 	}
 }
 
+func TestApplyPageViewSectionMissCapsPreview(t *testing.T) {
+	body := "## Intro\n\n" + strings.Repeat("Effective Go paragraph line.\n", 160) + "\n## Concurrency\n\nGoroutines.\n"
+	full := &core.Page{URL: "https://go.dev/doc/effective_go", Title: "Effective Go", Content: body}
+
+	// MaxChars=0 时未命中必须兜底截断至预览上限，绝不倾倒全文
+	view, notes := ApplyPageView(full, &core.FetchRequest{Section: "NonExistentHeadingXYZ"})
+	if len(notes) == 0 || !strings.Contains(notes[0], "not found") {
+		t.Fatalf("expected section not found note, got %v", notes)
+	}
+	if view.NextOffset == nil {
+		t.Fatalf("expected truncated preview with NextOffset, got nil (content runes=%d)", textnorm.RuneCount(view.Content))
+	}
+	if got := textnorm.RuneCount(view.Content); got > defaultViewMissPreviewChars {
+		t.Fatalf("expected preview <= %d runes, got %d", defaultViewMissPreviewChars, got)
+	}
+	if len(view.Outline) < 2 {
+		t.Fatalf("expected full outline on section miss, got %+v", view.Outline)
+	}
+
+	// 显式传更小 MaxChars 时遵循更小值；更大值仍受预览上限保护
+	smallView, _ := ApplyPageView(full, &core.FetchRequest{Section: "NonExistentHeadingXYZ", MaxChars: 400})
+	if smallView.NextOffset == nil || textnorm.RuneCount(smallView.Content) > 400 {
+		t.Fatalf("expected preview <= 400 runes, got %d next=%v", textnorm.RuneCount(smallView.Content), smallView.NextOffset)
+	}
+	largeView, _ := ApplyPageView(full, &core.FetchRequest{Section: "NonExistentHeadingXYZ", MaxChars: 5000})
+	if largeView.NextOffset == nil || textnorm.RuneCount(largeView.Content) > defaultViewMissPreviewChars {
+		t.Fatalf("expected preview capped at %d runes even when MaxChars=5000, got %d", defaultViewMissPreviewChars, textnorm.RuneCount(largeView.Content))
+	}
+}
+
+func TestExtractOutlineRecomputesCharsAfterDepthPruning(t *testing.T) {
+	var b strings.Builder
+	// 构造 10 个 H2，每个 H2 下挂 3 个 H3（总计 40 个标题 > 24），触发 H3 裁剪
+	for i := 1; i <= 10; i++ {
+		b.WriteString("## Section ")
+		b.WriteString(string(rune('A' + i - 1)))
+		b.WriteString("\n\n")
+		for j := 1; j <= 3; j++ {
+			b.WriteString("### Sub ")
+			b.WriteString(string(rune('0' + j)))
+			b.WriteString("\n\n")
+			b.WriteString(strings.Repeat("Body content text here. ", 12))
+			b.WriteString("\n\n")
+		}
+	}
+	doc := b.String()
+
+	outline := ExtractOutline(doc, 24)
+	if len(outline) != 10 {
+		t.Fatalf("expected 10 H2 headings after pruning H3s, got %d: %+v", len(outline), outline)
+	}
+	totalRunes := utf8.RuneCountInString(doc)
+	for i, sec := range outline {
+		if sec.Level != 2 {
+			t.Fatalf("expected only H2 after pruning, got %+v", sec)
+		}
+		var wantChars int
+		if i+1 < len(outline) {
+			wantChars = outline[i+1].Offset - sec.Offset
+		} else {
+			wantChars = totalRunes - sec.Offset
+		}
+		if sec.Chars != wantChars {
+			t.Fatalf("outline[%d] (%s) Chars=%d, want %d (must cover pruned H3 children)", i, sec.Heading, sec.Chars, wantChars)
+		}
+		if sec.Chars < 500 {
+			t.Fatalf("outline[%d] (%s) suspiciously tiny Chars=%d", i, sec.Heading, sec.Chars)
+		}
+	}
+
+	// 验证超过 maxItems 截断时，末项 Chars 仍只计算到下一同级标题而非全文末尾
+	capped := ExtractOutline(doc, 5)
+	if len(capped) != 5 {
+		t.Fatalf("expected 5 capped headings, got %d", len(capped))
+	}
+	if capped[4].Chars != outline[4].Chars {
+		t.Fatalf("capped last heading Chars=%d, want %d (must not absorb truncated tail)", capped[4].Chars, outline[4].Chars)
+	}
+}
+
+func TestApplyPageViewSectionPaginationCoordinateConsistency(t *testing.T) {
+	intro := "## Intro\n\n" + strings.Repeat("Intro filler line.\n", 80) + "\n"
+	conc := strings.Join([]string{
+		"## Concurrency",
+		"",
+		"### Share by communicating",
+		"",
+		strings.Repeat("Do not communicate by sharing memory. ", 15),
+		"",
+		"### Channels",
+		"",
+		strings.Repeat("Channels synchronize goroutines cleanly. ", 15),
+		"",
+	}, "\n")
+	tail := "## Errors\n\nHandle errors explicitly.\n"
+	doc := intro + conc + tail
+	full := &core.Page{URL: "https://go.dev/doc/effective_go", Content: doc}
+
+	// 1. 章节未截断时不附带冗余全文大纲
+	whole, notes := ApplyPageView(full, &core.FetchRequest{Section: "Concurrency"})
+	if len(notes) != 0 || len(whole.Outline) != 0 {
+		t.Fatalf("expected clean un-truncated section view without full-doc outline, notes=%v outline=%+v", notes, whole.Outline)
+	}
+
+	// 2. 章节分页时，next_offset / total_chars / outline 全部使用同一章节坐标系
+	p1, p1Notes := ApplyPageView(full, &core.FetchRequest{Section: "Concurrency", MaxChars: 400})
+	if p1.NextOffset == nil {
+		t.Fatal("expected section view to paginate")
+	}
+	if p1.TotalChars != textnorm.RuneCount(strings.TrimSpace(conc)) {
+		t.Fatalf("expected section TotalChars=%d, got %d", textnorm.RuneCount(strings.TrimSpace(conc)), p1.TotalChars)
+	}
+	if len(p1Notes) == 0 || !strings.Contains(p1Notes[0], "section") || !strings.Contains(p1Notes[0], "offset") {
+		t.Fatalf("expected continuation note explaining section + offset, got %v", p1Notes)
+	}
+	foundChannels := false
+	for _, sec := range p1.Outline {
+		if sec.Offset < 0 || sec.Offset >= p1.TotalChars {
+			t.Fatalf("section outline offset %d out of section range [0, %d): %+v", sec.Offset, p1.TotalChars, sec)
+		}
+		if sec.Heading == "Channels" {
+			foundChannels = true
+		}
+	}
+	if !foundChannels {
+		t.Fatalf("expected subsection 'Channels' in paginated section outline, got %+v", p1.Outline)
+	}
+
+	// 3. 使用相同 section + next_offset 续读必须平滑拼接剩余章节内容
+	p2, _ := ApplyPageView(full, &core.FetchRequest{Section: "Concurrency", Offset: *p1.NextOffset, MaxChars: 2000})
+	if !strings.Contains(p2.Content, "Channels synchronize goroutines") {
+		t.Fatalf("expected continuation chunk to contain remaining Channels text:\n%s", p2.Content)
+	}
+
+	// 4. 文档站标题末尾装饰性锚点 `¶` 在大纲与匹配锚点中被清理，但不改写正文，纯符号标题不清空
+	pilcrowDoc := "## Concurrency¶\n\nGoroutines coordinate via channel.\n\n## ¶\n\nEdge case.\n"
+	pilcrowPage := &core.Page{URL: "https://go.dev/doc/effective_go", Content: pilcrowDoc}
+	pOutline := ExtractOutline(pilcrowDoc, 10)
+	if len(pOutline) != 2 || pOutline[0].Heading != "Concurrency" || pOutline[1].Heading != "¶" {
+		t.Fatalf("unexpected pilcrow outline cleanup: %+v", pOutline)
+	}
+	pMatch, _ := ApplyPageView(pilcrowPage, &core.FetchRequest{Match: "channel"})
+	if !strings.Contains(pMatch.Content, "· Concurrency]**") || strings.Contains(pMatch.Content, "Concurrency¶") {
+		t.Fatalf("expected pilcrow stripped from match heading anchor:\n%s", pMatch.Content)
+	}
+	pSec, _ := ApplyPageView(pilcrowPage, &core.FetchRequest{Section: "Concurrency"})
+	if !strings.HasPrefix(pSec.Content, "## Concurrency¶") {
+		t.Fatalf("expected original markdown body preserved unmodified:\n%s", pSec.Content)
+	}
+}
+
+func TestExtractMatchViewSlicesOversizedCodeFence(t *testing.T) {
+	var code strings.Builder
+	code.WriteString("# internal/provider/exa/search.go\n\n```go\n")
+	for i := 1; i <= 260; i++ {
+		switch i {
+		case 60:
+			code.WriteString("func helperFirst() { _ = req.IncludeExtra }\n")
+		case 64:
+			code.WriteString("// adjacent hit near line 60 should merge into same window: IncludeExtra\n")
+		case 210:
+			code.WriteString("cleaned := core.SanitizeResults(name, mapped, detail, req.IncludeExtra, keyFn)\n")
+		default:
+			code.WriteString("var fillerLinePayloadVariable = \"ordinary source line content for padding\"\n")
+		}
+	}
+	code.WriteString("```\n")
+	fullDoc := code.String()
+	full := &core.Page{URL: "https://github.com/maybk/veri/blob/main/internal/provider/exa/search.go", Content: fullDoc}
+
+	view, notes := ApplyPageView(full, &core.FetchRequest{Match: "IncludeExtra"})
+	if len(notes) != 0 {
+		t.Fatalf("unexpected notes: %v", notes)
+	}
+	// 严禁把整份 260 行（>19,000 runes）代码文件倾倒出来
+	if got, fullLen := textnorm.RuneCount(view.Content), textnorm.RuneCount(fullDoc); got >= fullLen/3 {
+		t.Fatalf("expected oversized code fence to be sliced into compact windows, got %d runes out of %d", got, fullLen)
+	}
+	if !strings.Contains(view.Content, "helperFirst") || !strings.Contains(view.Content, "core.SanitizeResults") {
+		t.Fatalf("expected both matched regions in sliced view:\n%s", view.Content)
+	}
+	if !strings.Contains(view.Content, "lines ") || !strings.Contains(view.Content, "```go\n") {
+		t.Fatalf("expected line-range anchor and preserved ```go fence:\n%s", view.Content)
+	}
+	// 围栏必须严格平衡闭合
+	var tr mdscan.Tracker
+	for line := range strings.SplitSeq(view.Content, "\n") {
+		tr.Next(line)
+	}
+	if tr.InFence() {
+		t.Fatalf("sliced code fence left unclosed fence:\n%s", view.Content)
+	}
+	if len(view.Outline) != 0 || view.TotalChars != textnorm.RuneCount(view.Content) {
+		t.Fatalf("expected un-truncated match view to omit redundant outline and report match view TotalChars=%d, got total=%d outline=%+v",
+			textnorm.RuneCount(view.Content), view.TotalChars, view.Outline)
+	}
+}
+
 func FuzzSlicePage(f *testing.F) {
 	f.Add("# Title\n\n`gofmt` inline line\n\n```go\nfunc main() {\n\tprintln(1)\n}\n```\n\n## Next\n\nParagraph text.\n", 40)
 	f.Add("```python\n"+strings.Repeat("x = 1\n", 20)+"```\n\nTail\n", 35)

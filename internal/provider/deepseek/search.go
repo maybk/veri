@@ -131,17 +131,6 @@ func buildSearchQuery(base string, f core.Filters) string {
 			parts = append(parts, "-site:"+st)
 		}
 	}
-	if len(f.Lang) > 0 {
-		var langs []string
-		for _, l := range f.Lang {
-			if lt := strings.TrimSpace(l); lt != "" {
-				langs = append(langs, lt)
-			}
-		}
-		if len(langs) > 0 {
-			parts = append(parts, "lang:"+strings.Join(langs, ","))
-		}
-	}
 	if f.Freshness != nil {
 		if !f.Freshness.After.IsZero() {
 			parts = append(parts, "after:"+f.Freshness.After.Format("2006-01-02"))

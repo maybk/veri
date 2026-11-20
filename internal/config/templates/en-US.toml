@@ -7,6 +7,7 @@ lang = "auto"                           # auto | zh | en
 [search]
 providers = ["deepseek", "exa", "tinyfish", "tencent_wsa", "tavily", "brave"]
 # providers_en = ["exa", "tinyfish", "brave", "tavily", "deepseek"]
+# fusion_providers = ["deepseek", "exa", "tavily", "brave"]
 strategy = "auto"                       # auto | fusion
 count = 8                               # default result count (1-50)
 detail = "summary"                      # snippet | summary | content
@@ -19,7 +20,7 @@ summary_max_runes = 800
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
 providers = ["deepseek", "tinyfish", "tavily", "exa"]
-# providers_global = ["tinyfish", "tavily", "exa", "deepseek"]
+providers_global = ["exa", "tavily", "tinyfish", "deepseek"] # non-CN fetch chain (set [] to disable)
 timeout = "30s"
 max_bytes = "5MB"                       # max decompressed response size for local fetch
 min_content_runes = 300                 # minimum runes required to pass local quality gate
@@ -43,6 +44,7 @@ allow_private = false                   # allow private/loopback IPs in local fe
 api_key = "env:DEEPSEEK_API_KEY"        # supports plaintext keys (comma-separated for rotation)
 base_url = "https://api.deepseek.com"
 timeout = "10s"
+fetch_timeout = "10s"
 concurrency = 4
 weight = 1.0
 # price_search = "CNY:0.005"            # optional reference unit price for cost estimation

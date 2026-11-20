@@ -52,6 +52,8 @@ type webSearchWireItem struct {
 	ExtraSnippets []string `json:"extra_snippets"`
 	PageAge       string   `json:"page_age"`
 	Age           string   `json:"age"`
+	Language      string   `json:"language"`
+	Subtype       string   `json:"subtype"`
 	Profile       *struct {
 		Name string `json:"name"`
 	} `json:"profile"`

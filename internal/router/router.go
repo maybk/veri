@@ -1,6 +1,7 @@
 package router
 
 import (
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -26,11 +27,13 @@ type Options struct {
 	ContentMaxRunes   int
 	SearchMaxChars    int
 
-	FetchStrategy        core.FetchStrategy
-	FetchProviders       []string
-	FetchProvidersGlobal []string
-	FetchTimeout         time.Duration
-	FetchMaxChars        int
+	FetchStrategy          core.FetchStrategy
+	FetchProviders         []string
+	FetchProvidersGlobal   []string
+	FetchProvidersExplicit bool
+	FetchTimeout           time.Duration
+	FetchMaxChars          int
+	Logger                 *slog.Logger
 }
 
 // Router 维护已启用的 Searcher 与 Fetcher 注册表并执行统一路由决策。
@@ -41,6 +44,7 @@ type Router struct {
 	specialists []core.SpecialistFetcher
 	localFetch  core.Fetcher
 	health      *healthTracker
+	logger      *slog.Logger
 }
 
 // New 根据已启用的 Provider 实例列表构造 Router。
@@ -74,6 +78,9 @@ func New(opts Options, providers []core.Provider) *Router {
 	}
 	if len(opts.FetchProviders) == 0 {
 		opts.FetchProviders = spec.DefaultFetchProviders()
+		if len(opts.FetchProvidersGlobal) == 0 && !opts.FetchProvidersExplicit {
+			opts.FetchProvidersGlobal = spec.DefaultFetchProvidersGlobal()
+		}
 	}
 
 	r := &Router{
@@ -81,6 +88,7 @@ func New(opts Options, providers []core.Provider) *Router {
 		searchers: make(map[string]core.Searcher),
 		fetchers:  make(map[string]core.Fetcher),
 		health:    newHealthTracker(),
+		logger:    opts.Logger,
 	}
 
 	for _, p := range providers {
@@ -128,6 +136,41 @@ func (r *Router) EnabledSearchers() []string {
 
 // EnabledFetchers 按当前生效 FetchStrategy 的优先级顺序返回可用 Fetcher 名称列表。
 func (r *Router) EnabledFetchers() []string {
+	return r.resolveFetchChainOrder(r.opts.FetchProviders, r.opts.FetchProvidersGlobal, true)
+}
+
+// DefaultSearchStrategy 返回当前生效的默认检索路由策略。
+func (r *Router) DefaultSearchStrategy() core.Strategy { return r.opts.DefaultStrategy }
+
+// FetchStrategy 返回当前生效的默认网页提取路由策略。
+func (r *Router) FetchStrategy() core.FetchStrategy { return r.opts.FetchStrategy }
+
+// ActiveFusionChain 返回 --fusion 模式默认并发调用的已启用检索源列表。
+func (r *Router) ActiveFusionChain() []string {
+	if len(r.opts.FusionProviders) > 0 {
+		return r.filterEnabledSearchers(r.opts.FusionProviders)
+	}
+	chain := r.filterEnabledSearchers(r.opts.SearchProviders)
+	if len(chain) > spec.DefaultFusionAutoLimit {
+		return chain[:spec.DefaultFusionAutoLimit]
+	}
+	return chain
+}
+
+// ActiveFetchChainGlobal 返回非中文站点实际执行的提取链顺序；当未启用独立全球分链或顺序与主链相同时返回 nil。
+func (r *Router) ActiveFetchChainGlobal() []string {
+	if r.opts.FetchStrategy == core.FetchLocalOnly || len(r.opts.FetchProvidersGlobal) == 0 {
+		return nil
+	}
+	primary := r.resolveFetchChainOrder(r.opts.FetchProviders, nil, false)
+	global := r.resolveFetchChainOrder(r.opts.FetchProvidersGlobal, nil, false)
+	if len(global) == 0 || slices.Equal(global, primary) {
+		return nil
+	}
+	return global
+}
+
+func (r *Router) resolveFetchChainOrder(primary, secondary []string, includeExtras bool) []string {
 	seen := make(map[string]struct{}, len(r.fetchers))
 	var out []string
 	add := func(raw string) {
@@ -145,15 +188,18 @@ func (r *Router) EnabledFetchers() []string {
 		}
 	}
 	addAPIChain := func() {
-		for _, name := range r.opts.FetchProviders {
+		for _, name := range primary {
 			if canonicalProviderKey(name) != spec.ProviderLocal {
 				add(name)
 			}
 		}
-		for _, name := range r.opts.FetchProvidersGlobal {
+		for _, name := range secondary {
 			if canonicalProviderKey(name) != spec.ProviderLocal {
 				add(name)
 			}
+		}
+		if !includeExtras {
+			return
 		}
 		var extras []string
 		for name, f := range r.fetchers {
@@ -196,9 +242,13 @@ func (r *Router) ActiveSearchChainEN() []string {
 	if len(r.opts.SearchProvidersEN) == 0 {
 		return nil
 	}
-	seen := make(map[string]struct{})
+	return r.filterEnabledSearchers(r.opts.SearchProvidersEN)
+}
+
+func (r *Router) filterEnabledSearchers(candidates []string) []string {
+	seen := make(map[string]struct{}, len(candidates))
 	var out []string
-	for _, raw := range r.opts.SearchProvidersEN {
+	for _, raw := range candidates {
 		name := canonicalProviderKey(raw)
 		if _, ok := r.searchers[name]; ok {
 			if _, dup := seen[name]; !dup {
@@ -241,6 +291,14 @@ func cleanProviderKeys(items []string) []string {
 			seen[k] = struct{}{}
 			out = append(out, k)
 		}
+	}
+	return out
+}
+
+func providerNames[T core.Provider](list []T) []string {
+	out := make([]string, len(list))
+	for i, p := range list {
+		out[i] = p.Name()
 	}
 	return out
 }

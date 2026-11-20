@@ -37,7 +37,7 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 		MaxResults:           count,
 		IncludeAnswer:        false,
 		IncludePublishedDate: true,
-		IncludeFavicon:       true,
+		IncludeFavicon:       req.IncludeExtra,
 		IncludeUsage:         true,
 	}
 	if topic := strings.ToLower(strings.TrimSpace(textnorm.FirstNonEmpty(req.Options[spec.OptTavilyTopic], req.Options[spec.OptTavilyTopicAlias]))); topic != "" {

@@ -248,8 +248,17 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 			if len(rep.FetchChain) > 0 {
 				fetchLabel = strings.Join(rep.FetchChain, " -> ")
 			}
-			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain", "chain", searchLabel))
-			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain", "chain", fetchLabel))
+			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain", "strategy", rep.SearchStrategy, "chain", searchLabel))
+			if len(rep.SearchChainEN) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain_en", "chain", strings.Join(rep.SearchChainEN, " -> ")))
+			}
+			if len(rep.FusionChain) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fusion_chain", "chain", strings.Join(rep.FusionChain, " -> ")))
+			}
+			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain", "strategy", rep.FetchStrategy, "chain", fetchLabel))
+			if len(rep.FetchChainGlobal) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain_global", "chain", strings.Join(rep.FetchChainGlobal, " -> ")))
+			}
 
 			_, _ = fmt.Fprintln(rt.stdout)
 			printProviderTable(rt, rep.Providers)

@@ -31,6 +31,7 @@ const (
 	DefaultFetchTimeout           = 30 * time.Second
 	DefaultProviderSearchTimeout  = 10 * time.Second
 	DefaultProviderFetchTimeout   = 25 * time.Second
+	DefaultDeepSeekFetchTimeout   = 10 * time.Second
 	DefaultSmartLocalProbeTimeout = 8 * time.Second
 	DefaultMCPCacheTTL            = 5 * time.Minute
 )

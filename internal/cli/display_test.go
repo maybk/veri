@@ -110,7 +110,7 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	for _, s := range statuses {
 		byName[s.Name] = s
 	}
-	if byName["deepseek"].Source != spec.ConfigFileName || byName["deepseek"].Timeout != "10s/25s" {
+	if byName["deepseek"].Source != spec.ConfigFileName || byName["deepseek"].Timeout != "10s" {
 		t.Fatalf("unexpected deepseek JSON status: %+v", byName["deepseek"])
 	}
 	if byName["exa"].Source != "env:EXA_API_KEY" || byName["exa"].Timeout != "10s/25s" {
@@ -142,12 +142,12 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 		}
 	}
 
-	// 5. veri doctor 独立路由行与内嵌表格（无中点错位）
+	// 5. veri doctor 独立路由行与内嵌表格（无中点错位，并清晰展示默认融合池与全球提取路由）
 	code, docZH, _ := run("--ui-lang", "zh", "doctor")
 	if code != 0 || strings.Contains(docZH, "·") {
 		t.Fatalf("doctor zh failed or contained middle dot (code=%d):\n%s", code, docZH)
 	}
-	for _, want := range []string{"- 运行环境: veri 0.1.2", "- 检索路由:", "- 提取路由:", "超时"} {
+	for _, want := range []string{"- 运行环境: veri 0.1.2", "- 检索路由（auto）:", "- 默认融合池（-F）:", "- 提取路由（api_first）:", "- 全球提取路由:", "超时"} {
 		if !strings.Contains(docZH, want) {
 			t.Fatalf("doctor zh missing %q:\n%s", want, docZH)
 		}
@@ -156,7 +156,7 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	if code != 0 || strings.Contains(docEN, "·") {
 		t.Fatalf("doctor en failed or contained middle dot (code=%d):\n%s", code, docEN)
 	}
-	for _, want := range []string{"- Runtime: veri 0.1.2", "- Search chain:", "- Fetch chain:", "TIMEOUT"} {
+	for _, want := range []string{"- Runtime: veri 0.1.2", "- Search chain (auto):", "- Fusion pool (-F):", "- Fetch chain (api_first):", "- Fetch chain (global):", "TIMEOUT"} {
 		if !strings.Contains(docEN, want) {
 			t.Fatalf("doctor en missing %q:\n%s", want, docEN)
 		}
@@ -185,6 +185,20 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	}
 	assertColumnAligned(t, rootFlagsSection, "--count", "--format", "--config", "--quiet", "--version")
 	assertColumnAligned(t, rootFlagsSection, "返回结果条数", "指定配置文件路径", "显示当前命令的帮助说明")
+
+	// 8. formatFetchContinueArgs 精确拼装带 --section / --match 的续读参数，未命中回退时不重复携带
+	if got := formatFetchContinueArgs("", "", nil, 2000); got != "--offset 2000" {
+		t.Fatalf("unexpected plain continue args: %q", got)
+	}
+	if got := formatFetchContinueArgs("Concurrency", "", nil, 2484); got != `--section "Concurrency" --offset 2484` {
+		t.Fatalf("unexpected section continue args: %q", got)
+	}
+	if got := formatFetchContinueArgs("Missing", "", []string{`section "Missing" not found; showing page preview and heading outline`}, 2000); got != "--offset 2000" {
+		t.Fatalf("expected section miss to drop --section from continue args, got %q", got)
+	}
+	if got := formatFetchContinueArgs("Concurrency", "chan", []string{`match "chan" had 0 hits in section "Concurrency"; showing section preview and outline`}, 800); got != `--section "Concurrency" --offset 800` {
+		t.Fatalf("expected match miss inside section to keep --section only, got %q", got)
+	}
 }
 
 func assertColumnAligned(t *testing.T, text string, tokens ...string) {

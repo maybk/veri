@@ -8,13 +8,13 @@
 
 | 标识 (`name`) | 角色 | 默认端点 | 凭证环境变量 | 主要技术特性 |
 | --- | --- | --- | --- | --- |
-| `deepseek` | `search`, `fetch` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` | 提供 `/v1/tools/search` 与 `/v1/tools/fetch`；检索支持 `site:`、`-site:`、`lang:`、`after:`、`before:` 操作符拼装，查询总长上限 128 个 Unicode 字符 |
-| `exa` | `search`, `fetch` | `https://api.exa.ai` | `EXA_API_KEY` | 提供 `/search` 混合检索与 `/contents` 正文提取；支持域名过滤、ISO 日期区间与内容类别筛选，响应返回 `costDollars` 实收账单 |
-| `tinyfish` | `search`, `fetch` | `https://api.search.tinyfish.ai`<br>`https://api.fetch.tinyfish.ai` | `TINYFISH_API_KEY` | 检索与抓取双端点；检索支持分钟级相对时效、日期区间与学术论文模式，抓取支持服务端 SPA / JS 动态渲染 |
+| `deepseek` | `search`, `fetch` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` | 提供 `/v1/tools/search` 与 `/v1/tools/fetch`；检索支持 `site:`、`-site:`、`after:`、`before:` 操作符拼装，查询总长上限 128 个 Unicode 字符；提取默认超时 `10s` |
+| `exa` | `search`, `fetch` | `https://api.exa.ai` | `EXA_API_KEY` | 提供 `/search` 混合检索与 `/contents` 正文/PDF 提取；支持域名过滤、ISO 日期区间与内容类别筛选，响应返回 `costDollars` 实收账单 |
+| `tinyfish` | `search`, `fetch` | `https://api.search.tinyfish.ai`<br>`https://api.fetch.tinyfish.ai` | `TINYFISH_API_KEY` | 检索与抓取双端点；检索支持分钟级相对时效、日期区间与学术论文模式，抓取支持服务端 SPA / JS 动态渲染与 PDF |
 | `tencent_wsa` | `search` | `https://api.wsa.cloud.tencent.com` | `TENCENT_WSA_API_KEY`<br>`TENCENTCLOUD_WSA_APIKEY` | 腾讯云联网搜索 SearchPro 接口；支持 `lite`、`standard`、`flagship` 版本切换及行业分类筛选 |
-| `tavily` | `search`, `fetch` | `https://api.tavily.com` | `TAVILY_API_KEY` | 提供 `/search` 与 `/extract`；支持四档检索深度、域名/时间/语言过滤及 `usage.credits` 点数核算 |
+| `tavily` | `search`, `fetch` | `https://api.tavily.com` | `TAVILY_API_KEY` | 提供 `/search` 与 `/extract`（支持动态渲染与 PDF）；支持四档检索深度、域名/时间/语言过滤及 `usage.credits` 点数核算 |
 | `brave` | `search` | `https://api.search.brave.com` | `BRAVE_API_KEY`<br>`BRAVE_SEARCH_API_KEY` | `snippet` 调用 `/res/v1/web/search`，`summary` / `content` 调用 `/res/v1/llm/context`；超长站点列表自动切换内联 Goggles 规则 |
-| `github` | `fetch` | `https://api.github.com` | `GITHUB_TOKEN` / `GH_TOKEN`（可选） | 识别 `github.com` 仓库主页、`blob` 源码文件（含 `#L10-L20` 行范围）、Issue、PR（含行级审查评论）、Discussion、Commit 与 Release（含 `latest` 及含斜杠 Tag），输出结构化 Markdown |
+| `github` | `fetch` | `https://api.github.com` | `GITHUB_TOKEN` / `GH_TOKEN`（可选） | 识别 `github.com` 仓库主页、`blob` 源码文件（含 `#L10-L20` 行范围）、Issue、PR（含行级审查评论）、仓库级 Discussion、Commit 与 Release（含 `latest` 及含斜杠 Tag），输出结构化 Markdown；组织级 `/orgs/<org>/discussions/<n>` 自动交由通用提取链处理 |
 | `local` | `fetch` | 本地直连抓取 | 无需密钥 | 纯 Go 本地抓取 HTML、Markdown（含 Frontmatter 解析与弱内容自动降级 HTML）、纯文本与 JSON，内置流式 SSR 还原、Readability 正文抽取与反爬盾页检测 |
 
 ## 检索选路模式
@@ -30,7 +30,7 @@
 
 | 策略 | 行为说明 |
 | --- | --- |
-| `api_first`（默认） | 公网页面优先调用 `fetch.providers` 云端提取链（支持 `fetch.providers_global` 非中文分链、PDF 优先选路与拦截页自动回退）；未配置云端提取源或云端全部失败时回退至 `local` |
+| `api_first`（默认） | 公网页面优先调用云端提取链（中文站走 `fetch.providers`，非中文站默认走 `fetch.providers_global` `["exa", "tavily", "tinyfish", "deepseek"]`，支持 PDF 优先选路与拦截页自动回退）；未配置云端提取源或云端全部失败时回退至 `local` |
 | `smart_local` | 公网非 PDF 页面先由 `local` 抓取并做正文质量检测，遇到动态空壳、拦截页或正文过短时切换至云端提取链 |
 | `local_only` | 仅使用 `github` 与 `local`，不调用外部云端提取 API |
 | `api_only` | 仅使用 `github` 与云端提取链，禁用 `local` 直连抓取（本机与内网地址直接拒绝） |

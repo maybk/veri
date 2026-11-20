@@ -95,7 +95,7 @@ func (p *Provider) Capabilities() core.Capabilities {
 		Sites:         core.SiteMulti,
 		ExcludeSites:  maxExcludeSites,
 		Freshness:     core.TimeAbsolute,
-		Lang:          true,
+		Lang:          false,
 		Content:       core.ContentFree,
 		Question:      true,
 	}

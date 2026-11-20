@@ -128,6 +128,14 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 		if a := strings.TrimSpace(item.Author); a != "" {
 			authors = []string{a}
 		}
+		var extra map[string]any
+		if req.IncludeExtra {
+			if img := textnorm.CleanInline(item.Image); img != "" {
+				if _, err := core.ValidateTargetURL(img, ProviderName, 0); err == nil {
+					extra = map[string]any{"image": img}
+				}
+			}
+		}
 		mapped = append(mapped, core.Result{
 			Title:     item.Title,
 			URL:       item.URL,
@@ -138,6 +146,7 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 			Summary:   summary,
 			Content:   item.Text,
 			Relevance: rel,
+			Extra:     extra,
 		})
 	}
 

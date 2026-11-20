@@ -79,11 +79,13 @@ veri search "kubernetes gateway api" -x medium.com --lang en -n 6
 # 指定结果详略级别：snippet（精简）/ summary（默认）/ content（含正文）
 veri search "sqlite wal checkpoint" -d content -n 3
 
-# 强制指定单一检索源（不自动切换）
+# 强制指定单一检索源（不自动切换），或按指定顺序回退
 veri search "rust async traits" -p exa
+veri search "rust async traits" -p exa,tavily
 
-# 多源并发融合去重（适合复杂或高价值调研）
-veri search "raft leader lease" --fusion -p deepseek,exa
+# 多源并发融合去重（不传 -p 时使用 search.fusion_providers 或前 3 个已启用源）
+veri search "raft leader lease" -F
+veri search "raft leader lease" -F -p deepseek,exa,tavily,brave
 
 # 输出结构化格式，便于脚本与管道联动（支持 md / json / jsonl / urls）
 veri search "go 1.27" -n 5 --json
@@ -96,16 +98,19 @@ veri search "go 1.27" -n 3 --format urls
 # 基础抓取（优先 GitHub 读取器与已配置的云端提取源，未配置或失败时自动回退本地提取）
 veri fetch https://example.com/article
 
-# 长文按标题章节截取，或按关键词定位相关段落（两者可组合使用）
+# 长文按标题章节截取，或按关键词定位相关段落与代码行窗口（两者可组合使用）
 veri fetch https://example.com/docs --section "Authentication"
 veri fetch https://example.com/docs --match "Retry-After"
 veri fetch https://example.com/docs --section "Rate Limits" --match "429"
 
-# 限制单次输出字符数并分段续读（截断时 stderr 会附带大纲与下一 --offset）
+# 限制单次输出字符数并分段续读（截断时 stderr 会附带大纲与续读参数）
 veri fetch https://example.com/long-doc --max-chars 12000
 veri fetch https://example.com/long-doc --max-chars 12000 --offset 12000
 
-# 绕过缓存强制实时抓取，或仅使用本地直连不发往云端
+# 显式指定提取源顺序（单值禁用回退；与 --strategy 互斥）
+veri fetch https://example.com/article -p exa,local
+
+# 要求上游强制实时抓取（CLI 无本地磁盘缓存，MCP 模式下同时绕过进程内缓存），或仅本地直连
 veri fetch https://example.com/status --fresh
 veri fetch https://example.com/article --strategy local_only
 
@@ -198,7 +203,7 @@ mise upgrade npm:@maybk/veri        # mise（或 mise upgrade github:maybk/veri�
 
 - **提示未配置可用检索源**：运行 `veri providers` 确认对应检索源处于已启用状态；若仅在当前终端执行过 `export ...`，新开终端不会保留，建议改用 `veri key set <provider>` 持久化。
 - **单源报错、超时或触发限流**：运行 `veri doctor --live --yes` 定位具体源的鉴权或连通性问题；配置 2 个及以上检索源后，`veri` 会在故障时自动切换至下一可用源。
-- **动态渲染页面（SPA / JS）或反爬页面抓取不全**：纯本地提取不运行浏览器脚本；配置任意支持云端提取的源（`deepseek`、`tinyfish`、`tavily`、`exa`）后，默认策略会自动优先使用云端提取。
+- **动态渲染页面（SPA / JS）或反爬页面抓取不全**：纯本地提取不运行浏览器脚本；配置任意支持云端提取的源（`exa`、`tavily`、`tinyfish`、`deepseek`）后，默认策略会自动优先使用云端提取。
 - **代理与透明代理（TUN）环境**：自动遵循 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`，也可在 `~/.config/veri/config.toml` 的 `network.proxy` 显式配置；默认兼容常见透明代理的 TUN Fake-IP 网段。
 - **标准退出码（便于脚本判断）**：`0` 成功 · `1` 内部错误或诊断未通过 · `2` 参数或配置错误 · `3` 密钥缺失/失效或配额不足 · `4` 限流/超时等临时故障 · `5` 目标不存在或被安全策略拦截 · `130` 用户中断。
 

@@ -27,6 +27,7 @@ func Default() Config {
 		Fetch: FetchConfig{
 			Strategy:        string(core.DefaultFetchStrategy),
 			Providers:       spec.DefaultFetchProviders(),
+			ProvidersGlobal: spec.DefaultFetchProvidersGlobal(),
 			Timeout:         Duration{spec.DefaultFetchTimeout},
 			MaxBytes:        ByteSize(spec.DefaultFetchMaxBytes),
 			MinContentRunes: spec.DefaultMinContentRunes,
@@ -54,7 +55,7 @@ func Default() Config {
 				APIKey:       spec.DefaultEnvRef(spec.ProviderDeepSeek),
 				BaseURL:      spec.DefaultDeepSeekBaseURL,
 				Timeout:      Duration{spec.DefaultProviderSearchTimeout},
-				FetchTimeout: Duration{spec.DefaultProviderFetchTimeout},
+				FetchTimeout: Duration{spec.DefaultDeepSeekFetchTimeout},
 				Concurrency:  spec.DefaultProviderConcurrency,
 				Weight:       1.0,
 			},

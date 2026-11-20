@@ -435,4 +435,52 @@ func TestModelErrorAndFreshnessEdges(t *testing.T) {
 	if r.Authors[0] != "Alice" {
 		t.Fatal("Result.Clone did not deep-copy Authors")
 	}
+
+	// 验证默认不输出 icon/extra 以节省 Token，仅在 keepExtra=true 时保留
+	rIcon := Result{
+		Title: "Doc",
+		URL:   "https://example.org/doc",
+		Icon:  "https://cdn.example.org/favicon.ico",
+		Extra: map[string]any{"image": "https://cdn.example.org/og.png"},
+	}
+	AlignResultDetail(&rIcon, DetailSummary, false)
+	if rIcon.Icon != "" || rIcon.Extra != nil {
+		t.Fatalf("expected Icon and Extra stripped when keepExtra=false, got icon=%q extra=%v", rIcon.Icon, rIcon.Extra)
+	}
+	rIconKeep := Result{
+		Title: "Doc",
+		URL:   "https://example.org/doc",
+		Icon:  " https://cdn.example.org/favicon.ico ",
+		Extra: map[string]any{"image": "https://cdn.example.org/og.png"},
+	}
+	AlignResultDetail(&rIconKeep, DetailSummary, true)
+	if rIconKeep.Icon != "https://cdn.example.org/favicon.ico" || rIconKeep.Extra["image"] != "https://cdn.example.org/og.png" {
+		t.Fatalf("expected Icon and Extra preserved when keepExtra=true, got icon=%q extra=%v", rIconKeep.Icon, rIconKeep.Extra)
+	}
+	rBadIcon := Result{
+		Title: "Doc",
+		URL:   "https://example.org/doc",
+		Icon:  "javascript:alert(1)",
+	}
+	AlignResultDetail(&rBadIcon, DetailSummary, true)
+	if rBadIcon.Icon != "" {
+		t.Fatalf("expected non-http(s) Icon rejected even when keepExtra=true, got %q", rBadIcon.Icon)
+	}
+
+	// 验证空标题按 URL 末段或主机名自动兜底，不覆盖已有标题
+	rEmptyGo := Result{Title: "", URL: "https://tip.golang.org/src/context/context.go"}
+	AlignResultDetail(&rEmptyGo, DetailSummary, false)
+	if rEmptyGo.Title != "context.go" {
+		t.Fatalf("expected fallback title context.go, got %q", rEmptyGo.Title)
+	}
+	rEmptyMD := Result{Title: "   ", URL: "https://modelcontextprotocol.io/specification/2026-07-28.md"}
+	AlignResultDetail(&rEmptyMD, DetailSummary, false)
+	if rEmptyMD.Title != "2026-07-28.md" {
+		t.Fatalf("expected fallback title 2026-07-28.md, got %q", rEmptyMD.Title)
+	}
+	rEmptyRoot := Result{Title: "", URL: "https://go.dev/"}
+	AlignResultDetail(&rEmptyRoot, DetailSummary, false)
+	if rEmptyRoot.Title != "go.dev" {
+		t.Fatalf("expected fallback title go.dev, got %q", rEmptyRoot.Title)
+	}
 }

@@ -7,6 +7,7 @@ lang = "auto"                           # auto | zh | en
 [search]
 providers = ["deepseek", "exa", "tinyfish", "tencent_wsa", "tavily", "brave"]
 # providers_en = ["exa", "tinyfish", "brave", "tavily", "deepseek"]
+# fusion_providers = ["deepseek", "exa", "tavily", "brave"]
 strategy = "auto"                       # auto | fusion
 count = 8                               # 默认结果数（1～50）
 detail = "summary"                      # snippet | summary | content
@@ -19,7 +20,7 @@ summary_max_runes = 800
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
 providers = ["deepseek", "tinyfish", "tavily", "exa"]
-# providers_global = ["tinyfish", "tavily", "exa", "deepseek"]
+providers_global = ["exa", "tavily", "tinyfish", "deepseek"] # 非中文站点提取链（设 [] 关闭分链）
 timeout = "30s"
 max_bytes = "5MB"                       # 本地抓取解压后响应体上限
 min_content_runes = 300                 # 本地提取正文质量闸门最少字符数
@@ -43,6 +44,7 @@ allow_private = false                   # 本地抓取是否允许内网地址�
 api_key = "env:DEEPSEEK_API_KEY"        # 支持直接填写明文密钥，多个 Key 用逗号分隔
 base_url = "https://api.deepseek.com"
 timeout = "10s"
+fetch_timeout = "10s"
 concurrency = 4
 weight = 1.0
 # price_search = "CNY:0.005"            # 可选：配置参考单价以在响应中估算成本

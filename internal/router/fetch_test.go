@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -174,17 +175,17 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 		t.Fatal("expected DynamicRenderHint=true propagated to Tavily after wall detection")
 	}
 
-	// 2. 海外站点默认优先调度免费无头渲染 tinyfish（跳过付费静态 deepseek 首跳）
+	// 2. 海外站点默认全球链为 exa -> tavily -> tinyfish -> deepseek；未启用 exa 时优先命中 tavily（跳过静态 deepseek 首跳）
 	order = nil
 	ovEnv, err := r.Fetch(context.Background(), &core.FetchRequest{URL: "https://docs.example.org/spa"})
-	if err != nil || ovEnv.Page.Provider != spec.ProviderTinyFish {
-		t.Fatalf("expected overseas escalation to hit tinyfish first, got env=%+v err=%v", ovEnv, err)
+	if err != nil || ovEnv.Page.Provider != spec.ProviderTavily {
+		t.Fatalf("expected overseas escalation to hit tavily first when exa absent, got env=%+v err=%v", ovEnv, err)
 	}
-	if len(order) != 2 || order[0] != "local" || order[1] != "tinyfish" {
-		t.Fatalf("expected [local tinyfish] on overseas site, got %v", order)
+	if len(order) != 2 || order[0] != "local" || order[1] != "tavily" {
+		t.Fatalf("expected [local tavily] on overseas site, got %v", order)
 	}
 
-	// 3. 明确 PDF URL（如 arxiv /pdf/）直接跳过 local 直连 tinyfish
+	// 3. 明确 PDF URL（如 arxiv /pdf/）直接跳过 local 直连 PDF 提取源（本夹具仅 tinyfish 声明 PDF=true）
 	order = nil
 	pdfEnv, err := r.Fetch(context.Background(), &core.FetchRequest{URL: "https://arxiv.org/pdf/2503.00001"})
 	if err != nil || pdfEnv.Page.Provider != spec.ProviderTinyFish {
@@ -202,6 +203,155 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 	}
 	if len(order) != 2 || order[0] != "local" || order[1] != "tinyfish" {
 		t.Fatalf("expected [local tinyfish] on runtime PDF detection, got %v", order)
+	}
+}
+
+func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
+	mkFetcher := func(name string, pdf bool) *spyFetcher {
+		return &spyFetcher{
+			name:    name,
+			profile: core.FetchProfile{PDF: pdf, DynamicRender: true},
+			fn: func(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
+				return &core.FetchOutcome{
+					Page: &core.Page{URL: req.URL, Title: name, Content: strings.Repeat("clean body ", 40), Provider: name},
+				}, nil
+			},
+		}
+	}
+
+	// 1. 默认配置下海外站点与海外 PDF 优先命中 exa（新全球链 exa -> tavily -> tinyfish -> deepseek）
+	rDefault := New(Options{FetchStrategy: core.FetchAPIFirst}, []core.Provider{
+		mkFetcher(spec.ProviderDeepSeek, false),
+		mkFetcher(spec.ProviderTinyFish, true),
+		mkFetcher(spec.ProviderTavily, true),
+		mkFetcher(spec.ProviderExa, true),
+	})
+	if got := rDefault.ActiveFetchChainGlobal(); strings.Join(got, ",") != "exa,tavily,tinyfish,deepseek" {
+		t.Fatalf("unexpected ActiveFetchChainGlobal: %v", got)
+	}
+	ovEnv, err := rDefault.Fetch(context.Background(), &core.FetchRequest{URL: "https://go.dev/doc/effective_go"})
+	if err != nil || ovEnv.Page.Provider != spec.ProviderExa {
+		t.Fatalf("expected exa first on global URL, got env=%+v err=%v", ovEnv, err)
+	}
+	pdfEnv, err := rDefault.Fetch(context.Background(), &core.FetchRequest{URL: "https://arxiv.org/pdf/2210.03629"})
+	if err != nil || pdfEnv.Page.Provider != spec.ProviderExa {
+		t.Fatalf("expected exa first on global PDF URL, got env=%+v err=%v", pdfEnv, err)
+	}
+
+	// 2. 用户显式配置与默认同序的 FetchProviders（未配 ProvidersGlobal）时，不得静默重排
+	rExplicit := New(Options{
+		FetchStrategy:          core.FetchAPIFirst,
+		FetchProviders:         spec.DefaultFetchProviders(),
+		FetchProvidersExplicit: true,
+	}, []core.Provider{
+		mkFetcher(spec.ProviderDeepSeek, false),
+		mkFetcher(spec.ProviderTinyFish, true),
+		mkFetcher(spec.ProviderTavily, true),
+		mkFetcher(spec.ProviderExa, true),
+	})
+	if got := rExplicit.ActiveFetchChainGlobal(); got != nil {
+		t.Fatalf("expected nil ActiveFetchChainGlobal when user explicitly configured single fetch chain, got %v", got)
+	}
+	expEnv, err := rExplicit.Fetch(context.Background(), &core.FetchRequest{URL: "https://go.dev/doc/effective_go"})
+	if err != nil || expEnv.Page.Provider != spec.ProviderDeepSeek {
+		t.Fatalf("expected explicit fetch.providers order respected (deepseek first), got env=%+v err=%v", expEnv, err)
+	}
+
+	// 2b. 自定义子集 FetchProvidersGlobal 与 SearchProviders 时，ActiveFetchChainGlobal / ActiveFusionChain 仅包含实际执行源，不误附未列出源
+	rSubset := New(Options{
+		SearchProviders:      []string{spec.ProviderExa},
+		FetchStrategy:        core.FetchAPIFirst,
+		FetchProviders:       []string{spec.ProviderDeepSeek, spec.ProviderTavily},
+		FetchProvidersGlobal: []string{spec.ProviderExa, spec.ProviderTavily},
+	}, []core.Provider{
+		&fakeSearcher{name: spec.ProviderDeepSeek, caps: core.Capabilities{MaxCount: 10}},
+		&fakeSearcher{name: spec.ProviderExa, caps: core.Capabilities{MaxCount: 10}},
+		mkFetcher(spec.ProviderDeepSeek, false),
+		mkFetcher(spec.ProviderTinyFish, true),
+		mkFetcher(spec.ProviderTavily, true),
+		mkFetcher(spec.ProviderExa, true),
+	})
+	if got := rSubset.ActiveFetchChainGlobal(); strings.Join(got, ",") != "exa,tavily" {
+		t.Fatalf("expected ActiveFetchChainGlobal=[exa tavily] without unlisted providers, got %v", got)
+	}
+	if got := rSubset.ActiveFusionChain(); strings.Join(got, ",") != "exa" {
+		t.Fatalf("expected ActiveFusionChain=[exa] without unlisted providers, got %v", got)
+	}
+
+	// 3. Lang=false 检索源（如修正后的 deepseek）在 --lang en --strict 时自动跳过，非严格时标记 lang:ignored
+	noLang := &fakeSearcher{
+		name: spec.ProviderDeepSeek,
+		caps: core.Capabilities{MaxCount: 50, Lang: false},
+		outcome: &core.SearchOutcome{
+			Results: []core.Result{{Rank: 1, Title: "中文文档", URL: "https://docs.python.org/zh-cn/3/"}},
+		},
+	}
+	nativeLang := &fakeSearcher{
+		name: spec.ProviderTavily,
+		caps: core.Capabilities{MaxCount: 20, Lang: true},
+		outcome: &core.SearchOutcome{
+			Results: []core.Result{{Rank: 1, Title: "English Docs", URL: "https://docs.python.org/3/"}},
+		},
+	}
+	rSearch := New(Options{SearchProviders: []string{spec.ProviderDeepSeek, spec.ProviderTavily}}, []core.Provider{noLang, nativeLang})
+	strictEnv, err := rSearch.Search(context.Background(), &core.SearchRequest{
+		Query:         "asyncio TaskGroup",
+		StrictFilters: true,
+		Filters:       core.Filters{Lang: []string{"en"}},
+	})
+	if err != nil || len(strictEnv.Results) != 1 || strictEnv.Results[0].URL != "https://docs.python.org/3/" {
+		t.Fatalf("expected strict --lang en to skip Lang=false provider and hit tavily, got env=%+v err=%v", strictEnv, err)
+	}
+	nonStrictEnv, err := rSearch.Search(context.Background(), &core.SearchRequest{
+		Query:   "asyncio TaskGroup",
+		Filters: core.Filters{Lang: []string{"en"}},
+	})
+	if err != nil || len(nonStrictEnv.Meta.Providers) != 1 || !strings.Contains(strings.Join(nonStrictEnv.Meta.Providers[0].Degraded, ","), "lang:ignored") {
+		t.Fatalf("expected non-strict --lang en on Lang=false provider to record lang:ignored, got %+v err=%v", nonStrictEnv.Meta.Providers, err)
+	}
+}
+
+func TestFetchTitleFallbackFromH1OrURL(t *testing.T) {
+	f := &spyFetcher{
+		name: spec.ProviderExa,
+		fn: func(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
+			if strings.HasSuffix(req.URL, ".md") {
+				return &core.FetchOutcome{
+					Page: &core.Page{
+						URL:      req.URL,
+						Title:    "",
+						Content:  "```sh\n# not a heading\n```\n\n# MCP Specification 2026¶\n\nBody text here.\n",
+						Provider: spec.ProviderExa,
+					},
+				}, nil
+			}
+			return &core.FetchOutcome{
+				Page: &core.Page{
+					URL:      req.URL,
+					Title:    "",
+					Content:  "package context\n\n// Package context defines Context.\n",
+					Provider: spec.ProviderExa,
+				},
+			}, nil
+		},
+	}
+	r := New(Options{FetchStrategy: core.FetchAPIOnly, FetchProviders: []string{spec.ProviderExa}}, []core.Provider{f})
+
+	// 1. 纯 .md 文档跳过围栏内注释，提取真实 # H1；即使 offset>0 也应保留标题
+	mdEnv, err := r.Fetch(context.Background(), &core.FetchRequest{
+		URL:    "https://modelcontextprotocol.io/specification/2026-07-28.md",
+		Offset: 30,
+	})
+	if err != nil || mdEnv.Page.Title != "MCP Specification 2026" {
+		t.Fatalf("expected H1 fallback title 'MCP Specification 2026', got env=%+v err=%v", mdEnv, err)
+	}
+
+	// 2. 裸源码无 H1 时回退 URL 路径末段
+	goEnv, err := r.Fetch(context.Background(), &core.FetchRequest{
+		URL: "https://tip.golang.org/src/context/context.go",
+	})
+	if err != nil || goEnv.Page.Title != "context.go" {
+		t.Fatalf("expected URL basename fallback title 'context.go', got env=%+v err=%v", goEnv, err)
 	}
 }
 
