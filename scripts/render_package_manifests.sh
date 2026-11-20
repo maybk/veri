@@ -160,21 +160,25 @@ class Veri < Formula
   license "MIT"
 
   on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/${repo}/releases/download/v${version}/veri-${version}-darwin-arm64.tar.gz"
+    on_arm do
+      url "https://github.com/${repo}/releases/download/v#{version}/veri-#{version}-darwin-arm64.tar.gz"
       sha256 "${darwin_arm64_sha}"
-    else
-      url "https://github.com/${repo}/releases/download/v${version}/veri-${version}-darwin-amd64.tar.gz"
+    end
+
+    on_intel do
+      url "https://github.com/${repo}/releases/download/v#{version}/veri-#{version}-darwin-amd64.tar.gz"
       sha256 "${darwin_amd64_sha}"
     end
   end
 
   on_linux do
-    if Hardware::CPU.arm?
-      url "https://github.com/${repo}/releases/download/v${version}/veri-${version}-linux-arm64.tar.gz"
+    on_arm do
+      url "https://github.com/${repo}/releases/download/v#{version}/veri-#{version}-linux-arm64.tar.gz"
       sha256 "${linux_arm64_sha}"
-    else
-      url "https://github.com/${repo}/releases/download/v${version}/veri-${version}-linux-amd64.tar.gz"
+    end
+
+    on_intel do
+      url "https://github.com/${repo}/releases/download/v#{version}/veri-#{version}-linux-amd64.tar.gz"
       sha256 "${linux_amd64_sha}"
     end
   end

@@ -33,6 +33,7 @@
   - `veri-<version>-windows-amd64.zip`
   - `veri-<version>-windows-arm64.zip`
   - `SHA256SUMS.txt`（配置 `MINISIGN_SECRET_KEY` 时附带 `SHA256SUMS.txt.minisig`）
+- **Release 说明与下载表**：由 `render_release_notes.sh` 生成，展示更新内容与三端安装包下载徽章（`Windows` / `macOS` / `Linux`）；`SHA256SUMS.txt` 校验文件位于底部 `Assets`。
 - **草稿校验与清理**：正式版与 Rolling 均先上传资产至 Draft Release，校验全部资产完整后再公开；正式版公开后自动清理已被取代的 Rolling 预发布与标签。
 
 ## 发布新版本
@@ -52,4 +53,4 @@
    git tag -a "v$version" -m "veri v$version"
    git push --atomic origin main "v$version"
    ```
-4. Release 发布完成后，可同步 [`maybk/homebrew-tap`](https://github.com/maybk/homebrew-tap) 更新 Homebrew Formula 与 Scoop Bucket（WinGet 清单按需提交）。
+4. Release 工作流发布完成后，[`maybk/homebrew-tap`](https://github.com/maybk/homebrew-tap) 会自动定时同步（或执行 `gh workflow run sync.yml -R maybk/homebrew-tap` 立即触发同步）。

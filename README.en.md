@@ -54,7 +54,7 @@ scoop bucket add maybk https://github.com/maybk/homebrew-tap
 scoop install maybk/veri
 ```
 
-<!--
+<!-- Enabled once the official WinGet PR is merged
 **WinGet (Windows)**
 
 ```powershell
@@ -62,23 +62,17 @@ winget install maybk.Veri
 ```
 -->
 
-### Manual Download & Building from Source
+### Manual Download
 
-Prebuilt archives (macOS / Windows / Linux, `amd64` / `arm64`) and `SHA256SUMS.txt` checksums are available on [GitHub Releases](https://github.com/maybk/veri/releases); standalone installs can check and upgrade directly via `veri update`.
-
-Build a static binary from source:
-
-```bash
-CGO_ENABLED=0 go build -trimpath -o bin/veri .
-```
+Prebuilt archives and `SHA256SUMS.txt` checksums are available on [GitHub Releases](https://github.com/maybk/veri/releases); standalone installs can check and upgrade directly via `veri update`. To build from source, see the [Development & Build Guide](./docs/guide/development.md).
 
 ## 🚀 Quick Start
 
-> Web page and GitHub extraction (`veri fetch`) works **out of the box with no API keys**; configuring any single search provider key unlocks web search and cloud extraction. See the [Usage Guide](./docs/guide/usage.md) for full walkthroughs and official API key portals.
+> Web page and GitHub extraction works **out of the box with no API keys**; configuring any single search provider key unlocks web search and cloud extraction. See the [Usage Guide](./docs/guide/usage.md) for full walkthroughs and official API key portals.
 
-### 1. Configure API Keys (For Web Search)
+### 1. Configure API Keys
 
-Credentials are encrypted under `~/.config/veri/` and shared between the CLI and `veri mcp`:
+Credentials are encrypted under `~/.config/veri/` and shared automatically between the CLI and MCP server:
 
 ```bash
 veri key set exa
@@ -101,7 +95,7 @@ veri doctor
 ### 2. Command-Line Usage
 
 ```bash
-# Extract web pages or GitHub repos/files/issues/PRs/discussions/commits (no API key required)
+# Extract web pages or GitHub repos / issues / PRs (no API key required)
 veri fetch https://github.com/modelcontextprotocol/go-sdk
 veri fetch https://example.com/article --section "Authentication" --max-chars 20000
 
@@ -115,7 +109,7 @@ veri search "raft leader lease" --fusion -p exa,tinyfish --json
 
 ### 3. MCP Server Integration
 
-Register `veri mcp` over `stdio` (run `veri mcp config` to print the JSON snippet). Keys stored under `~/.config/veri/` are loaded automatically; any keys passed in MCP `env` take precedence:
+Register `veri mcp` in your MCP client (or run `veri mcp config` to generate the JSON snippet); keys stored locally are shared automatically with no need to duplicate `env`:
 
 ```json
 {
@@ -130,7 +124,7 @@ Register `veri mcp` over `stdio` (run `veri mcp config` to print the JSON snippe
 
 ### 4. Agent Skill Installation
 
-Recommended via [`npx skills`](https://skills.sh) for unified multi-agent install and updates:
+Recommended via [`npx skills`](https://skills.sh) for unified multi-agent installation and updates:
 
 ```bash
 npx skills add maybk/veri
@@ -147,9 +141,9 @@ veri skill print     # Print the embedded SKILL.md
 
 ### 🎯 Core Capabilities
 
-- **Multi-Provider Search & Fallback** - Built-in support for `deepseek`, `exa`, `tinyfish`, `tencent_wsa`, `tavily`, and `brave`, enabled automatically from configured keys; supports automatic failover, language-aware routing, and concurrent fusion deduplication
-- **Clean Web & GitHub Extraction** - Built-in structured GitHub reader and pure-Go local extractor turn pages and repos/issues/PRs/commits into clean Markdown with zero keys; configured cloud extractors add dynamic rendering and PDF support, plus batch fetching, section slicing, and keyword matching
-- **Unified Filter Syntax** - One consistent set of flags for time windows, site allow/block lists, and language filters across providers, with `--strict` native enforcement when needed
+- **Multi-Provider Search & Fallback** - Built-in support for DeepSeek, Exa, TinyFish, Tencent WSA, Tavily, and Brave, enabled automatically from configured keys; supports automatic failover, language-aware routing, and concurrent fusion deduplication
+- **Clean Web & GitHub Extraction** - Built-in structured GitHub reader and pure-Go local extractor turn pages and repos / issues / PRs / commits into clean Markdown with zero keys; configured cloud extractors add dynamic rendering and PDF support, plus batch fetching, section slicing, and keyword matching
+- **Unified Filter Syntax** - One consistent set of flags for time windows, site allow/block lists, and language filters across providers, with strict native enforcement when needed
 - **CLI / MCP / Skill in One Binary** - One static executable delivers an interactive/scriptable CLI, a standard stdio MCP server, and Agent Skill integration for AI agents
 
 ### 🔧 Security & Reliability

@@ -161,10 +161,10 @@ badge() {
 
 win_x64="$(badge 'Windows ZIP x64' "ZIP-x64-${primary_color}" "logo=${windows_logo}" 'windows-amd64.zip')"
 win_arm64="$(badge 'Windows ZIP ARM64' "ZIP-ARM64-${secondary_color}" "logo=${windows_logo}" 'windows-arm64.zip')"
-mac_arm64="$(badge 'macOS Apple Silicon' "tar.gz-Apple%20Silicon-${primary_color}" 'logo=apple&amp;logoColor=white' 'darwin-arm64.tar.gz')"
-mac_amd64="$(badge 'macOS Intel' "tar.gz-Intel-${secondary_color}" 'logo=apple&amp;logoColor=white' 'darwin-amd64.tar.gz')"
-lin_x64="$(badge 'Linux x64' "tar.gz-x64-${primary_color}" 'logo=linux&amp;logoColor=white' 'linux-amd64.tar.gz')"
-lin_arm64="$(badge 'Linux ARM64' "tar.gz-ARM64-${secondary_color}" 'logo=linux&amp;logoColor=white' 'linux-arm64.tar.gz')"
+mac_arm64="$(badge 'macOS tar.gz Apple Silicon' "tar.gz-Apple%20Silicon-${primary_color}" 'logo=apple&amp;logoColor=white' 'darwin-arm64.tar.gz')"
+mac_amd64="$(badge 'macOS tar.gz Intel' "tar.gz-Intel-${secondary_color}" 'logo=apple&amp;logoColor=white' 'darwin-amd64.tar.gz')"
+lin_x64="$(badge 'Linux tar.gz x64' "tar.gz-x64-${primary_color}" 'logo=linux&amp;logoColor=white' 'linux-amd64.tar.gz')"
+lin_arm64="$(badge 'Linux tar.gz ARM64' "tar.gz-ARM64-${secondary_color}" 'logo=linux&amp;logoColor=white' 'linux-arm64.tar.gz')"
 
 if [ "$rolling" = true ]; then
   printf '%s\n%s\n\n' \
@@ -178,54 +178,29 @@ cat <<EOF
 ${changelog_body}
 
 ## 下载安装
-EOF
-
-if [ "$rolling" != true ]; then
-  raw_script_base="https://raw.githubusercontent.com/${repo}/main/scripts"
-  cat <<EOF
-
-### 一键脚本安装
-
-macOS / Linux:
-
-\`\`\`sh
-curl -fsSL ${raw_script_base}/install.sh | sh -s -- --version ${release_tag}
-\`\`\`
-
-Windows (PowerShell):
-
-\`\`\`powershell
-\$env:VERI_VERSION='${release_tag}'; irm ${raw_script_base}/install.ps1 | iex
-\`\`\`
-
-### 二进制包下载
-EOF
-fi
-
-cat <<EOF
 
 <table>
   <thead>
     <tr>
       <th align="left">系统</th>
-      <th align="left">架构支持</th>
-      <th align="left">静态二进制包下载</th>
+      <th align="left">系统版本</th>
+      <th align="left">安装包下载</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td><strong>macOS</strong></td>
-      <td>Apple Silicon / Intel</td>
-      <td>${mac_arm64}&nbsp;&nbsp;${mac_amd64}</td>
-    </tr>
-    <tr>
       <td><strong>Windows</strong></td>
-      <td>Windows 10 / 11 (x64 / ARM64)</td>
+      <td>Windows 10 / 11</td>
       <td>${win_x64}&nbsp;&nbsp;${win_arm64}</td>
     </tr>
     <tr>
+      <td><strong>macOS</strong></td>
+      <td>macOS 13.0+</td>
+      <td>${mac_arm64}&nbsp;&nbsp;${mac_amd64}</td>
+    </tr>
+    <tr>
       <td><strong>Linux</strong></td>
-      <td>x86_64 / ARM64 (CGO_ENABLED=0)</td>
+      <td>主流发行版</td>
       <td>${lin_x64}&nbsp;&nbsp;${lin_arm64}</td>
     </tr>
   </tbody>

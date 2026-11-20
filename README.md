@@ -54,7 +54,7 @@ scoop bucket add maybk https://github.com/maybk/homebrew-tap
 scoop install maybk/veri
 ```
 
-<!--
+<!-- WinGet 官方源 PR 待合入后启用
 **WinGet（Windows）**
 
 ```powershell
@@ -62,23 +62,17 @@ winget install maybk.Veri
 ```
 -->
 
-### 手动下载与源码编译
+### 手动下载
 
-各平台预编译压缩包（macOS / Windows / Linux，`amd64` / `arm64`）与 `SHA256SUMS.txt` 校验文件可从 [GitHub Releases](https://github.com/maybk/veri/releases) 下载，独立安装后支持通过 `veri update` 直接检测并升级。
-
-从源码编译静态二进制：
-
-```bash
-CGO_ENABLED=0 go build -trimpath -o bin/veri .
-```
+各平台压缩包与 `SHA256SUMS.txt` 校验文件可从 [GitHub Releases](https://github.com/maybk/veri/releases) 下载，独立安装后支持通过 `veri update` 直接检测并升级；如需从源码构建，请参阅[开发与构建指南](./docs/guide/development.md)。
 
 ## 🚀 快速开始
 
-> 网页正文与 GitHub 页面提取（`veri fetch`）**无需任何 API Key，开箱即用**；只需配置任意一个检索源密钥，即可解锁联网搜索与云端增强提取。完整使用教程与各源 API Key 申请入口见 [使用指南](./docs/guide/usage.md)。
+> 网页正文与 GitHub 页面提取**无需任何 API Key，开箱即用**；只需配置任意一个检索源密钥，即可解锁联网搜索与云端增强提取。完整使用教程与各源 API Key 申请入口见[使用指南](./docs/guide/usage.md)。
 
-### 1. 配置 API Key（联网搜索所需）
+### 1. 配置 API Key
 
-凭据统一加密保存在 `~/.config/veri/`，由 CLI 与 `veri mcp` 自动共享：
+凭据统一加密保存在 `~/.config/veri/`，由 CLI 与 MCP 服务自动共享：
 
 ```bash
 veri key set deepseek
@@ -101,7 +95,7 @@ veri doctor
 ### 2. 命令行使用
 
 ```bash
-# 提取网页或 GitHub 仓库/文件/Issue/PR/Discussion/Commit（无需密钥即可使用）
+# 提取网页或 GitHub 仓库 / Issue / PR（无需密钥，开箱即用）
 veri fetch https://github.com/modelcontextprotocol/go-sdk
 veri fetch https://example.com/article --section "Authentication" --max-chars 20000
 
@@ -115,7 +109,7 @@ veri search "raft leader lease" --fusion -p deepseek,exa --json
 
 ### 3. 接入 MCP 客户端
 
-在客户端配置中注册 `veri mcp`（可执行 `veri mcp config` 导出配置片段）。已在 `~/.config/veri/` 配置密钥时无需重复填写 `env`；若在 MCP 配置中传入 `env`，则以传入的环境变量为准：
+在客户端配置中注册 `veri mcp`（可执行 `veri mcp config` 生成配置片段）；已在本机保存的密钥会自动共享，无需在 `env` 中重复填写：
 
 ```json
 {
@@ -130,7 +124,7 @@ veri search "raft leader lease" --fusion -p deepseek,exa --json
 
 ### 4. 安装 Agent Skill
 
-推荐使用 [`npx skills`](https://skills.sh) 统一安装与更新（支持多 Agent 宿主）：
+推荐使用 [`npx skills`](https://skills.sh) 跨多 Agent 宿主统一安装与更新：
 
 ```bash
 npx skills add maybk/veri
@@ -147,9 +141,9 @@ veri skill print     # 输出内置 SKILL.md 原文
 
 ### 🎯 核心功能
 
-- **多源检索与自动回退** - 内置 `deepseek`、`exa`、`tinyfish`、`tencent_wsa`、`tavily`、`brave` 检索源，按已配置密钥自动启用；支持自动故障回退、中英文分链选路与多源并发融合去重
-- **网页与 GitHub 正文提取** - 内置 GitHub 结构化读取器与纯 Go 本地提取器，零密钥即可将网页及仓库/Issue/PR/Commit 转为干净 Markdown；配置云端源后扩展动态渲染与 PDF 提取，并支持批量抓取、章节截取与关键词定位
-- **统一过滤语法** - 一套参数跨检索源控制时间范围、站点包含/排除与语言过滤，屏蔽各家接口差异，也支持 `--strict` 严格原生匹配
+- **多源检索与自动回退** - 内置 DeepSeek、Exa、TinyFish、腾讯云联网搜索、Tavily 与 Brave 检索源，按已配置密钥自动启用；支持自动故障回退、中英文分链选路与多源并发融合去重
+- **网页与 GitHub 正文提取** - 内置 GitHub 结构化读取器与纯 Go 本地提取器，零密钥即可将网页及仓库 / Issue / PR / Commit 转为干净 Markdown；配置云端源后扩展动态渲染与 PDF 提取，并支持批量抓取、章节截取与关键词定位
+- **统一过滤语法** - 一套参数跨检索源控制时间范围、站点包含/排除与语言过滤，屏蔽各家接口差异，也支持严格原生匹配
 - **三端形态合一** - 单个静态二进制同时提供命令行工具、标准 stdio MCP 服务端与 Agent Skill，开箱接入各类 AI Agent
 
 ### 🔧 安全与可靠性
