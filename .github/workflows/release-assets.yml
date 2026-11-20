@@ -36,8 +36,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: "1.27.x"
-          check-latest: true
+          go-version-file: go.mod
           cache: true
 
       - name: Run native macOS arm64 analysis and test suite
@@ -49,7 +48,7 @@ jobs:
             exit 1
           fi
           go vet ./...
-          go test -race ./...
+          CGO_ENABLED=1 go test -race ./...
 
       - name: Build, smoke-test, and package darwin arm64 & amd64 archives
         shell: bash
@@ -119,8 +118,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: "1.27.x"
-          check-latest: true
+          go-version-file: go.mod
           cache: true
 
       - name: Run native Linux amd64 analysis and test suite
@@ -132,7 +130,7 @@ jobs:
             exit 1
           fi
           go vet ./...
-          go test -race ./...
+          CGO_ENABLED=1 go test -race ./...
 
       - name: Build, smoke-test, and package linux amd64 archive
         shell: bash
@@ -200,8 +198,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: "1.27.x"
-          check-latest: true
+          go-version-file: go.mod
           cache: true
 
       - name: Run native Linux arm64 analysis and test suite
@@ -213,7 +210,7 @@ jobs:
             exit 1
           fi
           go vet ./...
-          go test -race ./...
+          CGO_ENABLED=1 go test -race ./...
 
       - name: Build, smoke-test, and package linux arm64 archive
         shell: bash
@@ -281,8 +278,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: "1.27.x"
-          check-latest: true
+          go-version-file: go.mod
           cache: true
 
       - name: Run native Windows amd64 analysis and test suite
@@ -360,8 +356,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: "1.27.x"
-          check-latest: true
+          go-version-file: go.mod
           cache: true
 
       - name: Run native Windows arm64 analysis and test suite

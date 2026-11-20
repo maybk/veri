@@ -65,7 +65,9 @@ for required_ci in \
   'darwin/arm64' \
   'windows/arm64' \
   'linux/arm64' \
+  'go-version-file: go.mod' \
   'go test -race ./...' \
+  'CGO_ENABLED: "1"' \
   'artifact-roundtrip:' \
   'if-no-files-found: error' \
   'cmp --silent'; do
@@ -82,7 +84,9 @@ for required_runner in \
   'runs-on: ubuntu-24.04-arm' \
   'runs-on: windows-latest' \
   'runs-on: windows-11-arm' \
+  'go-version-file: go.mod' \
   'CGO_ENABLED: "0"' \
+  'CGO_ENABLED=1 go test -race ./...' \
   '--uname "" --gname ""' \
   '--owner=0 --group=0 --numeric-owner'; do
   if ! grep -Fq -- "$required_runner" "$release_assets_workflow"; then

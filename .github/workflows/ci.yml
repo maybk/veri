@@ -35,8 +35,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: "1.27.x"
-          check-latest: true
+          go-version-file: go.mod
           cache: true
 
       - name: Check Go formatting and static analysis
@@ -86,14 +85,13 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 
   test:
-    name: Test & Smoke (${{ matrix.os }} · Go ${{ matrix.go }})
+    name: Test & Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-latest, windows-latest]
-        go: ["1.27.x"]
     env:
       CGO_ENABLED: "0"
     steps:
@@ -105,12 +103,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: ${{ matrix.go }}
-          check-latest: true
+          go-version-file: go.mod
           cache: true
 
       - name: Run tests with race detector (Unix)
         if: matrix.os != 'windows-latest'
+        env:
+          CGO_ENABLED: "1"
         run: go test -race ./...
 
       - name: Run tests (Windows CGO_ENABLED=0)

@@ -181,9 +181,13 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 		t.Fatalf("expected exit code 2 on malformed fetch -o flag, got %d", code)
 	}
 
-	// 验证 providers.local.enabled = false 时双语状态展示与内网拒绝提示
+	// 验证 providers.local.enabled = false 时双语状态展示与内网拒绝提示（不依赖宿主系统语言的模板注释）
 	noLocalCfgPath := filepath.Join(tmpDir, "no-local.toml")
-	_ = os.WriteFile(noLocalCfgPath, []byte(strings.ReplaceAll(patchedCfg, "enabled = true                          # 设为 false 可完全禁用本地网页提取器", "enabled = false")), 0o600)
+	noLocalCfg := strings.Replace(patchedCfg, "[providers.local]\nenabled = true", "[providers.local]\nenabled = false", 1)
+	if noLocalCfg == patchedCfg {
+		t.Fatalf("failed to disable [providers.local] in generated config template")
+	}
+	_ = os.WriteFile(noLocalCfgPath, []byte(noLocalCfg), 0o600)
 	var nlOut, nlErr bytes.Buffer
 	nlCode := ExecuteContext(context.Background(), []string{"--config", noLocalCfgPath, "--ui-lang", "zh", "providers"}, repoFS, BuildInfo{Version: "1.0.0"}, strings.NewReader(""), &nlOut, &nlErr, func(string) string { return "" })
 	if nlCode != 0 || !strings.Contains(nlOut.String(), "已在配置中禁用") {
@@ -335,7 +339,7 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 	var enOut, enErr bytes.Buffer
 	enCode := ExecuteContext(context.Background(), []string{"--config", enCfgPath, "--ui-lang", "en", "config", "init"}, repoFS, BuildInfo{Version: "1.0.0"}, strings.NewReader(""), &enOut, &enErr, func(string) string { return "" })
 	enRaw, _ := os.ReadFile(enCfgPath)
-	if enCode != 0 || !strings.Contains(string(enRaw), "# veri configuration file.") {
+	if enCode != 0 || !strings.Contains(string(enRaw), "# veri configuration file.") || !strings.Contains(string(enRaw), "[providers.local]\nenabled = true") {
 		t.Fatalf("expected English-commented config template under --ui-lang en, code=%d content=%s", enCode, string(enRaw))
 	}
 }

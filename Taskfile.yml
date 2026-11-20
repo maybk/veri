@@ -123,12 +123,12 @@ tasks:
   test:
     desc: 运行全量单元测试与竞态检测
     cmds:
-      - '{{if eq OS "windows"}}go test ./...{{else}}go test -race ./...{{end}}'
+      - '{{if eq OS "windows"}}go test ./...{{else}}CGO_ENABLED=1 go test -race ./...{{end}}'
 
   test:cover:
     desc: 运行测试并输出各包覆盖率报告
     cmds:
-      - '{{if eq OS "windows"}}go test -coverprofile=coverage.out ./...{{else}}go test -race -coverprofile=coverage.out ./...{{end}}'
+      - '{{if eq OS "windows"}}go test -coverprofile=coverage.out ./...{{else}}CGO_ENABLED=1 go test -race -coverprofile=coverage.out ./...{{end}}'
       - go tool cover -func=coverage.out
 
   test:live:

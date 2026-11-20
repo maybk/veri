@@ -29,15 +29,15 @@ if grep -Fq "http://" "$install_ps1"; then
   exit 1
 fi
 if command -v pwsh >/dev/null 2>&1; then
-  pwsh -NoProfile -Command '
+  VERI_TEST_INSTALL_PS1="$install_ps1" pwsh -NoProfile -Command '
     $tokens = $null
     $errors = $null
-    [void][System.Management.Automation.Language.Parser]::ParseFile($args[0], [ref]$tokens, [ref]$errors)
+    [void][System.Management.Automation.Language.Parser]::ParseFile($env:VERI_TEST_INSTALL_PS1, [ref]$tokens, [ref]$errors)
     if ($errors.Count -gt 0) {
       $errors | ForEach-Object { Write-Error $_.Message }
       exit 1
     }
-  ' "$install_ps1"
+  '
 fi
 
 # 3. 非法参数拦截校验（无需网络）

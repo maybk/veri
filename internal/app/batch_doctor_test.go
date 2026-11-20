@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -156,7 +157,11 @@ func TestRunDoctorResolverStatesAndLiveChecks(t *testing.T) {
 		return []netip.Addr{netip.MustParseAddr("198.18.0.42")}, nil
 	}
 	repFake := application.RunDoctor(context.Background(), "zh-CN", "flag", false)
-	if !repFake.FakeIPDetected || repFake.ProbeIP != "198.18.0.42" || repFake.EnabledSearcher != 1 || repFake.ConfigMode != "0600" {
+	wantMode := "0600"
+	if runtime.GOOS == "windows" {
+		wantMode = ""
+	}
+	if !repFake.FakeIPDetected || repFake.ProbeIP != "198.18.0.42" || repFake.EnabledSearcher != 1 || repFake.ConfigMode != wantMode {
 		t.Fatalf("unexpected Fake-IP doctor report: %+v", repFake)
 	}
 	// allow_private=true 计 1 项 issue
