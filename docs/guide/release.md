@@ -53,4 +53,4 @@
    git tag -a "v$version" -m "veri v$version"
    git push --atomic origin main "v$version"
    ```
-4. Release 工作流发布完成后，[`maybk/homebrew-tap`](https://github.com/maybk/homebrew-tap) 会自动定时同步（或执行 `gh workflow run sync.yml -R maybk/homebrew-tap` 立即触发同步）。
+4. Release 工作流发布完成后，[`maybk/homebrew-tap`](https://github.com/maybk/homebrew-tap) 会自动定时同步 Homebrew Formula、Scoop Bucket、WinGet 清单与 npm 包（`@maybk/veri`），也可执行 `gh workflow run sync.yml -R maybk/homebrew-tap` 立即触发同步。

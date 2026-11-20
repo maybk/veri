@@ -41,6 +41,12 @@ irm https://raw.githubusercontent.com/maybk/veri/main/scripts/install.ps1 | iex
 
 ### Package Managers
 
+**npm (macOS / Linux / Windows)**
+
+```bash
+npm install -g @maybk/veri
+```
+
 **Homebrew (macOS / Linux)**
 
 ```bash
@@ -52,6 +58,12 @@ brew install maybk/tap/veri
 ```powershell
 scoop bucket add maybk https://github.com/maybk/homebrew-tap
 scoop install maybk/veri
+```
+
+**mise (macOS / Linux / Windows)**
+
+```bash
+mise use -g npm:@maybk/veri      # or mise use -g github:maybk/veri
 ```
 
 <!-- Enabled once the official WinGet PR is merged
@@ -117,6 +129,19 @@ Register `veri mcp` in your MCP client (or run `veri mcp config` to generate the
     "veri": {
       "command": "veri",
       "args": ["mcp"]
+    }
+  }
+}
+```
+
+Without a global install, you can also run it directly via `npx`:
+
+```json
+{
+  "mcpServers": {
+    "veri": {
+      "command": "npx",
+      "args": ["-y", "@maybk/veri", "mcp"]
     }
   }
 }

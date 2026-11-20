@@ -41,6 +41,12 @@ irm https://raw.githubusercontent.com/maybk/veri/main/scripts/install.ps1 | iex
 
 ### 包管理器安装
 
+**npm（macOS / Linux / Windows）**
+
+```bash
+npm install -g @maybk/veri
+```
+
 **Homebrew（macOS / Linux）**
 
 ```bash
@@ -52,6 +58,12 @@ brew install maybk/tap/veri
 ```powershell
 scoop bucket add maybk https://github.com/maybk/homebrew-tap
 scoop install maybk/veri
+```
+
+**mise（macOS / Linux / Windows）**
+
+```bash
+mise use -g npm:@maybk/veri      # 或 mise use -g github:maybk/veri
 ```
 
 <!-- WinGet 官方源 PR 待合入后启用
@@ -117,6 +129,19 @@ veri search "raft leader lease" --fusion -p deepseek,exa --json
     "veri": {
       "command": "veri",
       "args": ["mcp"]
+    }
+  }
+}
+```
+
+未全局安装时，也可通过 `npx` 直接拉起：
+
+```json
+{
+  "mcpServers": {
+    "veri": {
+      "command": "npx",
+      "args": ["-y", "@maybk/veri", "mcp"]
     }
   }
 }

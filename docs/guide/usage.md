@@ -140,6 +140,19 @@ veri mcp config --full-path  # 客户端无法继承 PATH 时，输出二进制�
 }
 ```
 
+未全局安装时，也可通过 `npx` 直接拉起 MCP 服务：
+
+```json
+{
+  "mcpServers": {
+    "veri": {
+      "command": "npx",
+      "args": ["-y", "@maybk/veri", "mcp"]
+    }
+  }
+}
+```
+
 已在 `~/.config/veri/` 通过 `veri key set` 保存密钥时，MCP 配置中无需重复填写明文 `env`；如在 MCP 配置中显式传入 `env`，将以传入的环境变量为准。
 
 ### Agent Skill
@@ -175,8 +188,10 @@ veri update                   # 下载官方发布包、校验 SHA-256 并原地
 **包管理器安装**（请使用对应包管理器升级，避免覆盖托管目录）
 
 ```bash
-brew upgrade veri             # Homebrew（macOS / Linux）
-scoop update veri             # Scoop（Windows）
+npm install -g @maybk/veri@latest   # npm（macOS / Linux / Windows）
+brew upgrade veri                   # Homebrew（macOS / Linux）
+scoop update veri                   # Scoop（Windows）
+mise upgrade npm:@maybk/veri        # mise（或 mise upgrade github:maybk/veri）
 ```
 
 ### 常见问题
