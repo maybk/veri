@@ -48,6 +48,84 @@ func TestProviderRegistryMatchesCoreCatalog(t *testing.T) {
 		if st.Role == "" {
 			t.Errorf("provider %q has empty Role declaration", st.Name)
 		}
+		if strings.Contains(st.Details, "·") {
+			t.Errorf("provider %q details must not contain middle dot: %q", st.Name, st.Details)
+		}
+		if st.Enabled && st.Timeout == "" {
+			t.Errorf("enabled provider %q missing Timeout", st.Name)
+		}
+		if !st.Enabled && st.Timeout != "" {
+			t.Errorf("disabled provider %q should omit Timeout, got %q", st.Name, st.Timeout)
+		}
+	}
+}
+
+func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	env := map[string]string{
+		"DEEPSEEK_API_KEY":    "sk-test-deepseek-1234",
+		"EXA_API_KEY":         "exa-test-key-1234",
+		"TINYFISH_API_KEY":    "sk-test-tinyfish-1234",
+		"TENCENT_WSA_API_KEY": "sk-test-wsa-1234",
+		"TAVILY_API_KEY":      "tvly-test-key-1234",
+		"BRAVE_API_KEY":       "BSA-test-brave-1234567890",
+	}
+	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	application, err := NewWithStderr(loaded, "1.0.0-test", io.Discard)
+	if err != nil {
+		t.Fatalf("NewWithStderr: %v", err)
+	}
+
+	wantTimeout := map[string]string{
+		spec.ProviderDeepSeek:   "10s/25s",
+		spec.ProviderExa:        "10s/25s",
+		spec.ProviderTinyFish:   "10s/25s",
+		spec.ProviderTencentWSA: "10s",
+		spec.ProviderTavily:     "10s/25s",
+		spec.ProviderBrave:      "10s",
+		spec.ProviderGitHub:     "10s",
+		spec.ProviderLocal:      "10s",
+	}
+	wantDetails := map[string]string{
+		spec.ProviderDeepSeek:   "concurrency=4",
+		spec.ProviderExa:        "type=auto",
+		spec.ProviderTinyFish:   "concurrency=4",
+		spec.ProviderTencentWSA: "edition=standard",
+		spec.ProviderTavily:     "depth=basic/basic",
+		spec.ProviderBrave:      "mode=auto",
+		spec.ProviderGitHub:     "concurrency=4",
+		spec.ProviderLocal:      "min_runes=300, max_bytes=5MB",
+	}
+	for _, st := range application.ProviderStatuses() {
+		if !st.Enabled {
+			t.Errorf("expected provider %q enabled", st.Name)
+		}
+		if st.Timeout != wantTimeout[st.Name] {
+			t.Errorf("provider %q Timeout = %q, want %q", st.Name, st.Timeout, wantTimeout[st.Name])
+		}
+		if st.Details != wantDetails[st.Name] {
+			t.Errorf("provider %q Details = %q, want %q", st.Name, st.Details, wantDetails[st.Name])
+		}
+	}
+
+	timeoutCases := []struct {
+		search time.Duration
+		fetch  time.Duration
+		want   string
+	}{
+		{10 * time.Second, 25 * time.Second, "10s/25s"},
+		{10 * time.Second, 10 * time.Second, "10s"},
+		{10 * time.Second, 0, "10s"},
+		{0, 25 * time.Second, "25s"},
+		{0, 0, "-"},
+	}
+	for _, tc := range timeoutCases {
+		if got := formatProviderTimeout(tc.search, tc.fetch); got != tc.want {
+			t.Errorf("formatProviderTimeout(%v, %v) = %q, want %q", tc.search, tc.fetch, got, tc.want)
+		}
 	}
 }
 

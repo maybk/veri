@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"net/url"
+	"time"
 
 	"veri/internal/config"
 	"veri/internal/core"
@@ -18,14 +19,15 @@ import (
 	"veri/internal/spec"
 )
 
-// ProviderStatus 描述单个内置 Provider 的启用状态、鉴权来源、目标端点与运行参数。
+// ProviderStatus 描述单个内置 Provider 的启用状态、凭据来源、目标端点、超时与运行参数。
 type ProviderStatus struct {
 	Name     string `json:"name"`
 	Role     string `json:"role"`
-	Status   string `json:"status"`   // enabled | disabled
-	Auth     string `json:"auth"`     // env:XXX | config | missing | optional | -
-	Endpoint string `json:"endpoint"` // 目标 API 主机或 "-"
-	Details  string `json:"details"`  // 生效运行参数或配置指引
+	Status   string `json:"status"`            // enabled | disabled
+	Source   string `json:"source"`            // env:XXX | secrets.json | config.toml | missing | optional | -
+	Endpoint string `json:"endpoint"`          // 目标 API 主机或 "-"
+	Timeout  string `json:"timeout,omitempty"` // 生效超时（如 10s 或 10s/25s），未启用时为空
+	Details  string `json:"details"`           // 生效运行参数或配置指引
 	Enabled  bool   `json:"enabled"`
 }
 
@@ -70,8 +72,9 @@ func buildDeepSeek(loaded *config.Loaded, deps Deps) (core.Provider, ProviderSta
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
-	details := fmt.Sprintf("timeout=%s/%s · concurrency=%d", cfg.Timeout.Duration, cfg.FetchTimeout.Duration, cfg.Concurrency)
-	return p, statusEntry(spec.ProviderDeepSeek, enabled, cred.Source, hostFromURL(cfg.BaseURL), details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, cfg.FetchTimeout.Duration)
+	details := fmt.Sprintf("concurrency=%d", cfg.Concurrency)
+	return p, statusEntry(spec.ProviderDeepSeek, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
 }
 
 func buildExa(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
@@ -93,8 +96,9 @@ func buildExa(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, 
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
-	details := fmt.Sprintf("type=%s · timeout=%s", cfg.SearchType, cfg.Timeout.Duration)
-	return p, statusEntry(spec.ProviderExa, enabled, cred.Source, hostFromURL(cfg.BaseURL), details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, cfg.FetchTimeout.Duration)
+	details := fmt.Sprintf("type=%s", cfg.SearchType)
+	return p, statusEntry(spec.ProviderExa, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
 }
 
 func buildTinyFish(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
@@ -118,8 +122,9 @@ func buildTinyFish(loaded *config.Loaded, deps Deps) (core.Provider, ProviderSta
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
-	details := fmt.Sprintf("timeout=%s/%s · concurrency=%d", cfg.Timeout.Duration, cfg.FetchTimeout.Duration, cfg.Concurrency)
-	return p, statusEntry(spec.ProviderTinyFish, enabled, cred.Source, hostFromURL(cfg.SearchURL), details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, cfg.FetchTimeout.Duration)
+	details := fmt.Sprintf("concurrency=%d", cfg.Concurrency)
+	return p, statusEntry(spec.ProviderTinyFish, enabled, cred.Source, hostFromURL(cfg.SearchURL), timeout, details), nil
 }
 
 func buildTencentWSA(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
@@ -140,8 +145,9 @@ func buildTencentWSA(loaded *config.Loaded, deps Deps) (core.Provider, ProviderS
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
-	details := fmt.Sprintf("edition=%s · timeout=%s", cfg.Edition, cfg.Timeout.Duration)
-	return p, statusEntry(spec.ProviderTencentWSA, enabled, cred.Source, hostFromURL(cfg.BaseURL), details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, 0)
+	details := fmt.Sprintf("edition=%s", cfg.Edition)
+	return p, statusEntry(spec.ProviderTencentWSA, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
 }
 
 func buildTavily(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
@@ -164,8 +170,9 @@ func buildTavily(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatu
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
-	details := fmt.Sprintf("depth=%s/%s · timeout=%s", cfg.SearchDepth, cfg.ExtractDepth, cfg.Timeout.Duration)
-	return p, statusEntry(spec.ProviderTavily, enabled, cred.Source, hostFromURL(cfg.BaseURL), details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, cfg.FetchTimeout.Duration)
+	details := fmt.Sprintf("depth=%s/%s", cfg.SearchDepth, cfg.ExtractDepth)
+	return p, statusEntry(spec.ProviderTavily, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
 }
 
 func buildBrave(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
@@ -186,19 +193,20 @@ func buildBrave(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
-	details := fmt.Sprintf("mode=%s · timeout=%s", cfg.Mode, cfg.Timeout.Duration)
-	return p, statusEntry(spec.ProviderBrave, enabled, cred.Source, hostFromURL(cfg.BaseURL), details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, 0)
+	details := fmt.Sprintf("mode=%s", cfg.Mode)
+	return p, statusEntry(spec.ProviderBrave, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
 }
 
 func buildGitHub(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
 	cfg := loaded.Config.Providers.GitHub
 	cred := loaded.Credentials[spec.ProviderGitHub]
-	authLabel := "optional"
+	source := spec.CredSourceOptional
 	if len(cred.Keys) > 0 {
-		authLabel = cred.Source
+		source = cred.Source
 	}
 	if !cfg.Enabled {
-		return nil, disabledByConfigEntry(spec.ProviderGitHub, authLabel, hostFromURL(cfg.APIBaseURL)), nil
+		return nil, disabledByConfigEntry(spec.ProviderGitHub, source, hostFromURL(cfg.APIBaseURL)), nil
 	}
 	p, enabled, err := github.New(github.Options{
 		Tokens:      cred.Keys,
@@ -212,12 +220,14 @@ func buildGitHub(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatu
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
-	details := fmt.Sprintf("token=none · timeout=%s", cfg.Timeout.Duration)
 	if p.HasToken() {
-		authLabel = cred.Source
-		details = fmt.Sprintf("token=configured · timeout=%s", cfg.Timeout.Duration)
+		source = cred.Source
+	} else {
+		source = spec.CredSourceOptional
 	}
-	return p, statusEntry(spec.ProviderGitHub, enabled, authLabel, hostFromURL(cfg.APIBaseURL), details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, 0)
+	details := fmt.Sprintf("concurrency=%d", cfg.Concurrency)
+	return p, statusEntry(spec.ProviderGitHub, enabled, source, hostFromURL(cfg.APIBaseURL), timeout, details), nil
 }
 
 func buildLocal(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
@@ -239,17 +249,31 @@ func buildLocal(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus
 		return nil, ProviderStatus{}, err
 	}
 	maxBytesText, _ := fCfg.MaxBytes.MarshalText()
-	details := fmt.Sprintf("readability · min_runes=%d · max_bytes=%s", fCfg.MinContentRunes, string(maxBytesText))
-	return p, statusEntry(spec.ProviderLocal, enabled, "-", "-", details), nil
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, 0)
+	details := fmt.Sprintf("min_runes=%d, max_bytes=%s", fCfg.MinContentRunes, string(maxBytesText))
+	return p, statusEntry(spec.ProviderLocal, enabled, "-", "-", timeout, details), nil
 }
 
-func disabledByConfigEntry(name, authSource, endpoint string) ProviderStatus {
+func formatProviderTimeout(searchTimeout, fetchTimeout time.Duration) string {
+	switch {
+	case searchTimeout > 0 && fetchTimeout > 0 && fetchTimeout != searchTimeout:
+		return fmt.Sprintf("%s/%s", searchTimeout, fetchTimeout)
+	case searchTimeout > 0:
+		return searchTimeout.String()
+	case fetchTimeout > 0:
+		return fetchTimeout.String()
+	default:
+		return "-"
+	}
+}
+
+func disabledByConfigEntry(name, source, endpoint string) ProviderStatus {
 	info, _ := spec.LookupProvider(name)
 	return ProviderStatus{
 		Name:     name,
 		Role:     info.Roles.String(),
 		Status:   "disabled",
-		Auth:     authSource,
+		Source:   source,
 		Endpoint: endpoint,
 		Details:  spec.DetailDisabledInConfig,
 		Enabled:  false,
@@ -265,20 +289,24 @@ func hostFromURL(raw string) string {
 }
 
 // statusEntry 按 Provider 登记表生成状态行：角色取自登记声明，未启用且需要凭据时给出可直接执行的配置指引。
-func statusEntry(name string, enabled bool, authSource, endpoint, details string) ProviderStatus {
+func statusEntry(name string, enabled bool, source, endpoint, timeout, details string) ProviderStatus {
 	info, _ := spec.LookupProvider(name)
 	st := "disabled"
 	if enabled {
 		st = "enabled"
-	} else if info.NeedsCredential() {
-		details = fmt.Sprintf("run `veri key set %s` or set %s", info.Name, info.EnvVars[0])
+	} else {
+		timeout = ""
+		if info.NeedsCredential() {
+			details = fmt.Sprintf("run `veri key set %s` or set %s", info.Name, info.EnvVars[0])
+		}
 	}
 	return ProviderStatus{
 		Name:     name,
 		Role:     info.Roles.String(),
 		Status:   st,
-		Auth:     authSource,
+		Source:   source,
 		Endpoint: endpoint,
+		Timeout:  timeout,
 		Details:  details,
 		Enabled:  enabled,
 	}

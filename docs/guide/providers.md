@@ -59,7 +59,7 @@
 ## 状态检查与连通性诊断
 
 ```bash
-veri providers            # 查看各适配器启用状态、凭证状态、端点与运行参数
+veri providers            # 查看各适配器启用状态、凭据来源、端点、超时与运行参数
 veri doctor               # 离线检查配置权限、已启用链路、DNS 解析与 Fake-IP 识别
 veri doctor --live --yes  # 对每个已启用的检索源发起 1 次真实最小请求验证连通性
 ```

@@ -17,8 +17,14 @@ func DisplayWidth(s string) int {
 	return width
 }
 
-// WriteTable 按终端显示列宽对齐渲染无边框表格，并在列宽计算完成后对单元格施加可选 ANSI 着色，防止颜色转义码破坏列对齐。
-func WriteTable(w io.Writer, headers []string, rows [][]string, colorize func(col int, val string) string) {
+// TableStyle 定义无边框表格的可选 ANSI 样式函数（均在列宽计算完成后应用，防止转义码破坏列对齐）。
+type TableStyle struct {
+	Header func(val string) string
+	Cell   func(col int, val string) string
+}
+
+// WriteTable 按终端显示列宽对齐渲染无边框表格，并在列宽计算完成后施加可选 ANSI 样式。
+func WriteTable(w io.Writer, headers []string, rows [][]string, style TableStyle) {
 	if w == nil || len(headers) == 0 {
 		return
 	}
@@ -32,7 +38,7 @@ func WriteTable(w io.Writer, headers []string, rows [][]string, colorize func(co
 		}
 	}
 
-	writeRow := func(cells []string, isHeader bool) {
+	writeRow := func(cells []string, render func(col int, val string) string) {
 		var b strings.Builder
 		for i := range headers {
 			val := ""
@@ -40,8 +46,8 @@ func WriteTable(w io.Writer, headers []string, rows [][]string, colorize func(co
 				val = cells[i]
 			}
 			rendered := val
-			if !isHeader && colorize != nil {
-				rendered = colorize(i, val)
+			if render != nil {
+				rendered = render(i, val)
 			}
 			b.WriteString(rendered)
 			if i < len(headers)-1 {
@@ -52,9 +58,15 @@ func WriteTable(w io.Writer, headers []string, rows [][]string, colorize func(co
 		_, _ = fmt.Fprintln(w, b.String())
 	}
 
-	writeRow(headers, true)
+	var headerRender func(int, string) string
+	if style.Header != nil {
+		headerRender = func(_ int, val string) string {
+			return style.Header(val)
+		}
+	}
+	writeRow(headers, headerRender)
 	for _, row := range rows {
-		writeRow(row, false)
+		writeRow(row, style.Cell)
 	}
 }
 

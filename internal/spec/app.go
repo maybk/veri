@@ -21,6 +21,9 @@ const (
 	LangAuto               = "auto"
 	UserAgentBrowserMode   = "browser"
 	DetailDisabledInConfig = "disabled in config"
+	CredSourceEnvPrefix    = "env:"
+	CredSourceMissing      = "missing"
+	CredSourceOptional     = "optional"
 
 	BrowserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
 )

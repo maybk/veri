@@ -110,6 +110,9 @@ func TestUnknownKeyRejectionAndPermissionWarning(t *testing.T) {
 	if runtime.GOOS != "windows" && !loaded.PermWarning {
 		t.Fatal("expected PermWarning=true when plaintext key is stored with 0644")
 	}
+	if got := loaded.Credentials["deepseek"]; got.Source != spec.ConfigFileName {
+		t.Fatalf("expected plaintext key source %q, got %+v", spec.ConfigFileName, got)
+	}
 
 	// 即便 config.toml 写了明文，当 MCP 内传入 DEEPSEEK_API_KEY 时仍优先生效
 	mcpOverride, err := LoadWithEnv(plainPath, func(k string) string {

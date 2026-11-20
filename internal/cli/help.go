@@ -219,34 +219,36 @@ func renderCommandHelp(w io.Writer, cmd *cobra.Command, rt *runtimeEnv) {
 
 	if cmd == cmd.Root() {
 		coreFlags := lookupFlagsByName(cmd.LocalFlags(), rootCoreSearchFlags)
+		globalFlags := collectFlags(cmd.PersistentFlags(), nil)
+		globalFlags = append(globalFlags, lookupFlagsByName(cmd.Flags(), []string{"version", "help"})...)
+		layout := measureFlagLayout(coreFlags, globalFlags)
 		if len(coreFlags) > 0 {
 			_, _ = fmt.Fprintln(w)
 			_, _ = fmt.Fprintln(w, pal.Bold(cat.T("help.section.search_flags")))
-			writeFlagRows(w, coreFlags, cat)
+			writeFlagRows(w, coreFlags, layout, cat)
 			_, _ = fmt.Fprintln(w, pal.Dim(cat.T("help.more_search_flags")))
 		}
-		globalFlags := collectFlags(cmd.PersistentFlags(), nil)
-		globalFlags = append(globalFlags, lookupFlagsByName(cmd.Flags(), []string{"version", "help"})...)
 		if len(globalFlags) > 0 {
 			_, _ = fmt.Fprintln(w)
 			_, _ = fmt.Fprintln(w, pal.Bold(cat.T("help.section.global_flags")))
-			writeFlagRows(w, globalFlags, cat)
+			writeFlagRows(w, globalFlags, layout, cat)
 		}
 	} else {
 		localFlags := collectFlags(cmd.NonInheritedFlags(), map[string]bool{"help": true})
-		if len(localFlags) > 0 {
-			_, _ = fmt.Fprintln(w)
-			_, _ = fmt.Fprintln(w, pal.Bold(cat.T("help.section.flags")))
-			writeFlagRows(w, localFlags, cat)
-		}
 		globalFlags := collectFlags(cmd.Root().PersistentFlags(), nil)
 		if hf := cmd.Flags().Lookup("help"); hf != nil && !hf.Hidden {
 			globalFlags = append(globalFlags, hf)
 		}
+		layout := measureFlagLayout(localFlags, globalFlags)
+		if len(localFlags) > 0 {
+			_, _ = fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w, pal.Bold(cat.T("help.section.flags")))
+			writeFlagRows(w, localFlags, layout, cat)
+		}
 		if len(globalFlags) > 0 {
 			_, _ = fmt.Fprintln(w)
 			_, _ = fmt.Fprintln(w, pal.Bold(cat.T("help.section.global_flags")))
-			writeFlagRows(w, globalFlags, cat)
+			writeFlagRows(w, globalFlags, layout, cat)
 		}
 	}
 
@@ -328,32 +330,43 @@ func collectFlags(fs *pflag.FlagSet, skip map[string]bool) []*pflag.Flag {
 	return out
 }
 
-func writeFlagRows(w io.Writer, flags []*pflag.Flag, cat i18n.Catalog) {
-	hasShorthand := false
-	for _, f := range flags {
-		if f.Shorthand != "" {
-			hasShorthand = true
+type flagColumnLayout struct {
+	alignShorthand bool
+	maxLeft        int
+}
+
+func measureFlagLayout(groups ...[]*pflag.Flag) flagColumnLayout {
+	var layout flagColumnLayout
+	for _, flags := range groups {
+		for _, f := range flags {
+			if f.Shorthand != "" {
+				layout.alignShorthand = true
+				break
+			}
+		}
+		if layout.alignShorthand {
 			break
 		}
 	}
-
-	leftCols := make([]string, len(flags))
-	maxLeft := 0
-	for i, f := range flags {
-		left := formatFlagSpec(f, hasShorthand)
-		leftCols[i] = left
-		if dw := term.DisplayWidth(left); dw > maxLeft {
-			maxLeft = dw
+	for _, flags := range groups {
+		for _, f := range flags {
+			if dw := term.DisplayWidth(formatFlagSpec(f, layout.alignShorthand)); dw > layout.maxLeft {
+				layout.maxLeft = dw
+			}
 		}
 	}
+	return layout
+}
 
-	for i, f := range flags {
+func writeFlagRows(w io.Writer, flags []*pflag.Flag, layout flagColumnLayout, cat i18n.Catalog) {
+	for _, f := range flags {
+		left := formatFlagSpec(f, layout.alignShorthand)
 		desc := f.Usage
 		if defVal, ok := resolveFlagDefault(f); ok {
 			desc += cat.T("help.default", "value", defVal)
 		}
-		pad := max(maxLeft-term.DisplayWidth(leftCols[i])+3, 2)
-		_, _ = fmt.Fprintln(w, leftCols[i]+strings.Repeat(" ", pad)+desc)
+		pad := max(layout.maxLeft-term.DisplayWidth(left)+3, 2)
+		_, _ = fmt.Fprintln(w, left+strings.Repeat(" ", pad)+desc)
 	}
 }
 

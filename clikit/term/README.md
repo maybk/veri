@@ -7,7 +7,7 @@
 - `doc.go`：包级说明与依赖边界。
 - `palette.go`：`IsTerminal`、`Palette` 与 `DetectPalette` 着色控制。
 - `prompt.go`：`ReadSecret` 敏感输入读取与 `Confirm` 交互确认（支持信号取消与终端回显恢复）。
-- `table.go`：`DisplayWidth` 宽字符列宽计算与 `WriteTable` 对齐表格渲染。
+- `table.go`：`DisplayWidth` 宽字符列宽计算、`TableStyle` 样式配置与 `WriteTable` 对齐表格渲染。
 - `untrusted.go`：`WrapUntrusted` / `WrapUntrustedRandom` 随机边界标识包裹与闭合标签清理。
 
 ## 开发规范

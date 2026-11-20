@@ -360,68 +360,77 @@
 
       <g class="out-3a">
         <text x="60" y="142" class="tbl bold">NAME</text>
-        <text x="160" y="142" class="tbl bold">ROLE</text>
-        <text x="272" y="142" class="tbl bold">STATUS</text>
-        <text x="356" y="142" class="tbl bold">AUTH</text>
-        <text x="442" y="142" class="tbl bold">ENDPOINT</text>
-        <text x="656" y="142" class="tbl bold">DETAILS</text>
+        <text x="154" y="142" class="tbl bold">ROLE</text>
+        <text x="256" y="142" class="tbl bold">STATUS</text>
+        <text x="328" y="142" class="tbl bold">SOURCE</text>
+        <text x="402" y="142" class="tbl bold">ENDPOINT</text>
+        <text x="600" y="142" class="tbl bold">TIMEOUT</text>
+        <text x="668" y="142" class="tbl bold">DETAILS</text>
       </g>
 
       <g class="out-3b">
       <text x="60" y="174" class="tbl bright">deepseek</text>
-      <text x="160" y="174" class="tbl body">search,fetch</text>
-      <text x="272" y="174" class="tbl ok">enabled</text>
-      <text x="356" y="174" class="tbl body">vault</text>
-      <text x="442" y="174" class="tbl muted">api.deepseek.com</text>
-      <text x="656" y="174" class="tbl dim">timeout=10s/25s · concurrency=4</text>
+      <text x="154" y="174" class="tbl body">search,fetch</text>
+      <text x="256" y="174" class="tbl ok">enabled</text>
+      <text x="328" y="174" class="tbl body">vault</text>
+      <text x="402" y="174" class="tbl muted">api.deepseek.com</text>
+      <text x="600" y="174" class="tbl body">10s/25s</text>
+      <text x="668" y="174" class="tbl dim">concurrency=4</text>
       <text x="60" y="204" class="tbl bright">exa</text>
-      <text x="160" y="204" class="tbl body">search,fetch</text>
-      <text x="272" y="204" class="tbl ok">enabled</text>
-      <text x="356" y="204" class="tbl body">env</text>
-      <text x="442" y="204" class="tbl muted">api.exa.ai</text>
-      <text x="656" y="204" class="tbl dim">type=auto · timeout=10s</text>
+      <text x="154" y="204" class="tbl body">search,fetch</text>
+      <text x="256" y="204" class="tbl ok">enabled</text>
+      <text x="328" y="204" class="tbl body">env</text>
+      <text x="402" y="204" class="tbl muted">api.exa.ai</text>
+      <text x="600" y="204" class="tbl body">10s/25s</text>
+      <text x="668" y="204" class="tbl dim">type=auto</text>
       <text x="60" y="234" class="tbl bright">tinyfish</text>
-      <text x="160" y="234" class="tbl body">search,fetch</text>
-      <text x="272" y="234" class="tbl ok">enabled</text>
-      <text x="356" y="234" class="tbl body">vault</text>
-      <text x="442" y="234" class="tbl muted">api.search.tinyfish.ai</text>
-      <text x="656" y="234" class="tbl dim">timeout=10s/25s · concurrency=4</text>
+      <text x="154" y="234" class="tbl body">search,fetch</text>
+      <text x="256" y="234" class="tbl ok">enabled</text>
+      <text x="328" y="234" class="tbl body">vault</text>
+      <text x="402" y="234" class="tbl muted">api.search.tinyfish.ai</text>
+      <text x="600" y="234" class="tbl body">10s/25s</text>
+      <text x="668" y="234" class="tbl dim">concurrency=4</text>
       </g>
 
       <g class="out-3c">
       <text x="60" y="264" class="tbl dim">tencent_wsa</text>
-      <text x="160" y="264" class="tbl dim">search</text>
-      <text x="272" y="264" class="tbl dim">disabled</text>
-      <text x="356" y="264" class="tbl dim">missing</text>
-      <text x="442" y="264" class="tbl muted">api.wsa.cloud.tencent.com</text>
-      <text x="656" y="264" class="tbl dim">veri key set tencent_wsa</text>
+      <text x="154" y="264" class="tbl dim">search</text>
+      <text x="256" y="264" class="tbl dim">disabled</text>
+      <text x="328" y="264" class="tbl dim">missing</text>
+      <text x="402" y="264" class="tbl muted">api.wsa.cloud.tencent.com</text>
+      <text x="600" y="264" class="tbl dim">-</text>
+      <text x="668" y="264" class="tbl dim">veri key set tencent_wsa</text>
       <text x="60" y="294" class="tbl bright">tavily</text>
-      <text x="160" y="294" class="tbl body">search,fetch</text>
-      <text x="272" y="294" class="tbl ok">enabled</text>
-      <text x="356" y="294" class="tbl body">vault</text>
-      <text x="442" y="294" class="tbl muted">api.tavily.com</text>
-      <text x="656" y="294" class="tbl dim">depth=basic/basic · timeout=10s</text>
+      <text x="154" y="294" class="tbl body">search,fetch</text>
+      <text x="256" y="294" class="tbl ok">enabled</text>
+      <text x="328" y="294" class="tbl body">vault</text>
+      <text x="402" y="294" class="tbl muted">api.tavily.com</text>
+      <text x="600" y="294" class="tbl body">10s/25s</text>
+      <text x="668" y="294" class="tbl dim">depth=basic/basic</text>
       <text x="60" y="324" class="tbl dim">brave</text>
-      <text x="160" y="324" class="tbl dim">search</text>
-      <text x="272" y="324" class="tbl dim">disabled</text>
-      <text x="356" y="324" class="tbl dim">missing</text>
-      <text x="442" y="324" class="tbl muted">api.search.brave.com</text>
-      <text x="656" y="324" class="tbl dim">veri key set brave</text>
+      <text x="154" y="324" class="tbl dim">search</text>
+      <text x="256" y="324" class="tbl dim">disabled</text>
+      <text x="328" y="324" class="tbl dim">missing</text>
+      <text x="402" y="324" class="tbl muted">api.search.brave.com</text>
+      <text x="600" y="324" class="tbl dim">-</text>
+      <text x="668" y="324" class="tbl dim">veri key set brave</text>
       </g>
 
       <g class="out-3d">
       <text x="60" y="354" class="tbl bright">github</text>
-      <text x="160" y="354" class="tbl body">fetch</text>
-      <text x="272" y="354" class="tbl ok">enabled</text>
-      <text x="356" y="354" class="tbl body">optional</text>
-      <text x="442" y="354" class="tbl muted">api.github.com</text>
-      <text x="656" y="354" class="tbl dim">token=none · timeout=10s</text>
+      <text x="154" y="354" class="tbl body">fetch</text>
+      <text x="256" y="354" class="tbl ok">enabled</text>
+      <text x="328" y="354" class="tbl body">optional</text>
+      <text x="402" y="354" class="tbl muted">api.github.com</text>
+      <text x="600" y="354" class="tbl body">10s</text>
+      <text x="668" y="354" class="tbl dim">concurrency=4</text>
       <text x="60" y="384" class="tbl bright">local</text>
-      <text x="160" y="384" class="tbl body">fetch</text>
-      <text x="272" y="384" class="tbl ok">enabled</text>
-      <text x="356" y="384" class="tbl dim">-</text>
-      <text x="442" y="384" class="tbl muted">-</text>
-      <text x="656" y="384" class="tbl dim">readability · min_runes=300</text>
+      <text x="154" y="384" class="tbl body">fetch</text>
+      <text x="256" y="384" class="tbl ok">enabled</text>
+      <text x="328" y="384" class="tbl dim">-</text>
+      <text x="402" y="384" class="tbl dim">-</text>
+      <text x="600" y="384" class="tbl body">10s</text>
+      <text x="668" y="384" class="tbl dim">min_runes=300, max_bytes=5MB</text>
       </g>
     </g>
 

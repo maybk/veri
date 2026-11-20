@@ -12,7 +12,7 @@ import (
 // Credential 记录单个 Provider 解析后的密钥列表及其来源说明（不含明文展示）。
 type Credential struct {
 	Keys           []string
-	Source         string // e.g. "env:DEEPSEEK_API_KEY", "secrets.json", "config", "missing"
+	Source         string // e.g. "env:DEEPSEEK_API_KEY", "secrets.json", "config.toml", "missing"
 	HasPlainInFile bool
 }
 
@@ -35,7 +35,7 @@ func resolveCred(rawSpec string, envNames []string, vaultVal string, getenv func
 			allKnown = append(allKnown, keys...)
 			if len(keys) > 0 && winningSource == "" {
 				winningEnvKeys = keys
-				winningSource = "env:" + envName
+				winningSource = spec.CredSourceEnvPrefix + envName
 			}
 		}
 	}
@@ -65,10 +65,10 @@ func resolveCred(rawSpec string, envNames []string, vaultVal string, getenv func
 	}
 	if len(plainKeys) > 0 {
 		combined = append(combined, plainKeys...)
-		sources = appendUnique(sources, "config")
+		sources = appendUnique(sources, spec.ConfigFileName)
 	}
 	if len(combined) == 0 {
-		return Credential{Source: "missing", HasPlainInFile: hasPlain}, allKnown
+		return Credential{Source: spec.CredSourceMissing, HasPlainInFile: hasPlain}, allKnown
 	}
 	return Credential{
 		Keys:           combined,
@@ -81,16 +81,17 @@ func parseSpecItems(trimmed string, getenv func(string) string) (plainKeys, envK
 	if trimmed == "" {
 		return nil, nil, nil, false
 	}
+	prefixLen := len(spec.CredSourceEnvPrefix)
 	for _, item := range splitKeyList(trimmed) {
-		if len(item) > 4 && strings.EqualFold(item[:4], "env:") {
-			envName := strings.TrimSpace(item[4:])
+		if len(item) > prefixLen && strings.EqualFold(item[:prefixLen], spec.CredSourceEnvPrefix) {
+			envName := strings.TrimSpace(item[prefixLen:])
 			if envName == "" {
 				continue
 			}
 			val := strings.TrimSpace(getenv(envName))
 			if parsed := splitKeyList(val); len(parsed) > 0 {
 				envKeys = append(envKeys, parsed...)
-				envSources = appendUnique(envSources, "env:"+envName)
+				envSources = appendUnique(envSources, spec.CredSourceEnvPrefix+envName)
 			}
 			continue
 		}

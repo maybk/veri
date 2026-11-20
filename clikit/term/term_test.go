@@ -133,11 +133,13 @@ func TestDisplayWidthAndWriteTableAlignment(t *testing.T) {
 	WriteTable(&buf, []string{"PROVIDER", "MASKED", "NOTE"}, [][]string{
 		{"deepseek", "sk-…9876", "ok"},
 		{"exa", "-", "中文说明"},
-	}, func(col int, val string) string {
-		if col == 1 && val != "-" {
-			return en.Green(val)
-		}
-		return val
+	}, TableStyle{
+		Cell: func(col int, val string) string {
+			if col == 1 && val != "-" {
+				return en.Green(val)
+			}
+			return val
+		},
 	})
 
 	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -151,5 +153,43 @@ func TestDisplayWidthAndWriteTableAlignment(t *testing.T) {
 	colRow2 := DisplayWidth(lines[2][:strings.Index(lines[2], "中文说明")])
 	if colHeader != colRow1 || colHeader != colRow2 {
 		t.Fatalf("table columns misaligned: header=%d row1=%d row2=%d\n%s", colHeader, colRow1, colRow2, buf.String())
+	}
+
+	// 验证表头施加 Bold ANSI 样式与单元格样式同时生效时仍保持严格列对齐
+	buf.Reset()
+	WriteTable(&buf, []string{"名称", "状态", "说明"}, [][]string{
+		{"deepseek", "已启用", "concurrency=4"},
+		{"local", "未启用", "-"},
+	}, TableStyle{
+		Header: en.Bold,
+		Cell: func(col int, val string) string {
+			if col == 1 && val == "已启用" {
+				return en.Green(val)
+			}
+			if val == "-" {
+				return en.Dim(val)
+			}
+			return val
+		},
+	})
+	styledLines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	if len(styledLines) != 3 {
+		t.Fatalf("expected 3 styled table lines, got %d: %q", len(styledLines), buf.String())
+	}
+	if !strings.Contains(styledLines[0], "\x1b[1m名称\x1b[0m") {
+		t.Fatalf("expected bold header ANSI sequence, got %q", styledLines[0])
+	}
+	stripANSI := func(s string) string {
+		for _, code := range []string{"\x1b[1m", "\x1b[2m", "\x1b[32m", "\x1b[0m"} {
+			s = strings.ReplaceAll(s, code, "")
+		}
+		return s
+	}
+	p0, p1, p2 := stripANSI(styledLines[0]), stripANSI(styledLines[1]), stripANSI(styledLines[2])
+	c0 := DisplayWidth(p0[:strings.Index(p0, "说明")])
+	c1 := DisplayWidth(p1[:strings.Index(p1, "concurrency=4")])
+	c2 := DisplayWidth(p2[:strings.Index(p2, "-")])
+	if c0 != c1 || c0 != c2 {
+		t.Fatalf("styled table columns misaligned: header=%d row1=%d row2=%d\n%s", c0, c1, c2, buf.String())
 	}
 }

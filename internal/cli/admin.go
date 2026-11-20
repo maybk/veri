@@ -2,12 +2,14 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"veri/clikit"
+	"veri/clikit/i18n"
 	"veri/clikit/term"
 	"veri/internal/app"
 	"veri/internal/config"
@@ -52,14 +54,15 @@ func printProviderTable(rt *runtimeEnv, statuses []app.ProviderStatus) {
 		cat.T("table.providers.name"),
 		cat.T("table.providers.role"),
 		cat.T("table.providers.status"),
-		cat.T("table.providers.auth"),
+		cat.T("table.providers.source"),
 		cat.T("table.providers.endpoint"),
+		cat.T("table.providers.timeout"),
 		cat.T("table.providers.details"),
 	}
 	enabledLabel := cat.T("table.val.enabled")
 	disabledLabel := cat.T("table.val.disabled")
 	missingLabel := cat.T("table.val.missing")
-	optionalLabel := cat.T("table.val.optional")
+	disabledConfigLabel := cat.T("providers.detail.disabled_config")
 
 	rows := make([][]string, 0, len(statuses))
 	for _, s := range statuses {
@@ -67,35 +70,85 @@ func printProviderTable(rt *runtimeEnv, statuses []app.ProviderStatus) {
 		if s.Enabled {
 			statusText = enabledLabel
 		}
-		authText := s.Auth
-		switch s.Auth {
-		case "missing":
-			authText = missingLabel
-		case "optional":
-			authText = optionalLabel
+		sourceText := formatProviderSource(cat, s.Source)
+		timeoutText := s.Timeout
+		if timeoutText == "" {
+			timeoutText = "-"
 		}
 		detailText := s.Details
 		if !s.Enabled {
 			if s.Details == spec.DetailDisabledInConfig {
-				detailText = cat.T("providers.detail.disabled_config")
+				detailText = disabledConfigLabel
 			} else if info, ok := spec.LookupProvider(s.Name); ok && info.NeedsCredential() {
 				detailText = cat.T("providers.detail.need_key", "provider", info.Name, "env", info.EnvVars[0])
 			}
 		}
-		rows = append(rows, []string{s.Name, s.Role, statusText, authText, s.Endpoint, detailText})
+		rows = append(rows, []string{s.Name, s.Role, statusText, sourceText, s.Endpoint, timeoutText, detailText})
 	}
-	term.WriteTable(rt.stdout, headers, rows, func(col int, val string) string {
-		if col == 2 {
-			if val == enabledLabel {
-				return pal.Green(val)
+	term.WriteTable(rt.stdout, headers, rows, term.TableStyle{
+		Header: pal.Bold,
+		Cell: func(col int, val string) string {
+			switch col {
+			case 2:
+				if val == enabledLabel {
+					return pal.Green(val)
+				}
+				return pal.Dim(val)
+			case 3:
+				if val == missingLabel || val == "-" {
+					return pal.Dim(val)
+				}
+			case 4, 5:
+				if val == "-" {
+					return pal.Dim(val)
+				}
+			case 6:
+				if val == disabledConfigLabel {
+					return pal.Dim(val)
+				}
 			}
-			return pal.Dim(val)
-		}
-		if col == 3 && val == missingLabel {
-			return pal.Dim(val)
-		}
-		return val
+			return val
+		},
 	})
+}
+
+func formatProviderSource(cat i18n.Catalog, raw string) string {
+	s := strings.TrimSpace(raw)
+	switch s {
+	case "", "-":
+		return "-"
+	case spec.CredSourceMissing:
+		return cat.T("table.val.missing")
+	case spec.CredSourceOptional:
+		return cat.T("table.val.optional")
+	}
+	parts := strings.Split(s, "+")
+	labels := make([]string, 0, len(parts))
+	for _, part := range parts {
+		label := mapProviderSourcePart(cat, strings.TrimSpace(part))
+		if label != "" && !slices.Contains(labels, label) {
+			labels = append(labels, label)
+		}
+	}
+	if len(labels) == 0 {
+		return "-"
+	}
+	return strings.Join(labels, "+")
+}
+
+func mapProviderSourcePart(cat i18n.Catalog, part string) string {
+	switch {
+	case part == "":
+		return ""
+	case part == spec.SecretsFileName:
+		return cat.T("table.val.source_vault")
+	case part == spec.ConfigFileName:
+		return cat.T("table.val.source_config")
+	case strings.HasPrefix(part, spec.CredSourceEnvPrefix):
+		return cat.T("table.val.source_env")
+	default:
+		return part
+	}
 }
 
 func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
@@ -195,8 +248,8 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 			if len(rep.FetchChain) > 0 {
 				fetchLabel = strings.Join(rep.FetchChain, " -> ")
 			}
-			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.routes",
-				"search", searchLabel, "fetch", fetchLabel))
+			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain", "chain", searchLabel))
+			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain", "chain", fetchLabel))
 
 			_, _ = fmt.Fprintln(rt.stdout)
 			printProviderTable(rt, rep.Providers)
@@ -224,14 +277,22 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 						lc.Error,
 					})
 				}
-				term.WriteTable(rt.stdout, liveHeaders, liveRows, func(col int, val string) string {
-					if col == 1 {
-						if val == "ok" {
-							return pal.Green(val)
+				term.WriteTable(rt.stdout, liveHeaders, liveRows, term.TableStyle{
+					Header: pal.Bold,
+					Cell: func(col int, val string) string {
+						switch col {
+						case 1:
+							if val == "ok" {
+								return pal.Green(val)
+							}
+							return pal.Red(val)
+						case 3:
+							if val == "-" {
+								return pal.Dim(val)
+							}
 						}
-						return pal.Red(val)
-					}
-					return val
+						return val
+					},
 				})
 			}
 

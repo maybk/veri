@@ -182,7 +182,10 @@ func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
 					Masked:         masked,
 				})
 				srcText := cred.Source
-				if srcText == "missing" {
+				switch srcText {
+				case "":
+					srcText = "-"
+				case spec.CredSourceMissing:
 					srcText = missingLabel
 				}
 				vaultLabel := noLabel
@@ -208,14 +211,28 @@ func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
 				rt.cat.T("table.keys.masked"),
 			}
 			pal := term.DetectPalette(rt.stdout, rt.flags.noColor, rt.getenv)
-			term.WriteTable(rt.stdout, headers, rows, func(col int, val string) string {
-				if col == 1 && val == missingLabel {
-					return pal.Dim(val)
-				}
-				if col == 2 && val == yesLabel {
-					return pal.Green(val)
-				}
-				return val
+			term.WriteTable(rt.stdout, headers, rows, term.TableStyle{
+				Header: pal.Bold,
+				Cell: func(col int, val string) string {
+					switch col {
+					case 1:
+						if val == missingLabel || val == "-" {
+							return pal.Dim(val)
+						}
+					case 2:
+						if val == yesLabel {
+							return pal.Green(val)
+						}
+						if val == noLabel {
+							return pal.Dim(val)
+						}
+					case 3:
+						if val == "-" {
+							return pal.Dim(val)
+						}
+					}
+					return val
+				},
 			})
 			return nil
 		},
