@@ -1,10 +1,13 @@
-# veri
-
-> 🔍 **veri** 是面向 AI Agent 与开发者的多源联网检索与网页 Markdown 提取工具，纯 Go 单二进制、零运行时依赖，一体化提供 **CLI**、**MCP Server** 与 **Agent Skill**。
-
 <div align="center">
 
-**[简体中文](./README.md)** | **[English](./README.en.md)**
+# veri
+
+<p>
+  <strong>面向 AI Agent 与开发者的多源联网检索与网页 Markdown 提取工具</strong><br>
+  纯 Go 单二进制、零运行时依赖，一体化提供 <strong>CLI</strong>、<strong>MCP Server</strong> 与 <strong>Agent Skill</strong>
+</p>
+
+**[简体中文](./README.md)** · **[English](./README.en.md)**
 
 ![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-stdio-4A5568)
@@ -12,12 +15,11 @@
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-Static-FCC624?logo=linux&logoColor=black)
 
-</div>
+<br>
 
-<details>
-  <summary>点击查看终端演示</summary>
-  <img src="assets/demo-zh.svg" alt="veri 终端演示">
-</details>
+<img src="assets/demo-zh.svg" alt="veri 终端演示" width="880">
+
+</div>
 
 ---
 

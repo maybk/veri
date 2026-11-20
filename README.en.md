@@ -1,10 +1,13 @@
-# veri
-
-> 🔍 **veri** is a multi-provider web search and clean Markdown page extraction tool for AI agents and developers — a single pure-Go binary with zero runtime dependencies, providing a **CLI**, **MCP Server**, and **Agent Skill**.
-
 <div align="center">
 
-**[简体中文](./README.md)** | **[English](./README.en.md)**
+# veri
+
+<p>
+  <strong>Multi-provider web search and clean Markdown extraction for AI agents and developers</strong><br>
+  Single pure-Go binary with zero runtime dependencies — shipping a <strong>CLI</strong>, <strong>MCP Server</strong>, and <strong>Agent Skill</strong>
+</p>
+
+**[简体中文](./README.md)** · **[English](./README.en.md)**
 
 ![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-stdio-4A5568)
@@ -12,12 +15,11 @@
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-Static-FCC624?logo=linux&logoColor=black)
 
-</div>
+<br>
 
-<details>
-  <summary>Click to view CLI demo</summary>
-  <img src="assets/demo-en.svg" alt="veri CLI demo">
-</details>
+<img src="assets/demo-en.svg" alt="veri CLI demo" width="880">
+
+</div>
 
 ---
 
