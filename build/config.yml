@@ -6,4 +6,4 @@ info:
   productName: "veri"
   description: "Multi-provider web search and Markdown extraction (CLI, MCP, Agent Skill)"
   copyright: "(c) 2026, maybk"
-  version: "0.1.0"
+  version: "0.1.1"
