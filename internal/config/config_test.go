@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"veri/clikit/credentials"
+	"veri/internal/core"
 	"veri/internal/spec"
 )
 
@@ -356,5 +357,39 @@ func TestAllProviderSecretsRedactedAndRegisteredInConfig(t *testing.T) {
 	}
 	if !slices.Contains(envLoaded.AllSecrets, "EnvNoSchemePass99") {
 		t.Fatalf("expected scheme-less HTTPS_PROXY password collected in AllSecrets, got %v", envLoaded.AllSecrets)
+	}
+}
+
+func TestConfigValidatesProviderBaseURLsAndRedactsCredentials(t *testing.T) {
+	dir := t.TempDir()
+	noEnv := func(string) string { return "" }
+
+	// 1. 拒绝非回环明文 http://（如局域网自托管 Firecrawl 未套 TLS）
+	lanHTTP := filepath.Join(dir, "lan_http.toml")
+	if err := os.WriteFile(lanHTTP, []byte("[providers.firecrawl]\nbase_url = \"http://192.168.1.50:3002\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithEnv(lanHTTP, noEnv); core.AsError(err).Code != core.CodeInvalidArgument {
+		t.Fatalf("expected non-loopback http base_url rejected at config load, got %v", err)
+	}
+
+	// 2. 拒绝带凭据的 base_url 且错误文案必须脱敏
+	credURL := filepath.Join(dir, "cred_url.toml")
+	if err := os.WriteFile(credURL, []byte("[providers.firecrawl]\nbase_url = \"https://admin:SecretBasePass99@firecrawl.example.com\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithEnv(credURL, noEnv); err == nil || strings.Contains(err.Error(), "SecretBasePass99") {
+		t.Fatalf("expected credentialed base_url rejected and scrubbed, got %v", err)
+	}
+
+	// 3. 放行本机回环 http:// 与远程 https://
+	for i, raw := range []string{"http://localhost:3002", "http://127.0.0.1:3002", "https://firecrawl.internal:8443"} {
+		p := filepath.Join(dir, "ok_"+string(rune('a'+i))+".toml")
+		if err := os.WriteFile(p, []byte("[providers.firecrawl]\nbase_url = \""+raw+"\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadWithEnv(p, noEnv); err != nil {
+			t.Fatalf("expected valid base_url %q to pass config validation, got %v", raw, err)
+		}
 	}
 }

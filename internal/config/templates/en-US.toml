@@ -5,9 +5,9 @@
 lang = "auto"                           # auto | zh | en
 
 [search]
-providers = ["deepseek", "exa", "tinyfish", "tencent_wsa", "tavily", "brave"]
-# providers_en = ["exa", "tinyfish", "brave", "tavily", "deepseek"]
-# fusion_providers = ["deepseek", "exa", "tavily", "brave"]
+providers = ["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "keenable", "firecrawl"]
+# providers_en = ["exa", "linkup", "tavily", "brave", "tinyfish", "keenable", "deepseek"]
+# fusion_providers = ["deepseek", "exa", "tavily"]
 strategy = "auto"                       # auto | fusion
 count = 8                               # default result count (1-50)
 detail = "summary"                      # snippet | summary | content
@@ -19,9 +19,9 @@ summary_max_runes = 800
 
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
-providers = ["deepseek", "tinyfish", "tavily", "exa"]
-providers_global = ["exa", "tavily", "tinyfish", "deepseek"] # non-CN fetch chain (set [] to disable)
-timeout = "30s"
+providers = ["deepseek", "tinyfish", "tavily", "exa", "linkup", "keenable", "firecrawl"]
+providers_global = ["exa", "tavily", "linkup", "tinyfish", "keenable", "firecrawl", "deepseek"] # non-CN fetch chain (set [] to disable)
+timeout = "45s"
 max_bytes = "5MB"                       # max decompressed response size for local fetch
 min_content_runes = 300                 # minimum runes required to pass local quality gate
 respect_robots = false
@@ -50,6 +50,17 @@ weight = 1.0
 # price_search = "CNY:0.005"            # optional reference unit price for cost estimation
 # price_fetch = "CNY:0.005"
 
+[providers.keenable]
+api_key = "env:KEENABLE_API_KEY"        # default data policy retains queries/results; set enabled = false for sensitive queries
+mode = "pro"                            # pro | realtime
+
+[providers.zhihu]
+api_key = "env:ZHIHU_API_KEY"           # also accepts ZHIHU_ACCESS_SECRET
+scope = "global"                        # global (web) | zhihu (Zhihu community)
+search_db = "all"                       # all | realtime | static (global scope only)
+# price_search = "CNY:0.005"
+# price_zhihu_search = "CNY:0.02"
+
 [providers.exa]
 api_key = "env:EXA_API_KEY"
 search_type = "auto"                    # lite | auto | fast | instant | deep-lite | deep | deep-reasoning
@@ -74,6 +85,20 @@ extract_depth = "basic"                 # basic | advanced
 [providers.brave]
 api_key = "env:BRAVE_API_KEY"
 mode = "auto"                           # auto | context | web
+
+[providers.linkup]
+api_key = "env:LINKUP_API_KEY"
+depth = "fast"                          # flash | fast | standard | deep
+fetch_mode = "standard"                 # standard | pro
+render_js = false                       # auto-escalates when an anti-bot/JS wall is detected
+
+[providers.firecrawl]
+api_key = "env:FIRECRAWL_API_KEY"       # required for Firecrawl Cloud; optional for self-hosted base_url (http:// allowed for loopback only; remote hosts require https://)
+# base_url = "https://api.firecrawl.dev"
+proxy = "auto"                          # auto | basic | enhanced
+max_pdf_pages = 20                      # max PDF pages parsed per fetch
+fetch_timeout = "45s"
+concurrency = 2
 
 [providers.github]
 enabled = true

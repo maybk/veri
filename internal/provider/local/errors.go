@@ -30,7 +30,7 @@ func classifyNonOKResponse(status int, h http.Header, preview []byte) error {
 		if se.Code == core.CodeNotFound {
 			se.Code = core.CodeContentUnavailable
 		}
-		se = se.WithHint("Target blocked direct HTTP access with an anti-bot challenge; configure an API extractor (e.g. `veri key set tinyfish` or `tavily`).").
+		se = se.WithHint("Target blocked direct HTTP access with an anti-bot challenge; configure a dynamic cloud extractor (e.g. `veri key set firecrawl` or `tavily`).").
 			WithHintKey(core.HintKeyChallengeDetected)
 	}
 	return se

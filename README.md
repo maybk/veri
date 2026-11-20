@@ -166,7 +166,7 @@ veri skill print     # 输出内置 SKILL.md 原文
 
 ### 🎯 核心功能
 
-- **多源检索与自动回退** - 内置 DeepSeek、Exa、TinyFish、腾讯云联网搜索、Tavily 与 Brave 检索源，按已配置密钥自动启用；支持自动故障回退、中英文分链选路与多源并发融合去重
+- **多源检索与自动回退** - 内置 DeepSeek、Keenable、知乎、Exa、TinyFish、腾讯云联网搜索、Tavily、Brave、Linkup 与 Firecrawl 检索源，按已配置密钥自动启用；支持自动故障回退、中英文分链选路与多源并发融合去重
 - **网页与 GitHub 正文提取** - 内置 GitHub 结构化读取器与纯 Go 本地提取器，零密钥即可将网页及仓库 / Issue / PR / Commit 转为干净 Markdown；配置云端源后扩展动态渲染与 PDF 提取，并支持批量抓取、章节截取与关键词定位
 - **统一过滤语法** - 一套参数跨检索源控制时间范围、站点包含/排除与语言过滤，屏蔽各家接口差异，也支持严格原生匹配
 - **三端形态合一** - 单个静态二进制同时提供命令行工具、标准 stdio MCP 服务端与 Agent Skill，开箱接入各类 AI Agent

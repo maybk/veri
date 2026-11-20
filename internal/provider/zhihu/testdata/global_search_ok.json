@@ -1,0 +1,22 @@
+{
+  "Code": 0,
+  "Message": "success",
+  "Data": {
+    "HasMore": false,
+    "Items": [
+      {
+        "Title": "深入理解 <em>Go</em> 泛型 <T> 实践",
+        "ContentType": "Article",
+        "ContentID": "18698154193",
+        "ContentText": "本文分析 <em>Go</em> 泛型类型参数 <T any> 的性能开销与工程最佳实践。",
+        "Url": "https://zhuanlan.zhihu.com/p/18698154193?utm_medium=openapi_platform&utm_source=c2f012356e63",
+        "CommentCount": 15,
+        "VoteUpCount": 128,
+        "AuthorName": "测试作者",
+        "AuthorBadgeText": "软件工程师",
+        "EditTime": 1753954052,
+        "AuthorityLevel": "3"
+      }
+    ]
+  }
+}

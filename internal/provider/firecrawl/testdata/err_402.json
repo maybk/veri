@@ -1,0 +1,5 @@
+{
+  "success": false,
+  "code": "INSUFFICIENT_CREDITS",
+  "error": "Monthly credit quota exhausted"
+}

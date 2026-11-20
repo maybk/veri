@@ -22,16 +22,20 @@ const (
 	MinMCPFetchMaxChars                = 1000
 	DefaultMinContentRunes             = 300
 	DefaultProviderConcurrency         = 4
+	DefaultFirecrawlConcurrency        = 2
+	DefaultFirecrawlMaxPDFPages        = 20
+	MaxFirecrawlPDFPages               = 500
 	DefaultFetchMaxBytes         int64 = 5 << 20
 	DefaultAPIResponseBytes      int64 = 16 << 20
 	DefaultMaxURLLength                = 8192
 	DefaultFakeIPCIDR                  = "198.18.0.0/15"
 
 	DefaultSearchTimeout          = 20 * time.Second
-	DefaultFetchTimeout           = 30 * time.Second
+	DefaultFetchTimeout           = 45 * time.Second
 	DefaultProviderSearchTimeout  = 10 * time.Second
 	DefaultProviderFetchTimeout   = 25 * time.Second
 	DefaultDeepSeekFetchTimeout   = 10 * time.Second
+	DefaultFirecrawlFetchTimeout  = 45 * time.Second
 	DefaultSmartLocalProbeTimeout = 8 * time.Second
 	DefaultMCPCacheTTL            = 5 * time.Minute
 )

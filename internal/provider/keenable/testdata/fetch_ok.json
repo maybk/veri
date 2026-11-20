@@ -1,0 +1,16 @@
+{
+  "url": "https://go.dev/doc/effective_go",
+  "title": "Effective Go",
+  "content": "# Effective Go\n\nGo is a new language. Although it borrows ideas from existing languages, it has unusual properties.",
+  "truncated": false,
+  "total_chars": 115,
+  "author": "The Go Authors",
+  "published_at": 1758000000,
+  "usage": {
+    "sku": "fetch.live",
+    "amount": 1,
+    "credits": 1,
+    "paid": true,
+    "credits_remaining": 450
+  }
+}

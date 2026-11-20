@@ -24,11 +24,15 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 | 标识 | 能力 | 适用场景 | 官方控制台入口 | 配置命令 |
 | --- | --- | --- | --- | --- |
 | `deepseek` | 搜索、云端提取 | 中英文通用联网检索与正文提取 | [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) | `veri key set deepseek` |
+| `keenable` | 搜索、云端提取 | 通用联网检索与网页 Markdown 提取（默认策略会留存查询与结果） | [Keenable Console](https://app.keenable.ai/console/api-keys) | `veri key set keenable` |
+| `zhihu` | 搜索 | 中文全网搜索（默认）与知乎站内问答/文章检索（`-o zhihu.scope=zhihu`） | [知乎数据开放平台](https://developer.zhihu.com/profile) | `veri key set zhihu` |
 | `exa` | 搜索、云端提取 | 英文技术文档、语义检索与学术内容 | [Exa Dashboard](https://dashboard.exa.ai/api-keys) | `veri key set exa` |
 | `tinyfish` | 搜索、云端提取 | 中英文检索、学术论文与动态网页（SPA / JS）渲染提取 | [TinyFish Console](https://agent.tinyfish.ai/api-keys) | `veri key set tinyfish` |
 | `tencent_wsa` | 搜索 | 中文资讯、政务、学术与财经检索（需开通并创建服务 API Key，非通用 SecretId/Key） | [腾讯云联网搜索控制台](https://console.cloud.tencent.com/wsa) | `veri key set tencent_wsa` |
 | `tavily` | 搜索、云端提取 | 面向 AI Agent 的通用、新闻、财经检索与正文提取 | [Tavily Dashboard](https://app.tavily.com) | `veri key set tavily` |
 | `brave` | 搜索 | 全球网页索引与大模型上下文摘要检索 | [Brave Search API](https://api-dashboard.search.brave.com) | `veri key set brave` |
+| `linkup` | 搜索、云端提取 | 英文检索、HTML/PDF 与按需 JS 渲染提取 | [Linkup Console](https://app.linkup.so) | `veri key set linkup` |
+| `firecrawl` | 搜索、云端提取 | 高难反爬与动态网页提取，支持开源自托管实例 | [Firecrawl Dashboard](https://www.firecrawl.dev/app/api-keys) | `veri key set firecrawl` |
 | `github`（可选） | GitHub 读取 | 公开仓库无需令牌；配置后可提高限额并读取有权限的私有仓库 | [GitHub Tokens](https://github.com/settings/tokens) | `veri key set github` |
 
 > 各上游服务的计费方式、套餐与调用限额请以对应官方控制台为准。
@@ -203,7 +207,7 @@ mise upgrade npm:@maybk/veri        # mise（或 mise upgrade github:maybk/veri�
 
 - **提示未配置可用检索源**：运行 `veri providers` 确认对应检索源处于已启用状态；若仅在当前终端执行过 `export ...`，新开终端不会保留，建议改用 `veri key set <provider>` 持久化。
 - **单源报错、超时或触发限流**：运行 `veri doctor --live --yes` 定位具体源的鉴权或连通性问题；配置 2 个及以上检索源后，`veri` 会在故障时自动切换至下一可用源。
-- **动态渲染页面（SPA / JS）或反爬页面抓取不全**：纯本地提取不运行浏览器脚本；配置任意支持云端提取的源（`exa`、`tavily`、`tinyfish`、`deepseek`）后，默认策略会自动优先使用云端提取。
+- **动态渲染页面（SPA / JS）或反爬页面抓取不全**：纯本地提取不运行浏览器脚本；配置支持动态渲染与抗反爬的云端提取源（`firecrawl`、`linkup`、`tavily`、`tinyfish`）后，默认策略会自动优先使用云端提取并在遇拦截页时自动升档。
 - **代理与透明代理（TUN）环境**：自动遵循 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`，也可在 `~/.config/veri/config.toml` 的 `network.proxy` 显式配置；默认兼容常见透明代理的 TUN Fake-IP 网段。
 - **标准退出码（便于脚本判断）**：`0` 成功 · `1` 内部错误或诊断未通过 · `2` 参数或配置错误 · `3` 密钥缺失/失效或配额不足 · `4` 限流/超时等临时故障 · `5` 目标不存在或被安全策略拦截 · `130` 用户中断。
 

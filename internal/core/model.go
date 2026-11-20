@@ -288,6 +288,18 @@ func ValidateTargetURL(rawURL, providerName string, maxLen int) (*url.URL, error
 	return u, nil
 }
 
+// ValidatedFinalURL 校验上游返回的重定向终态 URL；为空、与原请求相同或不满足安全 http/https 边界时返回空字符串。
+func ValidatedFinalURL(rawFinal, requestURL, providerName string, maxLen int) string {
+	trimmed := strings.TrimSpace(rawFinal)
+	if trimmed == "" || trimmed == requestURL {
+		return ""
+	}
+	if _, err := ValidateTargetURL(trimmed, providerName, maxLen); err != nil {
+		return ""
+	}
+	return trimmed
+}
+
 // FallbackTitleFromURL 从 URL 路径末段或主机名推导可读兜底标题，供裸源码、纯文本及无标题网页统一使用。
 func FallbackTitleFromURL(rawURL string) string {
 	u, err := url.Parse(strings.TrimSpace(rawURL))

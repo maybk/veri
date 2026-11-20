@@ -163,6 +163,43 @@ func validateProviders(p *ProvidersConfig) error {
 		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.brave.mode %q: must be auto, context, or web", p.Brave.Mode))
 	}
 
+	switch strings.ToLower(strings.TrimSpace(p.Keenable.Mode)) {
+	case spec.KeenableModePro, spec.KeenableModeRealtime:
+	default:
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.keenable.mode %q: must be pro or realtime", p.Keenable.Mode))
+	}
+
+	switch strings.ToLower(strings.TrimSpace(p.Zhihu.Scope)) {
+	case spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu:
+	default:
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.zhihu.scope %q: must be global or zhihu", p.Zhihu.Scope))
+	}
+	switch strings.ToLower(strings.TrimSpace(p.Zhihu.SearchDB)) {
+	case spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic:
+	default:
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.zhihu.search_db %q: must be all, realtime, or static", p.Zhihu.SearchDB))
+	}
+
+	switch strings.ToLower(strings.TrimSpace(p.Linkup.Depth)) {
+	case spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep:
+	default:
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.linkup.depth %q: must be flash, fast, standard, or deep", p.Linkup.Depth))
+	}
+	switch strings.ToLower(strings.TrimSpace(p.Linkup.FetchMode)) {
+	case spec.LinkupFetchModeStandard, spec.LinkupFetchModePro:
+	default:
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.linkup.fetch_mode %q: must be standard or pro", p.Linkup.FetchMode))
+	}
+
+	switch strings.ToLower(strings.TrimSpace(p.Firecrawl.Proxy)) {
+	case spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced:
+	default:
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.firecrawl.proxy %q: must be auto, basic, or enhanced", p.Firecrawl.Proxy))
+	}
+	if p.Firecrawl.MaxPDFPages < 1 || p.Firecrawl.MaxPDFPages > spec.MaxFirecrawlPDFPages {
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("providers.firecrawl.max_pdf_pages %d out of range [1, %d]", p.Firecrawl.MaxPDFPages, spec.MaxFirecrawlPDFPages))
+	}
+
 	return walkProviderFields(p, func(provName, fieldTag string, val reflect.Value) error {
 		switch {
 		case fieldTag == "weight" && val.Kind() == reflect.Float64:
@@ -185,7 +222,40 @@ func validateProviders(p *ProvidersConfig) error {
 					return core.NewError(core.CodeInvalidArgument, err.Error())
 				}
 			}
+		case isURLTOMLTag(fieldTag) && val.Kind() == reflect.String:
+			if rawURL := strings.TrimSpace(val.String()); rawURL != "" {
+				if err := validateProviderURL(provName, fieldTag, rawURL); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
+}
+
+func validateProviderURL(provName, fieldTag, rawURL string) error {
+	safeDisplay := redact.SanitizeURL(rawURL)
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Hostname() == "" {
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.%s.%s %q", provName, fieldTag, safeDisplay))
+	}
+	if u.User != nil {
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("providers.%s.%s %q must not contain credentials", provName, fieldTag, safeDisplay))
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "https" || (scheme == "http" && isLoopbackHost(u.Hostname())) {
+		return nil
+	}
+	return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("providers.%s.%s %q must use https (http is only allowed for loopback hosts)", provName, fieldTag, safeDisplay))
+}
+
+func isLoopbackHost(host string) bool {
+	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
+		return true
+	}
+	if ip, err := netip.ParseAddr(h); err == nil && ip.Zone() == "" {
+		return ip.Unmap().IsLoopback()
+	}
+	return false
 }

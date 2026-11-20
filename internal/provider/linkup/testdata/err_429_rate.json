@@ -1,0 +1,7 @@
+{
+  "statusCode": 429,
+  "error": {
+    "code": "TOO_MANY_REQUESTS",
+    "message": "Rate limit exceeded: 10 QPS"
+  }
+}

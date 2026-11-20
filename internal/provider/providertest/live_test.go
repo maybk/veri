@@ -14,9 +14,13 @@ import (
 	"veri/internal/provider/brave"
 	"veri/internal/provider/deepseek"
 	"veri/internal/provider/exa"
+	"veri/internal/provider/firecrawl"
+	"veri/internal/provider/keenable"
+	"veri/internal/provider/linkup"
 	"veri/internal/provider/tavily"
 	"veri/internal/provider/tencentwsa"
 	"veri/internal/provider/tinyfish"
+	"veri/internal/provider/zhihu"
 	"veri/internal/spec"
 )
 
@@ -128,6 +132,75 @@ func TestLiveProviders(t *testing.T) {
 			t.Fatalf("live search failed: out=%+v err=%v", out, err)
 		}
 	})
+
+	t.Run("Keenable", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderKeenable)
+		if k == "" {
+			t.Skip("KEENABLE_API_KEY not set")
+		}
+		p, _, err := keenable.New(keenable.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := p.Search(ctx, req)
+		if err != nil || len(out.Results) == 0 {
+			t.Fatalf("live search failed: out=%+v err=%v", out, err)
+		}
+	})
+
+	t.Run("Zhihu", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderZhihu)
+		if k == "" {
+			t.Skip("ZHIHU_API_KEY not set")
+		}
+		p, _, err := zhihu.New(zhihu.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := p.Search(ctx, &core.SearchRequest{Query: "Go 语言 MCP SDK", Count: 2, Detail: core.DetailSummary})
+		if err != nil || len(out.Results) == 0 {
+			t.Fatalf("live global search failed: out=%+v err=%v", out, err)
+		}
+		outCommunity, err := p.Search(ctx, &core.SearchRequest{
+			Query:   "Go 并发编程",
+			Count:   2,
+			Detail:  core.DetailSummary,
+			Options: map[string]string{spec.OptZhihuScope: spec.ZhihuScopeZhihu},
+		})
+		if err != nil || len(outCommunity.Results) == 0 {
+			t.Fatalf("live zhihu community search failed: out=%+v err=%v", outCommunity, err)
+		}
+	})
+
+	t.Run("Linkup", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderLinkup)
+		if k == "" {
+			t.Skip("LINKUP_API_KEY not set")
+		}
+		p, _, err := linkup.New(linkup.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := p.Search(ctx, req)
+		if err != nil || len(out.Results) == 0 {
+			t.Fatalf("live search failed: out=%+v err=%v", out, err)
+		}
+	})
+
+	t.Run("Firecrawl", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderFirecrawl)
+		if k == "" {
+			t.Skip("FIRECRAWL_API_KEY not set")
+		}
+		p, _, err := firecrawl.New(firecrawl.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := p.Search(ctx, req)
+		if err != nil || len(out.Results) == 0 {
+			t.Fatalf("live search failed: out=%+v err=%v", out, err)
+		}
+	})
 }
 
 // TestLiveFetchNotFoundContracts 验证各云端提取源在真实 404 目标页面上的响应均稳定映射为 core.CodeNotFound。
@@ -195,6 +268,45 @@ func TestLiveFetchNotFoundContracts(t *testing.T) {
 			t.Skip("DEEPSEEK_API_KEY not set")
 		}
 		p, _, err := deepseek.New(deepseek.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.Fetch(ctx, req)
+		assertNotFound(t, err)
+	})
+
+	t.Run("Keenable", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderKeenable)
+		if k == "" {
+			t.Skip("KEENABLE_API_KEY not set")
+		}
+		p, _, err := keenable.New(keenable.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.Fetch(ctx, req)
+		assertNotFound(t, err)
+	})
+
+	t.Run("Linkup", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderLinkup)
+		if k == "" {
+			t.Skip("LINKUP_API_KEY not set")
+		}
+		p, _, err := linkup.New(linkup.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.Fetch(ctx, req)
+		assertNotFound(t, err)
+	})
+
+	t.Run("Firecrawl", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderFirecrawl)
+		if k == "" {
+			t.Skip("FIRECRAWL_API_KEY not set")
+		}
+		p, _, err := firecrawl.New(firecrawl.Options{Keys: []string{k}}, cli)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -153,13 +153,14 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 		t.Fatalf("empty search result must NOT set IsError=true: res=%+v err=%v", resEmpty, err)
 	}
 
-	// 4. 验证 Schema 零 default（不覆盖用户配置）且无冗余 provider 单数参数，并测试 web_fetch 单页、批量去重标签与 url+urls 互斥
+	// 4. 验证 Schema 零 default（不覆盖用户配置）且无冗余 provider 单数参数，并校验 options 可发现性提示与 web_fetch 单页、批量去重标签、url+urls 互斥
 	searchSchema := buildSearchInputSchema(searchSchemaDefaults{
 		defaultCount:    3,
 		maxCount:        20,
 		defaultDetail:   string(core.DetailSnippet),
 		defaultStrategy: string(core.StrategyAuto),
-	}, []string{"deepseek"})
+		zhihuScope:      spec.ZhihuScopeZhihu,
+	}, []string{"deepseek", "zhihu"})
 	sProps := searchSchema["properties"].(map[string]any)
 	if _, hasSingle := sProps["provider"]; hasSingle {
 		t.Fatal("web_search schema must not expose redundant singular provider field")
@@ -167,6 +168,20 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 	for k, rawProp := range sProps {
 		if _, hasDef := rawProp.(map[string]any)["default"]; hasDef {
 			t.Fatalf("web_search property %q must not define JSON Schema default (ApplyDefaults would override user config)", k)
+		}
+	}
+	sOptDesc, _ := sProps["options"].(map[string]any)["description"].(string)
+	for _, want := range []string{
+		spec.OptZhihuScope,
+		"global=web|zhihu=Zhihu Q&A/articles, default: zhihu",
+		spec.OptZhihuSearchDB,
+		spec.OptZhihuSort,
+		spec.OptKeenableMode,
+		spec.OptLinkupDepth,
+		spec.OptFirecrawlCategory,
+	} {
+		if !strings.Contains(sOptDesc, want) {
+			t.Fatalf("web_search options description missing %q: %q", want, sOptDesc)
 		}
 	}
 
@@ -186,6 +201,17 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 	stratDesc, _ := fProps["strategy"].(map[string]any)["description"].(string)
 	if !strings.Contains(stratDesc, string(core.FetchLocalOnly)) {
 		t.Fatalf("expected strategy description to mention configured default %q, got %q", core.FetchLocalOnly, stratDesc)
+	}
+	fOptDesc, _ := fProps["options"].(map[string]any)["description"].(string)
+	for _, want := range []string{
+		spec.OptLinkupFetchMode,
+		spec.OptLinkupRenderJS,
+		spec.OptFirecrawlProxy,
+		spec.OptFirecrawlMaxPages,
+	} {
+		if !strings.Contains(fOptDesc, want) {
+			t.Fatalf("web_fetch options description missing %q: %q", want, fOptDesc)
+		}
 	}
 
 	// url 与 urls 同时传入必须返回 IsError=true

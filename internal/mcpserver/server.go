@@ -46,6 +46,7 @@ func New(application *app.App, version string) *mcp.Server {
 		maxCount:        cfg.MCP.MaxCount,
 		defaultDetail:   cfg.Search.Detail,
 		defaultStrategy: cfg.Search.Strategy,
+		zhihuScope:      cfg.Providers.Zhihu.Scope,
 	}
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        spec.ToolWebSearch,

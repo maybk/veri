@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"veri/internal/core"
+	"veri/internal/httpx"
 	"veri/internal/provider/providertest"
 )
 
@@ -85,10 +86,31 @@ func TestTavilyCustomStatusCodesAndExtractHeadingFallback(t *testing.T) {
 }
 
 func TestTavilyExtractNotFoundReasonMapping(t *testing.T) {
-	if !isNotFoundExtractReason("404 page not found") || !isNotFoundExtractReason("HTTP 410 Gone") || !isNotFoundExtractReason("resource does not exist") {
+	if !httpx.LooksLikeNotFoundMessage("", "404 page not found") || !httpx.LooksLikeNotFoundMessage("", "HTTP 410 Gone") || !httpx.LooksLikeNotFoundMessage("", "resource does not exist") {
 		t.Fatal("expected clear 404/410 reasons to map to not_found")
 	}
-	if isNotFoundExtractReason("403 Forbidden: Cloudflare challenge") || isNotFoundExtractReason("captcha required on 404") || isNotFoundExtractReason("") {
+	if httpx.LooksLikeNotFoundMessage("", "403 Forbidden: Cloudflare challenge") || httpx.LooksLikeNotFoundMessage("", "captcha required on 404") || httpx.LooksLikeNotFoundMessage("", "") {
 		t.Fatal("anti-bot challenge or empty reason must not map to not_found")
+	}
+	if !httpx.LooksLikeChallengeMessage("403 Forbidden: Cloudflare challenge") || httpx.LooksLikeChallengeMessage("404 Not Found") {
+		t.Fatal("unexpected LooksLikeChallengeMessage result")
+	}
+
+	// 验证非法 tavily.topic 前置拦截与 failed_results 挑战盾提示透传
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"results":[],"failed_results":[{"url":"https://protected.example","error":"403 Forbidden: Cloudflare challenge"}]}`))
+	}))
+	defer srv.Close()
+	p, _, err := New(Options{Keys: []string{"tvly-test"}, BaseURL: srv.URL}, providertest.NewTestAPIClient(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Search(context.Background(), &core.SearchRequest{Query: "q", Options: map[string]string{"tavily.topic": "invalid"}}); core.AsError(err).Code != core.CodeInvalidArgument {
+		t.Fatalf("expected invalid tavily.topic -> invalid_argument, got %v", err)
+	}
+	if _, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://protected.example"}); err == nil {
+		t.Fatal("expected failed_results error")
+	} else if se := core.AsError(err); se.Code != core.CodeContentUnavailable || se.HintKey != core.HintKeyChallengeDetected {
+		t.Fatalf("expected challenge hint on failed_results 403, got %+v", se)
 	}
 }

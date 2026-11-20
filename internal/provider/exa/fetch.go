@@ -97,10 +97,10 @@ func resolveMaxAgeHours(opts map[string]string) (*int, error) {
 	raw := strings.TrimSpace(textnorm.FirstNonEmpty(opts[spec.OptExaMaxAgeHours], opts[spec.OptExaMaxAgeAlias]))
 	if raw != "" {
 		v, err := strconv.Atoi(raw)
-		if err != nil || v < -1 {
+		if err != nil || v < -1 || v > maxContentsAgeHours {
 			return nil, core.NewError(
 				core.CodeInvalidArgument,
-				fmt.Sprintf("invalid exa.max_age_hours %q: expected integer >= -1 (0 = livecrawl, -1 = cache only)", raw),
+				fmt.Sprintf("invalid exa.max_age_hours %q: expected integer in [-1, %d] (0 = livecrawl, -1 = cache only)", raw, maxContentsAgeHours),
 			).WithProvider(ProviderName)
 		}
 		return &v, nil
@@ -112,14 +112,9 @@ func resolveMaxAgeHours(opts map[string]string) (*int, error) {
 }
 
 func computeLivecrawlTimeoutMS(ctx context.Context, fetchTimeout time.Duration) int {
-	budget := fetchTimeout
-	if dl, ok := ctx.Deadline(); ok {
-		if rem := time.Until(dl); rem > 0 && (budget <= 0 || rem < budget) {
-			budget = rem
-		}
-	}
-	if budget < 1500*time.Millisecond {
+	budget := httpx.RemainingBudget(ctx, fetchTimeout, 500*time.Millisecond)
+	if budget < time.Second {
 		return 0
 	}
-	return min(int((budget - 500*time.Millisecond).Milliseconds()), 25000)
+	return min(int(budget.Milliseconds()), 25000)
 }

@@ -64,11 +64,15 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
 	env := map[string]string{
 		"DEEPSEEK_API_KEY":    "sk-test-deepseek-1234",
+		"KEENABLE_API_KEY":    "keen_test_key_123456",
+		"ZHIHU_API_KEY":       "zh-test-secret-1234",
 		"EXA_API_KEY":         "exa-test-key-1234",
 		"TINYFISH_API_KEY":    "sk-test-tinyfish-1234",
 		"TENCENT_WSA_API_KEY": "sk-test-wsa-1234",
 		"TAVILY_API_KEY":      "tvly-test-key-1234",
 		"BRAVE_API_KEY":       "BSA-test-brave-1234567890",
+		"LINKUP_API_KEY":      "lk-test-linkup-1234",
+		"FIRECRAWL_API_KEY":   "fc-test-firecrawl-1234",
 	}
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string { return env[k] })
 	if err != nil {
@@ -81,21 +85,29 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 
 	wantTimeout := map[string]string{
 		spec.ProviderDeepSeek:   "10s",
+		spec.ProviderKeenable:   "10s/25s",
+		spec.ProviderZhihu:      "10s",
 		spec.ProviderExa:        "10s/25s",
 		spec.ProviderTinyFish:   "10s/25s",
 		spec.ProviderTencentWSA: "10s",
 		spec.ProviderTavily:     "10s/25s",
 		spec.ProviderBrave:      "10s",
+		spec.ProviderLinkup:     "10s/25s",
+		spec.ProviderFirecrawl:  "10s/45s",
 		spec.ProviderGitHub:     "10s",
 		spec.ProviderLocal:      "10s",
 	}
 	wantDetails := map[string]string{
 		spec.ProviderDeepSeek:   "concurrency=4",
+		spec.ProviderKeenable:   "mode=pro",
+		spec.ProviderZhihu:      "scope=global (global|zhihu)",
 		spec.ProviderExa:        "type=auto",
 		spec.ProviderTinyFish:   "concurrency=4",
 		spec.ProviderTencentWSA: "edition=standard",
 		spec.ProviderTavily:     "depth=basic/basic",
 		spec.ProviderBrave:      "mode=auto",
+		spec.ProviderLinkup:     "depth=fast, fetch=standard",
+		spec.ProviderFirecrawl:  "proxy=auto, max_pdf=20",
 		spec.ProviderGitHub:     "concurrency=4",
 		spec.ProviderLocal:      "min_runes=300, max_bytes=5MB",
 	}

@@ -6,12 +6,14 @@ import (
 	"net"
 	"net/netip"
 	"runtime"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
 	"veri/internal/core"
 	"veri/internal/httpx"
+	"veri/internal/spec"
 )
 
 // LiveCheckResult 记录 doctor --live 单次真实请求连通性检测结果。
@@ -126,6 +128,7 @@ func (a *App) RunDoctor(ctx context.Context, uiLocale, uiSource string, live boo
 	if live && len(enabledSearchers) > 0 {
 		checks := make([]LiveCheckResult, len(enabledSearchers))
 		var g errgroup.Group
+		g.SetLimit(spec.DefaultBatchFetchConcurrency)
 		for idx, name := range enabledSearchers {
 			g.Go(func() error {
 				start := time.Now()
@@ -175,10 +178,11 @@ func selectProbeHost(statuses []ProviderStatus) string {
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			host = h
 		}
-		if host == "localhost" {
+		lower := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+		if lower == "" || lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
 			continue
 		}
-		if _, err := netip.ParseAddr(host); err == nil {
+		if _, err := netip.ParseAddr(lower); err == nil {
 			continue
 		}
 		return host

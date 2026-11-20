@@ -95,7 +95,11 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 				workReq.DynamicRenderHint = true
 				if !policy.explicitProviders && idx < len(seq)-1 {
 					reorderFetchersWhereInPlace(seq[idx+1:], isDynamicRenderFetcher)
-					notes = append(notes, fmt.Sprintf("%s hit anti-bot challenge (HTTP %d), escalating to dynamic API extractor", f.Name(), se.Status))
+					if se.Status > 0 {
+						notes = append(notes, fmt.Sprintf("%s hit anti-bot challenge (HTTP %d), escalating to dynamic API extractor", f.Name(), se.Status))
+					} else {
+						notes = append(notes, fmt.Sprintf("%s hit anti-bot challenge, escalating to dynamic API extractor", f.Name()))
+					}
 				}
 			} else if !policy.explicitProviders && f.Name() == spec.ProviderLocal && strings.Contains(se.Message, `"application/pdf"`) && idx < len(seq)-1 {
 				reorderFetchersWhereInPlace(seq[idx+1:], isPDFFetcher)
@@ -138,9 +142,12 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 			if isWallQualityReason(out.QualityMsg) {
 				lastWallProvider = f.Name()
 				lastWallReason = out.QualityMsg
-				workReq.DynamicRenderHint = true
-				if !policy.explicitProviders && idx < len(seq)-1 {
-					reorderFetchersWhereInPlace(seq[idx+1:], isDynamicRenderFetcher)
+				// 仅反爬/JS 盾触发高成本动态渲染升档；软 404 不强制开启昂贵动态渲染，避免无谓扣费。
+				if out.QualityMsg == textnorm.QualityReasonBotOrJSWall {
+					workReq.DynamicRenderHint = true
+					if !policy.explicitProviders && idx < len(seq)-1 {
+						reorderFetchersWhereInPlace(seq[idx+1:], isDynamicRenderFetcher)
+					}
 				}
 			} else if out.Page != nil && out.Page.Content != "" && lowQualityFallback == nil {
 				lowQualityFallback = out.Page.Clone()

@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "data": {
+    "markdown": "Not Found",
+    "metadata": {
+      "title": "404 Not Found",
+      "sourceURL": "https://example.com/missing",
+      "url": "https://example.com/missing",
+      "statusCode": 404,
+      "error": "Target returned 404 Not Found"
+    }
+  }
+}

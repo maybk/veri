@@ -32,7 +32,11 @@ func classifyFetchItemError(item fetchWireError) error {
 	switch code {
 	case "page_not_found":
 		return withStatus(core.NewError(core.CodeNotFound, fmt.Sprintf("TinyFish target not found (%s)", code)).WithProvider(ProviderName))
-	case "bot_blocked", "login_required":
+	case "bot_blocked":
+		return withStatus(core.NewError(core.CodeBlockedByPolicy, fmt.Sprintf("TinyFish target blocked (%s)", code)).
+			WithProvider(ProviderName).
+			WithHintKey(core.HintKeyChallengeDetected))
+	case "login_required":
 		return withStatus(core.NewError(core.CodeBlockedByPolicy, fmt.Sprintf("TinyFish target blocked (%s)", code)).WithProvider(ProviderName))
 	case "timeout":
 		return withStatus(core.NewError(core.CodeUpstreamTimeout, "TinyFish per-URL fetch timed out").WithProvider(ProviderName))
@@ -43,9 +47,15 @@ func classifyFetchItemError(item fetchWireError) error {
 		case status == http.StatusNotFound || status == http.StatusGone:
 			return withStatus(core.NewError(core.CodeNotFound, fmt.Sprintf("TinyFish target returned HTTP %d", status)).WithProvider(ProviderName))
 		case status == http.StatusUnauthorized || status == http.StatusForbidden:
-			return withStatus(core.NewError(core.CodeBlockedByPolicy, fmt.Sprintf("TinyFish target returned HTTP %d", status)).WithProvider(ProviderName))
+			se := withStatus(core.NewError(core.CodeBlockedByPolicy, fmt.Sprintf("TinyFish target returned HTTP %d", status)).WithProvider(ProviderName))
+			if status == http.StatusForbidden {
+				se = se.WithHintKey(core.HintKeyChallengeDetected)
+			}
+			return se
 		case status == http.StatusTooManyRequests:
-			return withStatus(core.NewError(core.CodeRateLimited, "TinyFish target returned HTTP 429").WithProvider(ProviderName))
+			return withStatus(core.NewError(core.CodeRateLimited, "TinyFish target returned HTTP 429").
+				WithProvider(ProviderName).
+				WithHintKey(core.HintKeyChallengeDetected))
 		case status == http.StatusRequestTimeout || status == http.StatusGatewayTimeout:
 			return withStatus(core.NewError(core.CodeUpstreamTimeout, fmt.Sprintf("TinyFish target timed out (HTTP %d)", status)).WithProvider(ProviderName))
 		case status >= 500:
@@ -69,7 +79,13 @@ func classifyError(status int, _ http.Header, body []byte) *core.Error {
 	code := strings.ToUpper(strings.TrimSpace(env.Error.Code))
 	msg := textnorm.CleanInline(env.Error.Message)
 
+	var reason string
+	if env.Error.Details != nil {
+		reason = strings.ToLower(strings.TrimSpace(env.Error.Details.Reason))
+	}
+
 	var mapped core.Code
+	nonRetryable := false
 	switch code {
 	case "INVALID_INPUT":
 		mapped = core.CodeInvalidArgument
@@ -77,20 +93,33 @@ func classifyError(status int, _ http.Header, body []byte) *core.Error {
 		mapped = core.CodeAuthFailed
 	case "INSUFFICIENT_CREDITS", "FREE_ALLOWANCE_EXHAUSTED":
 		mapped = core.CodeInsufficientBalance
-	case "FORBIDDEN":
+		nonRetryable = true
+	case "FORBIDDEN", "FEATURE_NOT_AVAILABLE":
 		mapped = core.CodeNotEnabled
-	case "RATE_LIMIT_EXCEEDED", "SERVICE_BUSY":
+	case "RATE_LIMIT_EXCEEDED":
+		// 官方文档约定：未开通钱包扣费且免费日配额用尽时返回 HTTP 429 + details.reason="free_allowance_exhausted"，严禁短退避重试。
+		if reason == "free_allowance_exhausted" {
+			mapped = core.CodeInsufficientBalance
+			nonRetryable = true
+		} else {
+			mapped = core.CodeRateLimited
+		}
+	case "SERVICE_BUSY":
 		mapped = core.CodeRateLimited
 	case "TIMEOUT":
 		mapped = core.CodeUpstreamTimeout
-	case "INTERNAL_ERROR":
+	case "INTERNAL_ERROR", "BACKEND_UNAVAILABLE":
 		mapped = core.CodeUpstreamUnavailable
 	}
 	if mapped != "" {
 		if msg == "" {
 			msg = code
 		}
-		return core.NewError(mapped, msg).WithProvider(ProviderName).WithStatus(status)
+		se := core.NewError(mapped, msg).WithProvider(ProviderName).WithStatus(status)
+		if nonRetryable {
+			se = se.WithRetryable(false)
+		}
+		return se
 	}
 	return httpx.ClassifyHTTPErrorWithMessage(ProviderName, status, msg, body)
 }

@@ -127,4 +127,18 @@ func TestTinyFishPaperModeFetchSuccessAndErrorEnums(t *testing.T) {
 			t.Fatalf("API error %s -> %s, want %s", apiCode, errObj.Code, want)
 		}
 	}
+
+	// 非法 scheme 的 final_url 必须被丢弃，防止透传至输出
+	unsafeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"results":[{"url":"https://spa.test/app","final_url":"javascript:alert(1)","title":"Safe","text":"Clean body text"}]}`))
+	}))
+	defer unsafeSrv.Close()
+	pUnsafe, _, err := New(Options{Keys: []string{"tf-key"}, SearchURL: unsafeSrv.URL, FetchURL: unsafeSrv.URL}, providertest.NewTestAPIClient(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	uOut, err := pUnsafe.Fetch(context.Background(), &core.FetchRequest{URL: "https://spa.test/app"})
+	if err != nil || uOut.Page.FinalURL != "" {
+		t.Fatalf("unsafe final_url must be dropped, got out=%+v err=%v", uOut, err)
+	}
 }

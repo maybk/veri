@@ -11,6 +11,12 @@ type searchWireReq struct {
 	Freshness string `json:"Freshness,omitempty"`
 }
 
+type errorEnvelopeWireResp struct {
+	Response struct {
+		Error *wsaWireError `json:"Error"`
+	} `json:"Response"`
+}
+
 type searchWireResp struct {
 	Response struct {
 		Pages     []jsontext.Value `json:"Pages"`

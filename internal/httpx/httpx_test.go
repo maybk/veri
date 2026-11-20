@@ -313,6 +313,28 @@ func TestDoJSONKeyFailoverInspectBodyAndNoTimeoutReplay(t *testing.T) {
 		t.Fatalf("expected single-key 429 without Retry-After to fail fast in 1 hit, hits=%d err=%v", rlHits.Load(), err)
 	}
 
+	// 单 Key 触发 429 但 ClassifyErr 判定为不可重试业务错误（如 Linkup 余额不足）时绝不退避重试
+	var nonRetry429Hits atomic.Int32
+	nonRetry429Srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nonRetry429Hits.Add(1)
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"code":"INSUFFICIENT_FUNDS_CREDITS","message":"out of credits"}}`))
+	}))
+	defer nonRetry429Srv.Close()
+	if _, err := client.DoJSON(context.Background(), newTestKeyPool("only-key"), NewGate(4, 0), RequestSpec{
+		ProviderName: "linkup",
+		Method:       http.MethodPost,
+		URL:          nonRetry429Srv.URL,
+		AuthHeader:   "Authorization",
+		AuthPrefix:   "Bearer ",
+		ClassifyErr: func(status int, _ http.Header, _ []byte) *core.Error {
+			return core.NewError(core.CodeInsufficientBalance, "out of credits").WithStatus(status)
+		},
+	}); core.AsError(err).Code != core.CodeInsufficientBalance || nonRetry429Hits.Load() != 1 {
+		t.Fatalf("non-retryable 429 must NOT retry even with Retry-After; hits=%d err=%v", nonRetry429Hits.Load(), err)
+	}
+
 	// 网络读超时严禁自动重放请求
 	var slowHits atomic.Int32
 	slowSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -332,6 +354,26 @@ func TestDoJSONKeyFailoverInspectBodyAndNoTimeoutReplay(t *testing.T) {
 	})
 	if core.AsError(err).Code != core.CodeUpstreamTimeout || slowHits.Load() != 1 {
 		t.Fatalf("read timeout must NOT retry; hits=%d err=%v", slowHits.Load(), err)
+	}
+
+	// 无密钥 Provider（如自托管 Firecrawl）遇 HTTP 429 且 Retry-After > maxRetryWait 时必须立即失败，绝不阻塞等待
+	var keylessHits atomic.Int32
+	keylessSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		keylessHits.Add(1)
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"rate limited"}`))
+	}))
+	defer keylessSrv.Close()
+
+	keylessStart := time.Now()
+	_, err = client.DoJSON(context.Background(), nil, NewGate(4, 0), RequestSpec{
+		ProviderName: "firecrawl-selfhost",
+		Method:       http.MethodPost,
+		URL:          keylessSrv.URL,
+	})
+	if core.AsError(err).Code != core.CodeRateLimited || keylessHits.Load() != 1 || time.Since(keylessStart) > 500*time.Millisecond {
+		t.Fatalf("keyless 429 with long Retry-After must fail fast without sleeping; hits=%d elapsed=%v err=%v", keylessHits.Load(), time.Since(keylessStart), err)
 	}
 }
 

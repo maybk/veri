@@ -91,14 +91,15 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 	}
 	cfgDir := filepath.Dir(cfgPath)
 
+	credProviders := spec.CredentialProviders()
 	cfg := Default()
 	out := &Loaded{
 		Path:           cfgPath,
 		Dir:            cfgDir,
 		LogLevel:       resolveLogLevel(getenv(spec.EnvLogLevel)),
 		LogFormat:      resolveLogFormat(getenv(spec.EnvLogFormat)),
-		Credentials:    make(map[string]Credential, 8),
-		VaultProviders: make(map[string]bool, 8),
+		Credentials:    make(map[string]Credential, len(credProviders)),
+		VaultProviders: make(map[string]bool, len(credProviders)),
 	}
 	fetchGlobalDefined := false
 
@@ -189,8 +190,9 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		}
 	}
 
-	for _, prov := range spec.CredentialProviders() {
-		cred, allCandidateKeys := resolveCred(cfg.Providers.CredentialSpec(prov), spec.ProviderCredentialEnvVars(prov), vaultSecrets[prov], getenv)
+	credSpecs := cfg.Providers.CredentialSpecs()
+	for _, prov := range credProviders {
+		cred, allCandidateKeys := resolveCred(credSpecs[prov], spec.ProviderCredentialEnvVars(prov), vaultSecrets[prov], getenv)
 		out.Credentials[prov] = cred
 		if cred.HasPlainInFile {
 			hasPlain = true

@@ -45,10 +45,14 @@ type fetchWireError struct {
 	Status *int   `json:"status"`
 }
 
+type apiErrorDetails struct {
+	Reason string `json:"reason"`
+}
+
 type apiErrorWireResp struct {
 	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
+		Code    string           `json:"code"`
+		Message string           `json:"message"`
+		Details *apiErrorDetails `json:"details,omitempty"`
 	} `json:"error"`
-	RequestID string `json:"request_id"`
 }

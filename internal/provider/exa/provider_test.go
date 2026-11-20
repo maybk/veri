@@ -113,8 +113,14 @@ func TestExaLiteWhitelistCostAndContentsTags(t *testing.T) {
 
 	mode = "ok"
 	_, err = p.Fetch(context.Background(), &core.FetchRequest{URL: "https://blocked.example.com"})
-	if core.AsError(err).Code != core.CodeBlockedByPolicy {
-		t.Fatalf("expected blocked_by_policy for CRAWL_HTTP_403, got %v", err)
+	if se := core.AsError(err); se.Code != core.CodeBlockedByPolicy || se.HintKey != core.HintKeyChallengeDetected {
+		t.Fatalf("expected blocked_by_policy + challenge hint for CRAWL_HTTP_403, got %+v", se)
+	}
+	if _, err := resolveMaxAgeHours(map[string]string{"exa.max_age_hours": "721"}); core.AsError(err).Code != core.CodeInvalidArgument {
+		t.Fatalf("expected max_age_hours=721 -> invalid_argument, got %v", err)
+	}
+	if got, err := resolveMaxAgeHours(map[string]string{"exa.max_age_hours": "720"}); err != nil || got == nil || *got != 720 {
+		t.Fatalf("expected max_age_hours=720 valid, got %v err=%v", got, err)
 	}
 	fOut, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://exa.ai/doc"})
 	if err != nil || fOut.Cost.Micros != 1000 || fOut.Cost.Estimated {

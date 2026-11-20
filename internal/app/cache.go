@@ -253,22 +253,23 @@ func envelopeContentRunes(env *core.Envelope) int {
 
 func buildSearchCacheKey(req *core.SearchRequest, searchCfg config.SearchConfig, defaultMaxChars int) string {
 	type canonical struct {
-		Query      string            `json:"q"`
-		Question   string            `json:"question,omitempty"`
-		Count      int               `json:"count"`
-		Detail     string            `json:"detail"`
-		Sites      []string          `json:"sites,omitempty"`
-		Excludes   []string          `json:"excludes,omitempty"`
-		Lang       []string          `json:"lang,omitempty"`
-		FreshAfter string            `json:"after,omitempty"`
-		FreshEnd   string            `json:"before,omitempty"`
-		FreshUnit  string            `json:"unit,omitempty"`
-		FreshN     int               `json:"n,omitzero"`
-		Providers  []string          `json:"providers"`
-		Strategy   string            `json:"strategy"`
-		Strict     bool              `json:"strict"`
-		MaxChars   int               `json:"max_chars"`
-		Options    map[string]string `json:"opts,omitempty"`
+		Query        string            `json:"q"`
+		Question     string            `json:"question,omitempty"`
+		Count        int               `json:"count"`
+		Detail       string            `json:"detail"`
+		Sites        []string          `json:"sites,omitempty"`
+		Excludes     []string          `json:"excludes,omitempty"`
+		Lang         []string          `json:"lang,omitempty"`
+		FreshAfter   string            `json:"after,omitempty"`
+		FreshEnd     string            `json:"before,omitempty"`
+		FreshUnit    string            `json:"unit,omitempty"`
+		FreshN       int               `json:"n,omitzero"`
+		Providers    []string          `json:"providers"`
+		Strategy     string            `json:"strategy"`
+		Strict       bool              `json:"strict"`
+		IncludeExtra bool              `json:"extra,omitzero"`
+		MaxChars     int               `json:"max_chars"`
+		Options      map[string]string `json:"opts,omitempty"`
 	}
 	count := req.Count
 	if count <= 0 {
@@ -303,22 +304,23 @@ func buildSearchCacheKey(req *core.SearchRequest, searchCfg config.SearchConfig,
 		freshN = f.N
 	}
 	raw, _ := json.Marshal(canonical{
-		Query:      strings.TrimSpace(req.Query),
-		Question:   strings.TrimSpace(req.Question),
-		Count:      count,
-		Detail:     detail,
-		Sites:      urlnorm.CleanDomainFilters(req.Filters.Sites),
-		Excludes:   urlnorm.CleanDomainFilters(req.Filters.ExcludeSites),
-		Lang:       urlnorm.CleanLangFilters(req.Filters.Lang),
-		FreshAfter: afterStr,
-		FreshEnd:   beforeStr,
-		FreshUnit:  unitStr,
-		FreshN:     freshN,
-		Providers:  provs,
-		Strategy:   strategy,
-		Strict:     req.StrictFilters || searchCfg.StrictFilters,
-		MaxChars:   maxChars,
-		Options:    req.Options,
+		Query:        strings.TrimSpace(req.Query),
+		Question:     strings.TrimSpace(req.Question),
+		Count:        count,
+		Detail:       detail,
+		Sites:        urlnorm.CleanDomainFilters(req.Filters.Sites),
+		Excludes:     urlnorm.CleanDomainFilters(req.Filters.ExcludeSites),
+		Lang:         urlnorm.CleanLangFilters(req.Filters.Lang),
+		FreshAfter:   afterStr,
+		FreshEnd:     beforeStr,
+		FreshUnit:    unitStr,
+		FreshN:       freshN,
+		Providers:    provs,
+		Strategy:     strategy,
+		Strict:       req.StrictFilters || searchCfg.StrictFilters,
+		IncludeExtra: req.IncludeExtra,
+		MaxChars:     maxChars,
+		Options:      normalizeCacheOptions(req.Options, ""),
 	}, json.Deterministic(true))
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
@@ -331,25 +333,29 @@ func buildFetchCacheKey(rawURL string, strategy core.FetchStrategy, providers []
 		Providers []string          `json:"p,omitempty"`
 		Options   map[string]string `json:"o,omitempty"`
 	}
-	var cacheOpts map[string]string
-	for k, v := range options {
-		lk := strings.ToLower(strings.TrimSpace(k))
-		if lk == "" || lk == spec.OptFetchFresh {
-			continue
-		}
-		if cacheOpts == nil {
-			cacheOpts = make(map[string]string, len(options))
-		}
-		cacheOpts[lk] = strings.TrimSpace(v)
-	}
 	raw, _ := json.Marshal(canonical{
 		URL:       canonicalFetchTargetKey(rawURL),
 		Strategy:  strings.ToLower(strings.TrimSpace(string(strategy))),
 		Providers: normalizeCacheProviders(providers),
-		Options:   cacheOpts,
+		Options:   normalizeCacheOptions(options, spec.OptFetchFresh),
 	}, json.Deterministic(true))
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+func normalizeCacheOptions(options map[string]string, skipKey string) map[string]string {
+	var out map[string]string
+	for k, v := range options {
+		lk := strings.ToLower(strings.TrimSpace(k))
+		if lk == "" || (skipKey != "" && lk == skipKey) {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, len(options))
+		}
+		out[lk] = strings.TrimSpace(v)
+	}
+	return out
 }
 
 func isFreshFetchBypass(opts map[string]string) bool {

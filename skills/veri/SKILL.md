@@ -16,6 +16,7 @@ veri search -q --json -n 8 -- "<query>"                                 # defaul
 veri search -q --json -t 7d -- "<query>"                                # time filter: day|week|month|year, 7d|3m, or YYYY-MM-DD..YYYY-MM-DD
 veri search -q --json -s docs.python.org -- "<query>"                   # restrict to domain(s); -x excludes domain(s)
 veri search -q --json -p exa -- "<query>"                               # lock to a single provider (no fallback); -p exa,tavily falls back in order
+veri search -q --json -p zhihu -o zhihu.scope=zhihu -- "<query>"        # Zhihu defaults to web search (global); pass zhihu.scope=zhihu for Zhihu Q&A/articles
 veri search -q --json -F -- "<query>"                                   # concurrent RRF fusion (uses search.fusion_providers or top 3 enabled)
 veri search -q --json -F -p deepseek,exa,tavily,brave -- "<query>"      # concurrent RRF fusion over explicit providers
 veri fetch -q --json --max-chars 30000 -- "<url>"                       # extract clean Markdown (returns outline when truncated)

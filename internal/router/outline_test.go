@@ -448,3 +448,31 @@ func FuzzSlicePage(f *testing.F) {
 		}
 	})
 }
+
+func TestCleanHeadingTextStripsMarkdownAnchorLinks(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"Introduction [¶](https://go.dev/doc/effective_go\\#introduction)", "Introduction"},
+		{"Text Types [¶](https://docs.python.org/3/library/stdtypes.html#textseq \"Permalink to this headline\")", "Text Types"},
+		{"Errors [#](#errors)", "Errors"},
+		{"Install [#](https://example.com/docs#install 'Direct link to Install')", "Install"},
+		{"Usage [](#usage)", "Usage"},
+		{"[¶](#intro) Introduction", "Introduction"},
+		{"[](#sec) Overview ¶", "Overview"},
+		{"C#", "C#"},
+		{"Issue #42", "Issue #42"},
+		{"See [RFC 9110](https://httpwg.org/specs/rfc9110.html#section-1)", "See [RFC 9110](https://httpwg.org/specs/rfc9110.html#section-1)"},
+		{"Docs ![](https://cdn.example.com/icon.svg#gh-dark-mode-only)", "Docs ![](https://cdn.example.com/icon.svg#gh-dark-mode-only)"},
+		{"History [¶](https://en.wikipedia.org/wiki/Go_(programming_language)#History)", "History"},
+		{"[¶](https://en.wikipedia.org/wiki/Go_(programming_language)#History) History", "History"},
+		{"¶", "¶"},
+		{"[¶](#only)", "[¶](#only)"},
+	}
+	for _, tc := range cases {
+		if got := cleanHeadingText(tc.in); got != tc.want {
+			t.Errorf("cleanHeadingText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

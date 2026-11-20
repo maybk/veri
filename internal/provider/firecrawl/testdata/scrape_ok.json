@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "data": {
+    "markdown": "# Firecrawl Docs\n\nScrape any website into clean LLM-ready Markdown.",
+    "metadata": {
+      "title": "Firecrawl Docs",
+      "description": "Scrape documentation",
+      "language": "en",
+      "sourceURL": "https://docs.firecrawl.dev/scrape",
+      "url": "https://docs.firecrawl.dev/features/scrape",
+      "statusCode": 200,
+      "contentType": "text/html"
+    }
+  }
+}

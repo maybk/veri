@@ -166,6 +166,7 @@ func (r *Router) normalizeFetchRequest(rawReq *core.FetchRequest) (core.FetchReq
 }
 
 func buildFetchSuccessEnvelope(page *core.Page, req *core.FetchRequest, strategy string, reports []core.ProviderReport, fallback bool, notes []string, costs []*core.Cost, start time.Time) *core.Envelope {
+	page = normalizeFetchedPage(page)
 	paged, viewNotes := ApplyPageView(page, req)
 	if paged != nil && strings.TrimSpace(paged.Title) == "" {
 		paged.Title = resolveFallbackPageTitle(page)

@@ -25,6 +25,7 @@ const (
 	extendedMaxCount     = 100
 	maxDomainFilters     = 1200
 	maxFetchURLLen       = 2048
+	maxContentsAgeHours  = 720
 	defaultSearchTextCap = 20000
 
 	categoryCompany = "company"

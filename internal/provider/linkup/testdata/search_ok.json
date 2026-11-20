@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "type": "text",
+      "name": "Go 1.26 Release Notes",
+      "url": "https://go.dev/doc/go1.26",
+      "content": "The Go 1.26 release introduces encoding/json/v2 improvements and runtime optimizations.",
+      "favicon": "https://go.dev/favicon.ico",
+      "publishedAt": "2026-02-15"
+    },
+    {
+      "type": "image",
+      "name": "Go Gopher Logo",
+      "url": "https://go.dev/images/gopher.png",
+      "content": ""
+    }
+  ]
+}

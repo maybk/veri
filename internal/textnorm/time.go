@@ -14,6 +14,15 @@ func ShanghaiLocation() *time.Location {
 	return fixedShanghai
 }
 
+// UnixSecondsToTime 将合法范围内的正 Unix 秒级时间戳转换为 UTC *time.Time（拒绝 <= 0 或毫秒级超大值）。
+func UnixSecondsToTime(sec int64) *time.Time {
+	const maxUnixSeconds = 1e11 // 约公元 5138 年，防止误把毫秒级时间戳当秒解析
+	if sec <= 0 || sec >= maxUnixSeconds {
+		return nil
+	}
+	return new(time.Unix(sec, 0).UTC())
+}
+
 var (
 	zonedTimeLayouts = []string{
 		time.RFC3339Nano,

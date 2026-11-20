@@ -8,11 +8,15 @@ import (
 // 内置检索与正文提取 Provider 唯一标识常量。
 const (
 	ProviderDeepSeek   = "deepseek"
+	ProviderKeenable   = "keenable"
+	ProviderZhihu      = "zhihu"
 	ProviderExa        = "exa"
 	ProviderTinyFish   = "tinyfish"
 	ProviderTencentWSA = "tencent_wsa"
 	ProviderTavily     = "tavily"
 	ProviderBrave      = "brave"
+	ProviderLinkup     = "linkup"
+	ProviderFirecrawl  = "firecrawl"
 	ProviderGitHub     = "github"
 	ProviderLocal      = "local"
 )
@@ -29,12 +33,16 @@ const (
 // 内置默认上游 API 基础端点常量。
 const (
 	DefaultDeepSeekBaseURL   = "https://api.deepseek.com"
+	DefaultKeenableBaseURL   = "https://api.keenable.ai"
+	DefaultZhihuBaseURL      = "https://developer.zhihu.com"
 	DefaultExaBaseURL        = "https://api.exa.ai"
 	DefaultTinyFishSearchURL = "https://api.search.tinyfish.ai"
 	DefaultTinyFishFetchURL  = "https://api.fetch.tinyfish.ai"
 	DefaultTencentWSABaseURL = "https://api.wsa.cloud.tencent.com"
 	DefaultTavilyBaseURL     = "https://api.tavily.com"
 	DefaultBraveBaseURL      = "https://api.search.brave.com"
+	DefaultLinkupBaseURL     = "https://api.linkup.so"
+	DefaultFirecrawlBaseURL  = "https://api.firecrawl.dev"
 	DefaultGitHubAPIBaseURL  = "https://api.github.com"
 	DefaultGitHubRawBaseURL  = "https://raw.githubusercontent.com"
 )
@@ -53,6 +61,9 @@ const (
 	EnvNoColor        = "NO_COLOR"
 
 	EnvDeepSeekAPIKey      = "DEEPSEEK_API_KEY"
+	EnvKeenableAPIKey      = "KEENABLE_API_KEY"
+	EnvZhihuAPIKey         = "ZHIHU_API_KEY"
+	EnvZhihuSecretAlias    = "ZHIHU_ACCESS_SECRET"
 	EnvExaAPIKey           = "EXA_API_KEY"
 	EnvTinyFishAPIKey      = "TINYFISH_API_KEY"
 	EnvTencentWSAAPIKey    = "TENCENT_WSA_API_KEY"
@@ -60,6 +71,8 @@ const (
 	EnvTavilyAPIKey        = "TAVILY_API_KEY"
 	EnvBraveAPIKey         = "BRAVE_API_KEY"
 	EnvBraveSearchAliasKey = "BRAVE_SEARCH_API_KEY"
+	EnvLinkupAPIKey        = "LINKUP_API_KEY"
+	EnvFirecrawlAPIKey     = "FIRECRAWL_API_KEY"
 	EnvGitHubToken         = "GITHUB_TOKEN"
 	EnvGHTokenAlias        = "GH_TOKEN"
 )
@@ -104,11 +117,15 @@ func (p ProviderInfo) NeedsCredential() bool { return len(p.EnvVars) > 0 }
 func Providers() []ProviderInfo {
 	return []ProviderInfo{
 		{Name: ProviderDeepSeek, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvDeepSeekAPIKey}},
+		{Name: ProviderKeenable, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvKeenableAPIKey}},
+		{Name: ProviderZhihu, Roles: RoleSearch, EnvVars: []string{EnvZhihuAPIKey, EnvZhihuSecretAlias}},
 		{Name: ProviderExa, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvExaAPIKey}},
 		{Name: ProviderTinyFish, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvTinyFishAPIKey}},
 		{Name: ProviderTencentWSA, Roles: RoleSearch, EnvVars: []string{EnvTencentWSAAPIKey, EnvTencentWSAAliasKey}, Aliases: []string{"tencentwsa", "tencent-wsa"}},
 		{Name: ProviderTavily, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvTavilyAPIKey}},
 		{Name: ProviderBrave, Roles: RoleSearch, EnvVars: []string{EnvBraveAPIKey, EnvBraveSearchAliasKey}},
+		{Name: ProviderLinkup, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvLinkupAPIKey}},
+		{Name: ProviderFirecrawl, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvFirecrawlAPIKey}},
 		{Name: ProviderGitHub, Roles: RoleFetch, EnvVars: []string{EnvGitHubToken, EnvGHTokenAlias}},
 		{Name: ProviderLocal, Roles: RoleFetch},
 	}
@@ -190,10 +207,14 @@ func DefaultSearchProviders() []string {
 	return []string{
 		ProviderDeepSeek,
 		ProviderExa,
+		ProviderZhihu,
 		ProviderTinyFish,
 		ProviderTencentWSA,
 		ProviderTavily,
 		ProviderBrave,
+		ProviderLinkup,
+		ProviderKeenable,
+		ProviderFirecrawl,
 	}
 }
 
@@ -204,6 +225,9 @@ func DefaultFetchProviders() []string {
 		ProviderTinyFish,
 		ProviderTavily,
 		ProviderExa,
+		ProviderLinkup,
+		ProviderKeenable,
+		ProviderFirecrawl,
 	}
 }
 
@@ -212,7 +236,10 @@ func DefaultFetchProvidersGlobal() []string {
 	return []string{
 		ProviderExa,
 		ProviderTavily,
+		ProviderLinkup,
 		ProviderTinyFish,
+		ProviderKeenable,
+		ProviderFirecrawl,
 		ProviderDeepSeek,
 	}
 }

@@ -56,6 +56,7 @@ type searchSchemaDefaults struct {
 	maxCount        int
 	defaultDetail   string
 	defaultStrategy string
+	zhihuScope      string
 }
 
 type fetchSchemaDefaults struct {
@@ -81,6 +82,10 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 	effStrategy := strings.TrimSpace(def.defaultStrategy)
 	if effStrategy == "" {
 		effStrategy = string(core.StrategyAuto)
+	}
+	effZhihuScope := strings.TrimSpace(def.zhihuScope)
+	if effZhihuScope == "" {
+		effZhihuScope = spec.ZhihuScopeGlobal
 	}
 
 	allSearchProviders := spec.ProvidersWithRole(spec.RoleSearch)
@@ -150,13 +155,7 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		"options": map[string]any{
 			"type":                 "object",
 			"additionalProperties": map[string]any{"type": "string"},
-			"description": fmt.Sprintf(
-				"Optional provider options (e.g. %q, %q, %q, %q, %q, %q, %q, %q, %q, %q).",
-				spec.OptExaSearchType, spec.OptExaCategory,
-				spec.OptTavilySearchDepth, spec.OptTavilyTopic,
-				spec.OptBraveMode, spec.OptBraveThreshold, spec.OptBraveGoggles,
-				spec.OptTinyFishDomainType, spec.OptWSAIndustry, spec.OptWSAMode,
-			),
+			"description":          searchOptionsDescription(effZhihuScope),
 		},
 		"providers": map[string]any{
 			"type":        "array",
@@ -236,10 +235,7 @@ func buildFetchInputSchema(def fetchSchemaDefaults, enabledFetchers []string) ma
 		"options": map[string]any{
 			"type":                 "object",
 			"additionalProperties": map[string]any{"type": "string"},
-			"description": fmt.Sprintf(
-				"Optional extractor options (e.g. %q, %q, %q).",
-				spec.OptTavilyExtractDepth, spec.OptTinyFishTTL, spec.OptExaMaxAgeHours,
-			),
+			"description":          fetchOptionsDescription(),
 		},
 		"providers": map[string]any{
 			"type":        "array",
@@ -261,4 +257,39 @@ func enabledListLabel(items []string) string {
 		return "none"
 	}
 	return strings.Join(items, ", ")
+}
+
+func searchOptionsDescription(effZhihuScope string) string {
+	parts := []string{
+		fmt.Sprintf("%q", spec.OptExaSearchType),
+		fmt.Sprintf("%q", spec.OptExaCategory),
+		fmt.Sprintf("%q", spec.OptTavilySearchDepth),
+		fmt.Sprintf("%q", spec.OptTavilyTopic),
+		fmt.Sprintf("%q", spec.OptBraveMode),
+		fmt.Sprintf("%q", spec.OptBraveThreshold),
+		fmt.Sprintf("%q", spec.OptBraveGoggles),
+		fmt.Sprintf("%q", spec.OptTinyFishDomainType),
+		fmt.Sprintf("%q", spec.OptWSAIndustry),
+		fmt.Sprintf("%q", spec.OptWSAMode),
+		fmt.Sprintf("%q [%s|%s]", spec.OptKeenableMode, spec.KeenableModePro, spec.KeenableModeRealtime),
+		fmt.Sprintf("%q [%s=web|%s=Zhihu Q&A/articles, default: %s]", spec.OptZhihuScope, spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu, effZhihuScope),
+		fmt.Sprintf("%q [%s|%s|%s, %s only]", spec.OptZhihuSearchDB, spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic, spec.ZhihuScopeGlobal),
+		fmt.Sprintf("%q [%s only, e.g. VoteUpCount:desc]", spec.OptZhihuSort, spec.ZhihuScopeZhihu),
+		fmt.Sprintf("%q [%s|%s|%s|%s]", spec.OptLinkupDepth, spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep),
+		fmt.Sprintf("%q [research|pdf|developer|gov]", spec.OptFirecrawlCategory),
+	}
+	return "Optional provider options (e.g. " + strings.Join(parts, ", ") + ")."
+}
+
+func fetchOptionsDescription() string {
+	parts := []string{
+		fmt.Sprintf("%q [%s|%s]", spec.OptTavilyExtractDepth, spec.TavilyDepthBasic, spec.TavilyDepthAdvanced),
+		fmt.Sprintf("%q", spec.OptTinyFishTTL),
+		fmt.Sprintf("%q", spec.OptExaMaxAgeHours),
+		fmt.Sprintf("%q [%s|%s]", spec.OptLinkupFetchMode, spec.LinkupFetchModeStandard, spec.LinkupFetchModePro),
+		fmt.Sprintf("%q [true|false]", spec.OptLinkupRenderJS),
+		fmt.Sprintf("%q [%s|%s|%s]", spec.OptFirecrawlProxy, spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced),
+		fmt.Sprintf("%q", spec.OptFirecrawlMaxPages),
+	}
+	return "Optional extractor options (e.g. " + strings.Join(parts, ", ") + ")."
 }

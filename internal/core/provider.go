@@ -52,6 +52,7 @@ type Capabilities struct {
 	MaxSites                     int         // Sites=SiteMulti 时的最大域名数，0 表示不限
 	ExcludeSites                 int         // 最多原生支持的排除域名数，0 表示不支持
 	SiteExcludeMutuallyExclusive bool        // true 表示原生接口不可同时传入包含站点与排除站点
+	SiteHostOnly                 bool        // true 表示原生 Sites/ExcludeSites 仅支持纯主机名（不支持 host/path 路径前缀）
 	Freshness                    TimeSupport // 时间窗原生支持程度
 	Lang                         bool        // 是否原生支持语言过滤
 	Content                      ContentCost // detail=content 支持与计费情况

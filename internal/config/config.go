@@ -74,11 +74,15 @@ type NetworkConfig struct {
 // ProvidersConfig 汇总各内置 Provider 的独立配置。
 type ProvidersConfig struct {
 	DeepSeek   DeepSeekConfig   `toml:"deepseek" json:"deepseek"`
+	Keenable   KeenableConfig   `toml:"keenable" json:"keenable"`
+	Zhihu      ZhihuConfig      `toml:"zhihu" json:"zhihu"`
 	Exa        ExaConfig        `toml:"exa" json:"exa"`
 	TinyFish   TinyFishConfig   `toml:"tinyfish" json:"tinyfish"`
 	TencentWSA TencentWSAConfig `toml:"tencent_wsa" json:"tencent_wsa"`
 	Tavily     TavilyConfig     `toml:"tavily" json:"tavily"`
 	Brave      BraveConfig      `toml:"brave" json:"brave"`
+	Linkup     LinkupConfig     `toml:"linkup" json:"linkup"`
+	Firecrawl  FirecrawlConfig  `toml:"firecrawl" json:"firecrawl"`
 	GitHub     GitHubConfig     `toml:"github" json:"github"`
 	Local      LocalConfig      `toml:"local" json:"local"`
 }
@@ -169,6 +173,67 @@ type BraveConfig struct {
 	PriceSearch string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
 }
 
+// KeenableConfig 配置 Keenable Search & Fetch API。
+type KeenableConfig struct {
+	Enabled      bool     `toml:"enabled" json:"enabled"`
+	APIKey       string   `toml:"api_key" json:"api_key"`
+	BaseURL      string   `toml:"base_url" json:"base_url"`
+	Mode         string   `toml:"mode" json:"mode"` // pro | realtime
+	Timeout      Duration `toml:"timeout" json:"timeout"`
+	FetchTimeout Duration `toml:"fetch_timeout" json:"fetch_timeout"`
+	Concurrency  int      `toml:"concurrency" json:"concurrency"`
+	Weight       float64  `toml:"weight" json:"weight"`
+	QPS          float64  `toml:"qps" json:"qps"`
+	PriceCredit  string   `toml:"price_credit,omitempty" json:"price_credit,omitempty"`
+}
+
+// ZhihuConfig 配置知乎开放平台全网搜索与站内搜索 API。
+type ZhihuConfig struct {
+	Enabled          bool     `toml:"enabled" json:"enabled"`
+	APIKey           string   `toml:"api_key" json:"api_key"`
+	BaseURL          string   `toml:"base_url" json:"base_url"`
+	Scope            string   `toml:"scope" json:"scope"`         // global | zhihu
+	SearchDB         string   `toml:"search_db" json:"search_db"` // all | realtime | static
+	Timeout          Duration `toml:"timeout" json:"timeout"`
+	Concurrency      int      `toml:"concurrency" json:"concurrency"`
+	Weight           float64  `toml:"weight" json:"weight"`
+	QPS              float64  `toml:"qps" json:"qps"`
+	PriceSearch      string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
+	PriceZhihuSearch string   `toml:"price_zhihu_search,omitempty" json:"price_zhihu_search,omitempty"`
+}
+
+// LinkupConfig 配置 Linkup Search & Fetch API。
+type LinkupConfig struct {
+	Enabled      bool     `toml:"enabled" json:"enabled"`
+	APIKey       string   `toml:"api_key" json:"api_key"`
+	BaseURL      string   `toml:"base_url" json:"base_url"`
+	Depth        string   `toml:"depth" json:"depth"`           // flash | fast | standard | deep
+	FetchMode    string   `toml:"fetch_mode" json:"fetch_mode"` // standard | pro
+	RenderJS     bool     `toml:"render_js" json:"render_js"`
+	Timeout      Duration `toml:"timeout" json:"timeout"`
+	FetchTimeout Duration `toml:"fetch_timeout" json:"fetch_timeout"`
+	Concurrency  int      `toml:"concurrency" json:"concurrency"`
+	Weight       float64  `toml:"weight" json:"weight"`
+	QPS          float64  `toml:"qps" json:"qps"`
+	PriceSearch  string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
+	PriceFetch   string   `toml:"price_fetch,omitempty" json:"price_fetch,omitempty"`
+}
+
+// FirecrawlConfig 配置 Firecrawl v2 Scrape & Search API（支持官方云端与开源自托管）。
+type FirecrawlConfig struct {
+	Enabled      bool     `toml:"enabled" json:"enabled"`
+	APIKey       string   `toml:"api_key" json:"api_key"`
+	BaseURL      string   `toml:"base_url" json:"base_url"`
+	Proxy        string   `toml:"proxy" json:"proxy"` // auto | basic | enhanced
+	MaxPDFPages  int      `toml:"max_pdf_pages" json:"max_pdf_pages"`
+	Timeout      Duration `toml:"timeout" json:"timeout"`
+	FetchTimeout Duration `toml:"fetch_timeout" json:"fetch_timeout"`
+	Concurrency  int      `toml:"concurrency" json:"concurrency"`
+	Weight       float64  `toml:"weight" json:"weight"`
+	QPS          float64  `toml:"qps" json:"qps"`
+	PriceCredit  string   `toml:"price_credit,omitempty" json:"price_credit,omitempty"`
+}
+
 // GitHubConfig 配置 GitHub 专用提取器。
 type GitHubConfig struct {
 	Enabled     bool     `toml:"enabled" json:"enabled"`
@@ -200,10 +265,15 @@ func (p ProvidersConfig) IsEnabled(provider string) bool {
 
 // CredentialSpec 按 toml 标签读取指定 Provider 的凭据配置字符串（无需手写 switch）。
 func (p ProvidersConfig) CredentialSpec(provider string) string {
-	var out string
+	return p.CredentialSpecs()[provider]
+}
+
+// CredentialSpecs 一次遍历按 toml 标签收集全部 Provider 的凭据配置字符串映射。
+func (p ProvidersConfig) CredentialSpecs() map[string]string {
+	out := make(map[string]string, 12)
 	_ = walkProviderFields(&p, func(provName, fieldTag string, val reflect.Value) error {
-		if provName == provider && isSecretTOMLTag(fieldTag) && val.Kind() == reflect.String {
-			out = val.String()
+		if isSecretTOMLTag(fieldTag) && val.Kind() == reflect.String {
+			out[provName] = val.String()
 		}
 		return nil
 	})

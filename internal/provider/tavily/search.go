@@ -41,7 +41,12 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 		IncludeUsage:         true,
 	}
 	if topic := strings.ToLower(strings.TrimSpace(textnorm.FirstNonEmpty(req.Options[spec.OptTavilyTopic], req.Options[spec.OptTavilyTopicAlias]))); topic != "" {
-		wireReq.Topic = topic
+		switch topic {
+		case "general", "news", "finance":
+			wireReq.Topic = topic
+		default:
+			return nil, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid tavily.topic %q (valid: general, news, finance)", topic)).WithProvider(ProviderName)
+		}
 	}
 	if len(req.Filters.Sites) > 0 {
 		wireReq.IncludeDomains = req.Filters.Sites

@@ -11,7 +11,7 @@ import (
 )
 
 func inspectWSABody(status int, _ http.Header, body []byte) *core.Error {
-	var wire searchWireResp
+	var wire errorEnvelopeWireResp
 	if err := json.Unmarshal(body, &wire); err == nil && wire.Response.Error != nil && strings.TrimSpace(wire.Response.Error.Code) != "" {
 		return classifyWSACode(wire.Response.Error.Code, wire.Response.Error.Message).WithStatus(status)
 	}

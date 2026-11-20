@@ -9,7 +9,8 @@
 - `mcp.go`：MCP 专属路由按需懒加载、进程内缓存检索/抓取（`SearchMCP` / `FetchMCP`）与动态分页视图构造。
 - `scrub.go`：应用层文本、错误对象及响应信封全字段凭据脱敏。
 - `batch.go`：有界并发保序批量网页抓取（`FetchBatch` / `FetchBatchMCP`）与单页局部错误隔离。
-- `registry.go`：显式构造 8 个内置适配器并生成运行期状态列表（`ProviderStatus`）。
+- `registry.go`：适配器工厂表、运行期状态模型（`ProviderStatus`）与公共状态构造辅助函数。
+- `registry_builders.go`：12 个内置检索与提取适配器的显式构造函数实现。
 - `cache.go`：并发安全的双上限（条数与字符总量）泛型 TTL-LRU 内存缓存及带引用计数取消与异常恢复的 `flightGroup` 并发合并器。
 - `doctor.go`：配置文件权限检查、可用链路统计、DNS / Fake-IP 环境探测及可选 `--live` 真实连通性巡检。
 

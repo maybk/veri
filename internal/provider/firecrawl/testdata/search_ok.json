@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "data": {
+    "web": [
+      {
+        "url": "https://go.dev/doc/effective_go",
+        "title": "Effective Go",
+        "description": "Tips for writing clear, idiomatic Go code.",
+        "category": "developer"
+      }
+    ]
+  }
+}

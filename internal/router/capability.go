@@ -67,11 +67,20 @@ func matchCapabilities(caps core.Capabilities, req *core.SearchRequest, strict b
 		plan.adapted.Count = reqCount
 	}
 
-	// 2. Sites 白名单匹配与模拟
+	// 2. Sites 白名单匹配与模拟（含仅支持主机名的厂商路径前缀降级）
 	if len(req.Filters.Sites) > 0 {
+		hasPath := caps.SiteHostOnly && urlnorm.HasPathDomainFilter(req.Filters.Sites)
+		if hasPath && strict {
+			plan.unsupportedReason = "sites"
+			return plan
+		}
+		nativeSites := req.Filters.Sites
+		if hasPath {
+			nativeSites = urlnorm.ExtractFilterHosts(req.Filters.Sites)
+		}
 		switch caps.Sites {
 		case core.SiteMulti:
-			if caps.MaxSites > 0 && len(req.Filters.Sites) > caps.MaxSites {
+			if caps.MaxSites > 0 && len(nativeSites) > caps.MaxSites {
 				if strict {
 					plan.unsupportedReason = "sites"
 					return plan
@@ -79,14 +88,22 @@ func matchCapabilities(caps core.Capabilities, req *core.SearchRequest, strict b
 				plan.adapted.Filters.Sites = nil
 				plan.emulateSites = slices.Clone(req.Filters.Sites)
 				plan.degraded = append(plan.degraded, "sites:emulated")
+			} else if hasPath {
+				plan.adapted.Filters.Sites = nativeSites
+				plan.emulateSites = slices.Clone(req.Filters.Sites)
+				plan.degraded = append(plan.degraded, "sites:emulated")
 			}
 		case core.SiteSingle:
-			if len(req.Filters.Sites) > 1 {
+			if len(nativeSites) > 1 {
 				if strict {
 					plan.unsupportedReason = "sites"
 					return plan
 				}
 				plan.adapted.Filters.Sites = nil
+				plan.emulateSites = slices.Clone(req.Filters.Sites)
+				plan.degraded = append(plan.degraded, "sites:emulated")
+			} else if hasPath {
+				plan.adapted.Filters.Sites = nativeSites
 				plan.emulateSites = slices.Clone(req.Filters.Sites)
 				plan.degraded = append(plan.degraded, "sites:emulated")
 			}
@@ -101,7 +118,7 @@ func matchCapabilities(caps core.Capabilities, req *core.SearchRequest, strict b
 		}
 	}
 
-	// 3. ExcludeSites 排除站点拆分模拟（含单字段互斥厂商如 tencent_wsa）
+	// 3. ExcludeSites 排除站点拆分模拟（含单字段互斥厂商与仅主机名厂商路径排除防误杀）
 	if len(req.Filters.ExcludeSites) > 0 {
 		switch {
 		case caps.SiteExcludeMutuallyExclusive && len(plan.adapted.Filters.Sites) > 0:
@@ -119,6 +136,20 @@ func matchCapabilities(caps core.Capabilities, req *core.SearchRequest, strict b
 			}
 			plan.adapted.Filters.ExcludeSites = nil
 			plan.emulateExcludes = slices.Clone(req.Filters.ExcludeSites)
+			plan.degraded = append(plan.degraded, "exclude_sites:emulated")
+		case caps.SiteHostOnly && urlnorm.HasPathDomainFilter(req.Filters.ExcludeSites):
+			if strict {
+				plan.unsupportedReason = "exclude_sites"
+				return plan
+			}
+			hostOnly, pathOnly := urlnorm.SplitHostAndPathFilters(req.Filters.ExcludeSites)
+			if len(hostOnly) > caps.ExcludeSites {
+				plan.adapted.Filters.ExcludeSites = slices.Clone(hostOnly[:caps.ExcludeSites])
+				plan.emulateExcludes = slices.Concat(hostOnly[caps.ExcludeSites:], pathOnly)
+			} else {
+				plan.adapted.Filters.ExcludeSites = hostOnly
+				plan.emulateExcludes = pathOnly
+			}
 			plan.degraded = append(plan.degraded, "exclude_sites:emulated")
 		case len(req.Filters.ExcludeSites) > caps.ExcludeSites:
 			if strict {

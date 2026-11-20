@@ -1,0 +1,7 @@
+{
+  "statusCode": 429,
+  "error": {
+    "code": "INSUFFICIENT_FUNDS_CREDITS",
+    "message": "Insufficient credits remaining in account"
+  }
+}

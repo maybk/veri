@@ -84,7 +84,7 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 		t.Fatalf("expected semantic placeholders and clean defaults on search --help, code=%d out=%s", code, searchHelpZh)
 	}
 	code, fetchHelpZh, _ := run(nil, "--ui-lang", "zh", "fetch", "--help")
-	if code != 0 || !strings.Contains(fetchHelpZh, "（默认: api_first）") || !strings.Contains(fetchHelpZh, "api_first | smart_local | local_only | api_only") || !strings.Contains(fetchHelpZh, "（默认: 30s）") || strings.Contains(fetchHelpZh, "）（") {
+	if code != 0 || !strings.Contains(fetchHelpZh, "（默认: api_first）") || !strings.Contains(fetchHelpZh, "api_first | smart_local | local_only | api_only") || !strings.Contains(fetchHelpZh, "（默认: 45s）") || strings.Contains(fetchHelpZh, "）（") {
 		t.Fatalf("expected clean defaults on fetch --help, code=%d out=%s", code, fetchHelpZh)
 	}
 

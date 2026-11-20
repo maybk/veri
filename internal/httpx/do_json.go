@@ -184,15 +184,15 @@ func (c *Client) DoJSON(ctx context.Context, pool *keypool.Pool, gate *Gate, spe
 					continue
 				}
 			}
-			// 单 Key 触发限流且无短 Retry-After 提示时不再空等重试同一冷却中 Key，直接交由路由层回退。
-			if classified.Code == core.CodeRateLimited && requireKey && (retryAfter <= 0 || retryAfter > maxRetryWait) {
+			// 上游显式要求长冷却（超出单次重试等待封顶）或单 Key 无短 Retry-After 提示时直接返回交由路由层回退。
+			if classified.Code == core.CodeRateLimited && (retryAfter > maxRetryWait || (requireKey && retryAfter <= 0)) {
 				return nil, classified
 			}
-			// 仅对上游明确未扣费的瞬时状态码重试最多 1 次。
-			if ShouldRetryStatus(resp.StatusCode) {
+			// 仅对上游明确未扣费且分类为可重试的瞬时状态码重试最多 1 次（防止 HTTP 429 承载余额耗尽等终止性业务错误时被误重放）。
+			if classified.Retryable && ShouldRetryStatus(resp.StatusCode) {
 				delay := RetryDelay(resp.Header.Get("Retry-After"), now)
 				if classified.Code == core.CodeRateLimited && retryAfter > 0 {
-					delay = retryAfter + 5*time.Millisecond
+					delay = min(retryAfter, maxRetryWait) + 5*time.Millisecond
 				}
 				if c.logger != nil {
 					c.logger.DebugContext(ctx, "provider_retry", "provider", spec.ProviderName, "status", resp.StatusCode, "delay_ms", delay.Milliseconds())
@@ -267,4 +267,61 @@ func exhaustedKeyPoolError(providerName string, reason keypool.ExhaustReason) *c
 		return core.NewError(core.CodeRateLimited, fmt.Sprintf("all API keys for %s are rate-limited and cooling down", providerName)).
 			WithProvider(providerName)
 	}
+}
+
+// ErrorMessageOrStatus 在消息非空时返回清洗后的消息，否则回退为标准 HTTP 状态文本。
+func ErrorMessageOrStatus(msg string, status int) string {
+	if msg != "" {
+		return msg
+	}
+	return http.StatusText(status)
+}
+
+// RemainingBudget 计算上游请求应申报的剩余超时预算：取 ctx 截止剩余时间与 fallback 的较小值，
+// 并在预算充裕时扣减 reserve 以便上游在本地超时前优雅返回。
+func RemainingBudget(ctx context.Context, fallback, reserve time.Duration) time.Duration {
+	budget := fallback
+	if ctx != nil {
+		if dl, ok := ctx.Deadline(); ok {
+			if rem := time.Until(dl); rem > 0 && (budget <= 0 || rem < budget) {
+				budget = rem
+			}
+		}
+	}
+	if budget <= 0 {
+		return 0
+	}
+	if reserve > 0 && budget > reserve+time.Second {
+		budget -= reserve
+	}
+	return budget
+}
+
+// LooksLikeChallengeMessage 判断上游抓取错误文本是否指向反爬校验、人机验证或 403 拦截。
+func LooksLikeChallengeMessage(raw string) bool {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	if lower == "" {
+		return false
+	}
+	for _, guard := range []string{"captcha", "challenge", "cloudflare", "forbidden", "403", "bot"} {
+		if strings.Contains(lower, guard) {
+			return true
+		}
+	}
+	return false
+}
+
+// LooksLikeNotFoundMessage 判断上游抓取错误码或错误文本是否指向目标页 404/410 不存在（排除含挑战词的误判）。
+func LooksLikeNotFoundMessage(code, rawMsg string) bool {
+	lower := strings.ToLower(strings.TrimSpace(rawMsg))
+	if LooksLikeChallengeMessage(lower) {
+		return false
+	}
+	upperCode := strings.ToUpper(strings.TrimSpace(code))
+	return strings.Contains(upperCode, "NOT_FOUND") ||
+		strings.Contains(upperCode, "NOTFOUND") ||
+		strings.Contains(lower, "404") ||
+		strings.Contains(lower, "410") ||
+		strings.Contains(lower, "not found") ||
+		strings.Contains(lower, "does not exist")
 }

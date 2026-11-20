@@ -1,0 +1,7 @@
+{
+  "statusCode": 400,
+  "error": {
+    "code": "SEARCH_QUERY_NO_RESULT",
+    "message": "No relevant results found for query"
+  }
+}

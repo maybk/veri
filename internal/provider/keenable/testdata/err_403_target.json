@@ -1,0 +1,5 @@
+{
+  "type": "target_error",
+  "code": "target_blocked",
+  "message": "Target website blocked automated fetching"
+}

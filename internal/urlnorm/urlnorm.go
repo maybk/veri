@@ -6,6 +6,7 @@ package urlnorm
 import (
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -175,6 +176,53 @@ func CleanDomainFilters(raw []string) []string {
 		out = append(out, normalized)
 	}
 	return out
+}
+
+// HasPathDomainFilter 判断站点过滤列表中是否存在带路径前缀（host/path）的条目。
+func HasPathDomainFilter(items []string) bool {
+	for _, s := range items {
+		if strings.Contains(s, "/") {
+			return true
+		}
+	}
+	return false
+}
+
+// ExtractFilterHosts 从站点过滤列表中提取去重后的纯主机名部分（截断路径前缀，仅适用于白名单召回收敛）。
+func ExtractFilterHosts(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, raw := range items {
+		host, _, _ := strings.Cut(strings.TrimSpace(raw), "/")
+		host = strings.TrimSpace(host)
+		if host != "" && !slices.Contains(out, host) {
+			out = append(out, host)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// SplitHostAndPathFilters 将站点过滤列表拆分为纯主机名项与含路径项（避免将 host/path 截断为裸主机误杀整站排除）。
+func SplitHostAndPathFilters(items []string) (hostOnly, pathOnly []string) {
+	for _, raw := range items {
+		s := strings.TrimSpace(raw)
+		if s == "" {
+			continue
+		}
+		if strings.Contains(s, "/") {
+			if !slices.Contains(pathOnly, s) {
+				pathOnly = append(pathOnly, s)
+			}
+		} else if !slices.Contains(hostOnly, s) {
+			hostOnly = append(hostOnly, s)
+		}
+	}
+	return hostOnly, pathOnly
 }
 
 // CleanLangFilters 清洗并去重语言代码列表。

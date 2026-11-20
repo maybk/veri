@@ -39,7 +39,12 @@ func classifyCrawlTagError(tag string, httpStatus int) error {
 		return core.NewError(core.CodeNotFound, fmt.Sprintf("Exa target not found (%s)", tag)).WithProvider(ProviderName).WithStatus(httpStatus)
 	case "CRAWL_TIMEOUT", "CRAWL_LIVECRAWL_TIMEOUT":
 		return core.NewError(core.CodeUpstreamTimeout, fmt.Sprintf("Exa crawl timed out (%s)", tag)).WithProvider(ProviderName).WithStatus(httpStatus)
-	case "CRAWL_HTTP_403", "SOURCE_NOT_AVAILABLE":
+	case "CRAWL_HTTP_403":
+		return core.NewError(core.CodeBlockedByPolicy, fmt.Sprintf("Exa target blocked (%s)", tag)).
+			WithProvider(ProviderName).
+			WithStatus(httpStatus).
+			WithHintKey(core.HintKeyChallengeDetected)
+	case "SOURCE_NOT_AVAILABLE":
 		return core.NewError(core.CodeBlockedByPolicy, fmt.Sprintf("Exa target blocked (%s)", tag)).WithProvider(ProviderName).WithStatus(httpStatus)
 	case "UNSUPPORTED_URL":
 		return core.NewError(core.CodeInvalidArgument, "unsupported URL for Exa contents").WithProvider(ProviderName).WithStatus(httpStatus)

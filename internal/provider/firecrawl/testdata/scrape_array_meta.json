@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "data": {
+    "markdown": "# Array Title Page\n\nMulti-valued OpenGraph metadata compatibility check.",
+    "metadata": {
+      "title": ["Array Title Primary", "Array Title Secondary"],
+      "description": ["Summary A"],
+      "language": ["en", "en-US"],
+      "sourceURL": "https://example.com/array-meta",
+      "url": "https://example.com/array-meta",
+      "statusCode": 200
+    }
+  }
+}

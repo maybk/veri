@@ -91,28 +91,16 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 
 	if len(wireResp.FailedResults) > 0 {
 		reason := textnorm.CleanInline(wireResp.FailedResults[0].Error)
-		if isNotFoundExtractReason(reason) {
+		if httpx.LooksLikeNotFoundMessage("", reason) {
 			return nil, core.NewError(core.CodeNotFound, fmt.Sprintf("Tavily extract failed: %s", reason)).WithProvider(ProviderName).WithStatus(http.StatusNotFound)
 		}
-		return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("Tavily extract failed: %s", reason)).WithProvider(ProviderName)
+		se := core.NewError(core.CodeContentUnavailable, fmt.Sprintf("Tavily extract failed: %s", reason)).WithProvider(ProviderName)
+		if httpx.LooksLikeChallengeMessage(reason) {
+			se = se.WithHintKey(core.HintKeyChallengeDetected)
+		}
+		return nil, se
 	}
 	return nil, core.NewError(core.CodeContentUnavailable, "Tavily extract returned empty content").WithProvider(ProviderName)
-}
-
-func isNotFoundExtractReason(reason string) bool {
-	lower := strings.ToLower(strings.TrimSpace(reason))
-	if lower == "" {
-		return false
-	}
-	for _, guard := range []string{"captcha", "challenge", "cloudflare", "forbidden", "403", "bot"} {
-		if strings.Contains(lower, guard) {
-			return false
-		}
-	}
-	return strings.Contains(lower, "404") ||
-		strings.Contains(lower, "410") ||
-		strings.Contains(lower, "not found") ||
-		strings.Contains(lower, "does not exist")
 }
 
 func (p *Provider) resolveExtractDepth(req *core.FetchRequest) (string, error) {
@@ -140,23 +128,10 @@ func (p *Provider) resolveExtractDepth(req *core.FetchRequest) (string, error) {
 }
 
 func computeExtractTimeoutSec(ctx context.Context, fetchTimeout time.Duration) float64 {
-	budget := fetchTimeout
-	if dl, ok := ctx.Deadline(); ok {
-		if rem := time.Until(dl); rem > 0 && (budget <= 0 || rem < budget) {
-			budget = rem
-		}
-	}
+	budget := httpx.RemainingBudget(ctx, fetchTimeout, 400*time.Millisecond)
 	if budget <= 0 {
 		return 0
 	}
-	if budget > 1400*time.Millisecond {
-		budget -= 400 * time.Millisecond
-	}
 	sec := math.Round(budget.Seconds()*10) / 10
-	if sec < 1.0 {
-		sec = 1.0
-	} else if sec > 60.0 {
-		sec = 60.0
-	}
-	return sec
+	return min(max(sec, 1.0), 60.0)
 }

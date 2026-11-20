@@ -1,0 +1,23 @@
+{
+  "Code": 0,
+  "Message": "success",
+  "Data": {
+    "HasMore": false,
+    "SearchHashId": "zh-hash-987654",
+    "Items": [
+      {
+        "Title": "RAG 评测方法综述",
+        "ContentType": "Answer",
+        "ContentID": "1903044959663284716",
+        "ContentText": "本文介绍了主流 RAG 评测框架，包括 RAGAS 与 TruLens。",
+        "Url": "https://www.zhihu.com/answer/1903044959663284716?utm_medium=openapi_platform&utm_source=c2f012356e63",
+        "CommentCount": 22,
+        "VoteUpCount": 256,
+        "AuthorName": "知乎答主",
+        "EditTime": 1748355858,
+        "AuthorityLevel": "2",
+        "RankingScore": 0.94
+      }
+    ]
+  }
+}

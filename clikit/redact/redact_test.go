@@ -11,6 +11,12 @@ func TestMaskSanitizeScrubAndLogger(t *testing.T) {
 	if got := MaskKey("sk-1234567890abcd"); got != "sk-…abcd" {
 		t.Fatalf("MaskKey = %q, want sk-…abcd", got)
 	}
+	if got := MaskKey("keen_1234567890abcdef"); got != "keen_…cdef" {
+		t.Fatalf("MaskKey(keen_) = %q, want keen_…cdef", got)
+	}
+	if got := MaskKey("fc-1234567890abcdef"); got != "fc-…cdef" {
+		t.Fatalf("MaskKey(fc-) = %q, want fc-…cdef", got)
+	}
 	if got := MaskKey("github_pat_12345"); got != "****" {
 		t.Fatalf("MaskKey(short prefixed key) = %q, want **** to avoid over-exposing", got)
 	}

@@ -63,10 +63,7 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 			if first.PublishedDate != nil {
 				pub = textnorm.ParseFlexibleTime(*first.PublishedDate, time.UTC)
 			}
-			finalURL := strings.TrimSpace(first.FinalURL)
-			if finalURL == u.String() {
-				finalURL = ""
-			}
+			finalURL := core.ValidatedFinalURL(first.FinalURL, u.String(), ProviderName, maxFetchURLLength)
 			return &core.FetchOutcome{
 				Page: &core.Page{
 					URL:        u.String(),
@@ -112,17 +109,9 @@ func resolveFetchTTL(opts map[string]string) (*int, error) {
 }
 
 func computePerURLTimeoutMS(ctx context.Context, fetchTimeout time.Duration) int {
-	budget := fetchTimeout
-	if dl, ok := ctx.Deadline(); ok {
-		if rem := time.Until(dl); rem > 0 && (budget <= 0 || rem < budget) {
-			budget = rem
-		}
-	}
+	budget := httpx.RemainingBudget(ctx, fetchTimeout, 500*time.Millisecond)
 	if budget <= 0 {
 		return 0
-	}
-	if budget > 1500*time.Millisecond {
-		budget -= 500 * time.Millisecond
 	}
 	return min(max(int(budget.Milliseconds()), 1), 110000)
 }

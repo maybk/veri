@@ -103,8 +103,8 @@ func TestTinyFishSearchParamsAndFetchDualArrays(t *testing.T) {
 		URL:     "https://spa.example.com",
 		Options: map[string]string{spec.OptFetchFresh: "true"},
 	})
-	if core.AsError(err).Code != core.CodeBlockedByPolicy {
-		t.Fatalf("expected bot_blocked -> blocked_by_policy, got %v", err)
+	if se := core.AsError(err); se.Code != core.CodeBlockedByPolicy || se.HintKey != core.HintKeyChallengeDetected {
+		t.Fatalf("expected bot_blocked -> blocked_by_policy with challenge hint, got %+v", se)
 	}
 	if ttlVal, ok := lastFetchBody["ttl"].(float64); !ok || ttlVal != 0 {
 		t.Fatalf("expected fresh=true -> ttl=0 in wire body, got %+v", lastFetchBody)
@@ -120,5 +120,25 @@ func TestTinyFishSearchParamsAndFetchDualArrays(t *testing.T) {
 	}
 	if got := unwrapRedirectURL("/url?q=https%3A%2F%2Fgo.dev%2Fdoc&sa=U"); got != "https://go.dev/doc" {
 		t.Fatalf("expected /url?q= unwrapped, got %q", got)
+	}
+
+	// 验证 HTTP 429 RATE_LIMIT_EXCEEDED + details.reason="free_allowance_exhausted" 归不可重试 insufficient_balance（绝不退避重试）
+	dailyHits := 0
+	dailySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		dailyHits++
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"code":"RATE_LIMIT_EXCEEDED","message":"daily free limit reached","details":{"reason":"free_allowance_exhausted","window_seconds":86400}}}`))
+	}))
+	defer dailySrv.Close()
+	pDaily, _, err := New(Options{Keys: []string{"tf-daily"}, SearchURL: dailySrv.URL, FetchURL: fetchSrv.URL}, providertest.NewTestAPIClient(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pDaily.Search(context.Background(), &core.SearchRequest{Query: "daily"}); core.AsError(err).Code != core.CodeInsufficientBalance || core.AsError(err).Retryable || dailyHits != 1 {
+		t.Fatalf("expected non-retryable insufficient_balance in 1 hit, got err=%+v hits=%d", err, dailyHits)
+	}
+	if got := classifyError(http.StatusTooManyRequests, nil, []byte(`{"error":{"code":"RATE_LIMIT_EXCEEDED","message":"too many requests"}}`)); got.Code != core.CodeRateLimited {
+		t.Fatalf("normal 429 RATE_LIMIT_EXCEEDED = %s, want rate_limited", got.Code)
 	}
 }
