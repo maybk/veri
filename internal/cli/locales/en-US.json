@@ -197,7 +197,7 @@
     "version.short": "Print version and build metadata",
     "version.flag.json": "Output version and build metadata as JSON",
     "update.short": "Check for updates and upgrade veri to the latest release",
-    "update.long": "Check and update veri from official GitHub Releases with checksum verification and atomic replacement. For package-manager installs (e.g. Homebrew, Scoop), prints the native upgrade command instead.",
+    "update.long": "Check and update veri from official GitHub Releases with checksum verification and atomic replacement. For package-manager installs (e.g. Homebrew, Scoop, WinGet, npm, mise), prints the native upgrade command instead.",
     "update.example": "  veri update\n  veri update --check\n  veri update --version v0.2.0\n  veri update --check --json",
     "update.flag.check": "Check for updates without installing",
     "update.flag.version": "Target a specific stable version (e.g. v0.2.0)",

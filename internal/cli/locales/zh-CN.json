@@ -197,7 +197,7 @@
     "version.short": "打印版本与构建元信息",
     "version.flag.json": "以 JSON 格式输出版本与构建元信息",
     "update.short": "检查并更新 veri 至最新正式版",
-    "update.long": "从官方 GitHub Releases 检查并更新 veri，校验完整性后原子替换可执行文件；由 Homebrew、Scoop 等包管理器托管时将提示对应升级命令。",
+    "update.long": "从官方 GitHub Releases 检查并更新 veri，校验完整性后原子替换可执行文件；由 Homebrew、Scoop、WinGet、npm 或 mise 等包管理器托管时将提示对应升级命令。",
     "update.example": "  veri update\n  veri update --check\n  veri update --version v0.2.0\n  veri update --check --json",
     "update.flag.check": "仅检查版本状态，不执行更新",
     "update.flag.version": "指定要检查或安装的正式版本号（如 v0.2.0）",

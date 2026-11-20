@@ -9,6 +9,7 @@ const (
 	RepoOwner              = "maybk"
 	RepoName               = "veri"
 	RepoSlug               = RepoOwner + "/" + RepoName
+	NPMPackage             = "@" + RepoOwner + "/" + RepoName
 	SchemaVersion          = "veri/v1"
 	ConfigDirName          = "veri"
 	ConfigFileName         = "config.toml"

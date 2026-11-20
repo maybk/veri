@@ -145,31 +145,135 @@ func TestDetectInstall(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		goos     string
-		version  string
-		raw      string
-		resolved string
-		want     InstallMethod
-		wantCmd  string
+		name        string
+		goos        string
+		version     string
+		raw         string
+		resolved    string
+		want        InstallMethod
+		wantCmd     string
+		wantManaged bool
+		wantSelf    bool
 	}{
 		{
-			name:     "homebrew apple silicon",
-			goos:     "darwin",
-			version:  "0.1.0",
-			raw:      "/opt/homebrew/bin/veri",
-			resolved: "/opt/homebrew/Cellar/veri/0.1.0/bin/veri",
-			want:     MethodHomebrew,
-			wantCmd:  "brew upgrade veri",
+			name:        "mise github backend on macOS",
+			goos:        "darwin",
+			version:     "0.1.1",
+			raw:         "/Users/alice/.local/share/mise/shims/veri",
+			resolved:    "/Users/alice/.local/share/mise/installs/github-maybk-veri/0.1.1/veri",
+			want:        MethodMise,
+			wantCmd:     "mise upgrade github:maybk/veri",
+			wantManaged: true,
 		},
 		{
-			name:     "homebrew intel cellar",
-			goos:     "darwin",
-			version:  "0.1.0",
-			raw:      "/usr/local/bin/veri",
-			resolved: "/usr/local/Cellar/veri/0.1.0/bin/veri",
-			want:     MethodHomebrew,
-			wantCmd:  "brew upgrade veri",
+			name:        "mise npm backend takes precedence over node_modules",
+			goos:        "darwin",
+			version:     "0.1.1",
+			raw:         "/Users/alice/.local/share/mise/installs/npm-maybk-veri/0.1.1/node_modules/@maybk/veri-darwin-arm64/bin/veri",
+			resolved:    "/Users/alice/.local/share/mise/installs/npm-maybk-veri/0.1.1/node_modules/@maybk/veri-darwin-arm64/bin/veri",
+			want:        MethodMise,
+			wantCmd:     "mise upgrade npm:@maybk/veri",
+			wantManaged: true,
+		},
+		{
+			name:        "mise ubi backend on linux",
+			goos:        "linux",
+			version:     "0.1.1",
+			raw:         "/home/alice/.local/share/mise/installs/ubi-maybk-veri/0.1.1/veri",
+			resolved:    "/home/alice/.local/share/mise/installs/ubi-maybk-veri/0.1.1/veri",
+			want:        MethodMise,
+			wantCmd:     "mise upgrade ubi:maybk/veri",
+			wantManaged: true,
+		},
+		{
+			name:        "mise registry backend on windows",
+			goos:        "windows",
+			version:     "0.1.1",
+			raw:         `C:\Users\alice\AppData\Local\mise\installs\veri\0.1.1\veri.exe`,
+			resolved:    `C:\Users\alice\AppData\Local\mise\installs\veri\0.1.1\veri.exe`,
+			want:        MethodMise,
+			wantCmd:     "mise upgrade veri",
+			wantManaged: true,
+		},
+		{
+			name:        "npm global inside mise-managed node falls through to npm",
+			goos:        "darwin",
+			version:     "0.1.1",
+			raw:         "/Users/alice/.local/share/mise/shims/veri",
+			resolved:    "/Users/alice/.local/share/mise/installs/node/22.14.0/lib/node_modules/@maybk/veri-darwin-arm64/bin/veri",
+			want:        MethodNPM,
+			wantCmd:     "npm install -g @maybk/veri@latest",
+			wantManaged: true,
+		},
+		{
+			name:        "npm global under homebrew node takes precedence over homebrew",
+			goos:        "darwin",
+			version:     "0.1.1",
+			raw:         "/opt/homebrew/lib/node_modules/@maybk/veri-darwin-arm64/bin/veri",
+			resolved:    "/opt/homebrew/lib/node_modules/@maybk/veri-darwin-arm64/bin/veri",
+			want:        MethodNPM,
+			wantCmd:     "npm install -g @maybk/veri@latest",
+			wantManaged: true,
+		},
+		{
+			name:        "npx ephemeral cache detected as npm",
+			goos:        "linux",
+			version:     "0.1.1",
+			raw:         "/home/alice/.npm/_npx/1234abcd/node_modules/@maybk/veri-linux-x64/bin/veri",
+			resolved:    "/home/alice/.npm/_npx/1234abcd/node_modules/@maybk/veri-linux-x64/bin/veri",
+			want:        MethodNPM,
+			wantCmd:     "npm install -g @maybk/veri@latest",
+			wantManaged: true,
+		},
+		{
+			name:        "pnpm global on windows",
+			goos:        "windows",
+			version:     "0.1.1",
+			raw:         `C:\Users\alice\AppData\Local\pnpm\global\5\node_modules\.pnpm\@maybk+veri-win32-x64@0.1.1\node_modules\@maybk\veri-win32-x64\bin\veri.exe`,
+			resolved:    `C:\Users\alice\AppData\Local\pnpm\global\5\node_modules\.pnpm\@maybk+veri-win32-x64@0.1.1\node_modules\@maybk\veri-win32-x64\bin\veri.exe`,
+			want:        MethodNPM,
+			wantCmd:     "pnpm add -g @maybk/veri@latest",
+			wantManaged: true,
+		},
+		{
+			name:        "bun global on linux",
+			goos:        "linux",
+			version:     "0.1.1",
+			raw:         "/home/alice/.bun/install/global/node_modules/@maybk/veri-linux-arm64/bin/veri",
+			resolved:    "/home/alice/.bun/install/global/node_modules/@maybk/veri-linux-arm64/bin/veri",
+			want:        MethodNPM,
+			wantCmd:     "bun add -g @maybk/veri@latest",
+			wantManaged: true,
+		},
+		{
+			name:        "npm global on windows",
+			goos:        "windows",
+			version:     "0.1.1",
+			raw:         `C:\Users\alice\AppData\Roaming\npm\node_modules\@maybk\veri-win32-x64\bin\veri.exe`,
+			resolved:    `C:\Users\alice\AppData\Roaming\npm\node_modules\@maybk\veri-win32-x64\bin\veri.exe`,
+			want:        MethodNPM,
+			wantCmd:     "npm install -g @maybk/veri@latest",
+			wantManaged: true,
+		},
+		{
+			name:        "homebrew apple silicon",
+			goos:        "darwin",
+			version:     "0.1.0",
+			raw:         "/opt/homebrew/bin/veri",
+			resolved:    "/opt/homebrew/Cellar/veri/0.1.0/bin/veri",
+			want:        MethodHomebrew,
+			wantCmd:     "brew upgrade veri",
+			wantManaged: true,
+		},
+		{
+			name:        "homebrew intel cellar",
+			goos:        "darwin",
+			version:     "0.1.0",
+			raw:         "/usr/local/bin/veri",
+			resolved:    "/usr/local/Cellar/veri/0.1.0/bin/veri",
+			want:        MethodHomebrew,
+			wantCmd:     "brew upgrade veri",
+			wantManaged: true,
 		},
 		{
 			name:     "linux system dir",
@@ -180,22 +284,24 @@ func TestDetectInstall(t *testing.T) {
 			want:     MethodSystem,
 		},
 		{
-			name:     "windows scoop shim",
-			goos:     "windows",
-			version:  "0.1.0",
-			raw:      `C:\Users\alice\scoop\shims\veri.exe`,
-			resolved: `C:\Users\alice\scoop\apps\veri\0.1.0\veri.exe`,
-			want:     MethodScoop,
-			wantCmd:  "scoop update veri",
+			name:        "windows scoop shim",
+			goos:        "windows",
+			version:     "0.1.0",
+			raw:         `C:\Users\alice\scoop\shims\veri.exe`,
+			resolved:    `C:\Users\alice\scoop\apps\veri\0.1.0\veri.exe`,
+			want:        MethodScoop,
+			wantCmd:     "scoop update veri",
+			wantManaged: true,
 		},
 		{
-			name:     "windows winget",
-			goos:     "windows",
-			version:  "0.1.0",
-			raw:      `C:\Users\alice\AppData\Local\Microsoft\WinGet\Packages\maybk.Veri\veri.exe`,
-			resolved: `C:\Users\alice\AppData\Local\Microsoft\WinGet\Packages\maybk.Veri\veri.exe`,
-			want:     MethodWinGet,
-			wantCmd:  "winget upgrade maybk.Veri",
+			name:        "windows winget",
+			goos:        "windows",
+			version:     "0.1.0",
+			raw:         `C:\Users\alice\AppData\Local\Microsoft\WinGet\Packages\maybk.Veri\veri.exe`,
+			resolved:    `C:\Users\alice\AppData\Local\Microsoft\WinGet\Packages\maybk.Veri\veri.exe`,
+			want:        MethodWinGet,
+			wantCmd:     "winget upgrade maybk.Veri",
+			wantManaged: true,
 		},
 		{
 			name:     "dev version",
@@ -220,6 +326,7 @@ func TestDetectInstall(t *testing.T) {
 			raw:      "/home/alice/.local/bin/veri",
 			resolved: "/home/alice/.local/bin/veri",
 			want:     MethodStandalone,
+			wantSelf: true,
 		},
 	}
 
@@ -232,6 +339,12 @@ func TestDetectInstall(t *testing.T) {
 			}
 			if got.ManagedCommand != tc.wantCmd {
 				t.Fatalf("ManagedCommand = %q, want %q", got.ManagedCommand, tc.wantCmd)
+			}
+			if got.IsManagedByPackageManager() != tc.wantManaged {
+				t.Fatalf("IsManagedByPackageManager() = %v, want %v", got.IsManagedByPackageManager(), tc.wantManaged)
+			}
+			if got.CanSelfUpdate() != tc.wantSelf {
+				t.Fatalf("CanSelfUpdate() = %v, want %v", got.CanSelfUpdate(), tc.wantSelf)
 			}
 		})
 	}
