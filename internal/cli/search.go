@@ -115,6 +115,10 @@ func runSearchCommand(ctx context.Context, fs *pflag.FlagSet, rt *runtimeEnv, sf
 	if err != nil {
 		return handleCommandError(rt, outFormat == spec.FormatJSON, spec.KindSearch, queryStr, nil, err)
 	}
+	providers, err := validateProviderFlags(sf.providers, fs != nil && fs.Changed("provider"), spec.RoleSearch)
+	if err != nil {
+		return handleCommandError(rt, outFormat == spec.FormatJSON, spec.KindSearch, queryStr, nil, err)
+	}
 
 	application, err := rt.loadApp()
 	if err != nil {
@@ -135,7 +139,7 @@ func runSearchCommand(ctx context.Context, fs *pflag.FlagSet, rt *runtimeEnv, sf
 		Question:      sf.question,
 		Count:         sf.count,
 		Detail:        core.Detail(sf.detail),
-		Providers:     cleanList(sf.providers),
+		Providers:     providers,
 		Strategy:      strategy,
 		StrictFilters: sf.strict,
 		IncludeExtra:  sf.extra,
@@ -202,6 +206,30 @@ func cleanList(items []string) []string {
 		}
 	}
 	return out
+}
+
+// validateProviderFlags 校验 `-p/--provider` 指定的名称均为已登记内置 Provider 且支持目标角色，并规整别名、大小写与去重。
+func validateProviderFlags(items []string, flagChanged bool, wantRole spec.Role) ([]string, error) {
+	cleaned := cleanList(items)
+	if len(cleaned) == 0 {
+		if !flagChanged {
+			return nil, nil
+		}
+		return nil, unsupportedProviderError("", wantRole)
+	}
+	normalized, bad, ok := spec.NormalizeProvidersForRole(cleaned, wantRole)
+	if !ok {
+		return nil, unsupportedProviderError(bad, wantRole)
+	}
+	return normalized, nil
+}
+
+func unsupportedProviderError(raw string, wantRole spec.Role) error {
+	valid := strings.Join(spec.ProvidersWithRole(wantRole), ", ")
+	return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", raw, valid)).
+		WithMsgKey("err.unsupported_provider").
+		WithParam("provider", raw).
+		WithParam("valid", valid)
 }
 
 func emitStderrNotes(rt *runtimeEnv, env *core.Envelope) {

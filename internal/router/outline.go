@@ -107,6 +107,14 @@ func ApplyPageView(full *core.Page, req *core.FetchRequest) (*core.Page, []strin
 	if req == nil {
 		return full.Clone(), nil
 	}
+	paged, notes := applyPageView(full, req)
+	if req.Offset > 0 && paged != nil && req.Offset >= paged.TotalChars {
+		notes = append(notes, fmt.Sprintf("offset %d exceeds available content length (%d chars)", req.Offset, paged.TotalChars))
+	}
+	return paged, notes
+}
+
+func applyPageView(full *core.Page, req *core.FetchRequest) (*core.Page, []string) {
 	sec := strings.TrimSpace(req.Section)
 	m := strings.TrimSpace(req.Match)
 

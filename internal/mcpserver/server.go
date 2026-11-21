@@ -144,7 +144,10 @@ func handleWebSearch(ctx context.Context, application *app.App, textFormat strin
 		reqCount = cfgCount
 	}
 	count := spec.ClampSearchCount(reqCount, maxCount)
-	providers := cleanMCPProviders(in.Providers)
+	providers, pErr := validateMCPProviders(in.Providers, spec.RoleSearch)
+	if pErr != nil {
+		return buildSearchErrorResult(application, in.Query, textFormat, pErr)
+	}
 
 	var strategy core.Strategy
 	if in.Fusion != nil {
@@ -221,7 +224,10 @@ func handleWebFetch(ctx context.Context, application *app.App, textFormat string
 		return buildFetchErrorResult(application, primaryLabel, textFormat, se)
 	}
 
-	providers := cleanMCPProviders(in.Providers)
+	providers, pErr := validateMCPProviders(in.Providers, spec.RoleFetch)
+	if pErr != nil {
+		return buildFetchErrorResult(application, primaryLabel, textFormat, pErr)
+	}
 	var timeout time.Duration
 	if in.TimeoutMS > 0 {
 		timeout = time.Duration(in.TimeoutMS) * time.Millisecond
@@ -307,14 +313,13 @@ func buildToolCallResult[T any](ok bool, out T, text string) (*mcp.CallToolResul
 	return res, out, nil
 }
 
-func cleanMCPProviders(items []string) []string {
-	var providers []string
-	for _, item := range items {
-		if p := strings.TrimSpace(item); p != "" {
-			providers = append(providers, p)
-		}
+func validateMCPProviders(items []string, wantRole spec.Role) ([]string, *core.Error) {
+	normalized, bad, ok := spec.NormalizeProvidersForRole(items, wantRole)
+	if !ok {
+		valid := strings.Join(spec.ProvidersWithRole(wantRole), ", ")
+		return nil, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", bad, valid))
 	}
-	return providers
+	return normalized, nil
 }
 
 func recoveredCoreError(application *app.App, recovered any) *core.Error {

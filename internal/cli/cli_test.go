@@ -407,3 +407,53 @@ func TestAllNonBoolFlagsDefineSemanticPlaceholder(t *testing.T) {
 	}
 	checkCmd(root)
 }
+
+func TestProviderFlagValidationAndRoleSeparation(t *testing.T) {
+	tmpDir := t.TempDir()
+	emptyCfg := filepath.Join(tmpDir, "empty.toml")
+	if err := os.WriteFile(emptyCfg, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repoFS := os.DirFS(filepath.Join("..", ".."))
+	run := func(args ...string) (int, string, string) {
+		var out, errBuf bytes.Buffer
+		fullArgs := append([]string{"--config", emptyCfg, "--ui-lang", "en"}, args...)
+		code := ExecuteContext(context.Background(), fullArgs, repoFS, BuildInfo{Version: "1.0.0"}, strings.NewReader(""), &out, &errBuf, func(string) string { return "" })
+		return code, out.String(), errBuf.String()
+	}
+
+	// 未知 provider 名、显式空值、多选含拼写错误、以及角色错配均返回 rc=2 (invalid_argument)
+	badCases := [][]string{
+		{"search", "-p", "", "go"},
+		{"search", "-p", " , ", "go"},
+		{"search", "-p", "no_such_prov", "go"},
+		{"search", "-p", "deepseke,exa", "go"},
+		{"search", "-p", "local", "go"},
+		{"search", "-p", "github", "go"},
+		{"fetch", "-p", "", "https://example.com"},
+		{"fetch", "-p", "no_such_prov", "https://example.com"},
+		{"fetch", "-p", "zhihu", "https://example.com"},
+		{"fetch", "-p", "brave,local", "https://example.com"},
+	}
+	for _, args := range badCases {
+		code, _, errOut := run(args...)
+		if code != clikit.ExitUsage || !strings.Contains(errOut, "unsupported provider") {
+			t.Fatalf("args %v: got code=%d stderr=%q, want code=%d with unsupported provider", args, code, errOut, clikit.ExitUsage)
+		}
+	}
+
+	// --json 模式下拼错 provider 名输出标准 invalid_argument 错误信封与 rc=2
+	code, jsonOut, _ := run("search", "-p", "no_such_prov", "--json", "go")
+	var env core.Envelope
+	if code != clikit.ExitUsage || json.Unmarshal([]byte(jsonOut), &env) != nil || env.OK || env.Error == nil || env.Error.Code != core.CodeInvalidArgument {
+		t.Fatalf("expected JSON invalid_argument envelope on exit 2, got code=%d out=%s", code, jsonOut)
+	}
+
+	// 合法内置名与官方别名在未配密钥时通过参数校验，交由路由返回 rc=3 (no_provider)
+	for _, prov := range []string{"brave", "tencent-wsa", "TencentWSA"} {
+		code, _, errOut := run("search", "-p", prov, "go")
+		if code != clikit.ExitConfig {
+			t.Fatalf("valid unconfigured provider %q: got code=%d stderr=%q, want code=%d (no_provider)", prov, code, errOut, clikit.ExitConfig)
+		}
+	}
+}

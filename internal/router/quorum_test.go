@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -237,5 +238,43 @@ func TestLocalOnlyNotesAndWallHintAccuracy(t *testing.T) {
 	se := core.AsError(wallErr)
 	if se.Code != core.CodeContentUnavailable || se.HintKey != "hint.local_only_js_wall" {
 		t.Fatalf("expected hint.local_only_js_wall under local_only, got %+v", se)
+	}
+}
+
+func TestApplyPageViewOffsetExceededNote(t *testing.T) {
+	doc := "# Intro\n\nHello world.\n\n## Concurrency\n\nGoroutines communicate via channels.\n"
+	full := &core.Page{URL: "https://example.com/doc", Title: "Doc", Content: doc}
+	total := utf8.RuneCountInString(doc)
+
+	// 1. 全文越界（包含刚好等于总长与超大偏移）均安全返回空正文并附带明确 note
+	for _, off := range []int{total, 99999999} {
+		view, notes := ApplyPageView(full, &core.FetchRequest{Offset: off, MaxChars: 1000})
+		if view.Content != "" || view.NextOffset != nil || view.TotalChars != total {
+			t.Fatalf("offset=%d unexpected view: %+v", off, view)
+		}
+		wantNote := fmt.Sprintf("offset %d exceeds available content length (%d chars)", off, total)
+		if !slices.Contains(notes, wantNote) {
+			t.Fatalf("offset=%d expected note %q, got %v", off, wantNote, notes)
+		}
+	}
+
+	// 2. offset=0 的空页面及正常末页（0 < offset < total）均不误报越界 note
+	emptyView, emptyNotes := ApplyPageView(&core.Page{URL: "https://example.com/empty", Content: ""}, &core.FetchRequest{Offset: 0})
+	if emptyView.Content != "" || len(emptyNotes) != 0 {
+		t.Fatalf("empty page at offset 0 should not emit offset note, got %v", emptyNotes)
+	}
+	tailView, tailNotes := ApplyPageView(full, &core.FetchRequest{Offset: total - 5, MaxChars: 100})
+	if tailView.Content == "" || tailView.NextOffset != nil || len(tailNotes) != 0 {
+		t.Fatalf("valid tail page should not emit offset note: view=%+v notes=%v", tailView, tailNotes)
+	}
+
+	// 3. --section 与 --match 作用域视图内越界同样提示对应视图长度
+	secView, secNotes := ApplyPageView(full, &core.FetchRequest{Section: "Concurrency", Offset: 9999})
+	if secView.Content != "" || !slices.Contains(secNotes, fmt.Sprintf("offset 9999 exceeds available content length (%d chars)", secView.TotalChars)) {
+		t.Fatalf("section offset overflow mismatch: view=%+v notes=%v", secView, secNotes)
+	}
+	matchView, matchNotes := ApplyPageView(full, &core.FetchRequest{Match: "channels", Offset: 9999})
+	if matchView.Content != "" || !slices.Contains(matchNotes, fmt.Sprintf("offset 9999 exceeds available content length (%d chars)", matchView.TotalChars)) {
+		t.Fatalf("match offset overflow mismatch: view=%+v notes=%v", matchView, matchNotes)
 	}
 }

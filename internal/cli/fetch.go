@@ -66,6 +66,10 @@ func newFetchCmd(rt *runtimeEnv) *cobra.Command {
 			if err != nil {
 				return handleCommandError(rt, outFormat == spec.FormatJSON, spec.KindFetch, primaryLabel, nil, err)
 			}
+			providers, err := validateProviderFlags(ff.providers, cmd.Flags().Changed("provider"), spec.RoleFetch)
+			if err != nil {
+				return handleCommandError(rt, outFormat == spec.FormatJSON, spec.KindFetch, primaryLabel, nil, err)
+			}
 			if ff.fresh {
 				if optMap == nil {
 					optMap = make(map[string]string, 1)
@@ -82,7 +86,7 @@ func newFetchCmd(rt *runtimeEnv) *cobra.Command {
 				URL:       primaryLabel,
 				Section:   strings.TrimSpace(ff.section),
 				Match:     strings.TrimSpace(ff.match),
-				Providers: cleanList(ff.providers),
+				Providers: providers,
 				Strategy:  core.FetchStrategy(strings.TrimSpace(ff.strategy)),
 				MaxChars:  ff.maxChars,
 				Offset:    ff.offset,

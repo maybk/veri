@@ -197,6 +197,27 @@ func NormalizeCredentialProvider(raw string) (string, bool) {
 	return p.Name, true
 }
 
+// NormalizeProvidersForRole 校验并规整指定角色的内置 Provider 名称列表（兼容别名、大小写不敏感、保序去重）。
+// 遇到未登记或不支持 wantRole 的项时，返回首个非法原始值及 ok=false。
+func NormalizeProvidersForRole(items []string, wantRole Role) (normalized []string, invalid string, ok bool) {
+	if len(items) == 0 {
+		return nil, "", true
+	}
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, raw := range items {
+		p, found := LookupProvider(raw)
+		if !found || !p.Roles.Has(wantRole) {
+			return nil, strings.TrimSpace(raw), false
+		}
+		if _, dup := seen[p.Name]; !dup {
+			seen[p.Name] = struct{}{}
+			out = append(out, p.Name)
+		}
+	}
+	return out, "", true
+}
+
 // DefaultEnvRef 返回指定 Provider 在配置文件中的默认环境变量引用表达式（如 "env:DEEPSEEK_API_KEY"）。
 func DefaultEnvRef(provider string) string {
 	vars := ProviderCredentialEnvVars(provider)

@@ -25,6 +25,15 @@ func TestProviderRegistryOptionsAndDefaults(t *testing.T) {
 	if _, ok := NormalizeCredentialProvider(ProviderLocal); ok {
 		t.Fatal("local provider must not accept credentials")
 	}
+	if got, bad, ok := NormalizeProvidersForRole([]string{"Tencent-WSA", "exa", "tencentwsa", "EXA"}, RoleSearch); !ok || bad != "" || !slices.Equal(got, []string{ProviderTencentWSA, ProviderExa}) {
+		t.Fatalf("NormalizeProvidersForRole valid = (%v, %q, %t)", got, bad, ok)
+	}
+	if _, bad, ok := NormalizeProvidersForRole([]string{"exa", "  "}, RoleSearch); ok || bad != "" {
+		t.Fatalf("NormalizeProvidersForRole blank must fail with empty bad, got (%q, %t)", bad, ok)
+	}
+	if _, bad, ok := NormalizeProvidersForRole([]string{"zhihu"}, RoleFetch); ok || bad != "zhihu" {
+		t.Fatalf("NormalizeProvidersForRole role mismatch = (%q, %t)", bad, ok)
+	}
 	if ref := DefaultEnvRef(ProviderDeepSeek); ref != "env:DEEPSEEK_API_KEY" {
 		t.Fatalf("DefaultEnvRef = %q", ref)
 	}

@@ -467,4 +467,22 @@ base_url = %q
 	if !recResS.IsError || !strings.Contains(recResS.Content[0].(*mcp.TextContent).Text, "boom2") {
 		t.Fatalf("unexpected recovered search error result: %+v", recResS)
 	}
+
+	// 防御性校验：即使直接调用 handler 绕过 JSON Schema，空白项、非法或错角色 provider 仍返回 invalid_argument
+	for _, badProvs := range [][]string{{"local"}, {"   "}} {
+		badSearchRes, badSearchOut, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
+			Query:     "go",
+			Providers: badProvs,
+		})
+		if err != nil || !badSearchRes.IsError || badSearchOut.Error == nil || badSearchOut.Error.Code != core.CodeInvalidArgument {
+			t.Fatalf("expected invalid_argument for search providers %v, got res=%+v out=%+v err=%v", badProvs, badSearchRes, badSearchOut, err)
+		}
+	}
+	badFetchRes, badFetchOut, err := handleWebFetch(ctx, application, spec.TextFormatMarkdown, FetchInput{
+		URL:       "https://example.com",
+		Providers: []string{"zhihu"},
+	})
+	if err != nil || !badFetchRes.IsError || badFetchOut.Error == nil || badFetchOut.Error.Code != core.CodeInvalidArgument {
+		t.Fatalf("expected invalid_argument for role-mismatched fetch provider, got res=%+v out=%+v err=%v", badFetchRes, badFetchOut, err)
+	}
 }
