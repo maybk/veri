@@ -430,7 +430,7 @@
       <text x="328" y="384" class="tbl dim">-</text>
       <text x="402" y="384" class="tbl dim">-</text>
       <text x="600" y="384" class="tbl body">10s</text>
-      <text x="668" y="384" class="tbl dim">min_runes=300, max_bytes=5MB</text>
+      <text x="668" y="384" class="tbl dim">min_chars=300, max_bytes=5MB</text>
       </g>
     </g>
 

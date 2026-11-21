@@ -5,9 +5,10 @@
 lang = "auto"                           # auto | zh | en
 
 [search]
-providers = ["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "parallel", "keenable", "firecrawl"]
-# providers_en = ["exa", "parallel", "linkup", "tavily", "brave", "tinyfish", "keenable", "deepseek"]
-# fusion_providers = ["deepseek", "exa", "tavily"]
+providers = ["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
+providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # 非中文查询检索链（设 [] 关闭分链）
+# fusion_providers = ["deepseek", "keenable", "tencent_wsa"]
+# fusion_providers_global = ["keenable", "parallel", "exa"]
 strategy = "auto"                       # auto | fusion
 count = 8                               # 默认结果数（1～50）
 detail = "summary"                      # snippet | summary | content
@@ -15,15 +16,15 @@ timeout = "20s"                         # 整次检索超时
 fallback_on_empty = true                # 空结果时自动尝试下一个检索源
 strict_filters = false                  # true 时禁止本地模拟过滤
 fusion_k = 60                           # RRF 融合常数
-summary_max_runes = 800
+summary_max_chars = 800
 
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
-providers = ["deepseek", "tinyfish", "tavily", "exa", "linkup", "parallel", "keenable", "firecrawl"]
-providers_global = ["exa", "tavily", "linkup", "parallel", "tinyfish", "keenable", "firecrawl", "deepseek"] # 非中文站点提取链（设 [] 关闭分链）
+providers = ["keenable", "tavily", "firecrawl", "parallel", "exa", "linkup", "deepseek", "tinyfish"]
+providers_global = ["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"] # 非中文站点提取链（设 [] 关闭分链）
 timeout = "45s"
 max_bytes = "5MB"                       # 本地抓取解压后响应体上限
-min_content_runes = 300                 # 本地提取正文质量闸门最少字符数
+min_content_chars = 300                 # 本地提取正文质量闸门最少字符数
 respect_robots = false
 user_agent = "browser"                  # browser | veri | 自定义字符串
 

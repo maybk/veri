@@ -112,7 +112,7 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 		spec.ProviderParallel:   "mode=fast",
 		spec.ProviderFirecrawl:  "proxy=auto, max_pdf=20",
 		spec.ProviderGitHub:     "concurrency=4",
-		spec.ProviderLocal:      "min_runes=300, max_bytes=5MB",
+		spec.ProviderLocal:      "min_chars=300, max_bytes=5MB",
 	}
 	for _, st := range application.ProviderStatuses() {
 		if !st.Enabled {

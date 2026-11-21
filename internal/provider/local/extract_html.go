@@ -75,8 +75,8 @@ func (p *Provider) extractHTML(ctx context.Context, origURL string, pageURL *url
 
 		ps := readability.NewParser()
 		ps.MaxElemsToParse = maxHTMLNodesToParse
-		if p.minContentRunes > 0 {
-			ps.CharThresholds = max(p.minContentRunes, 80)
+		if p.minContentChars > 0 {
+			ps.CharThresholds = max(p.minContentChars, 80)
 		}
 		var article readability.Article
 		var readErr error
@@ -106,7 +106,7 @@ func (p *Provider) extractHTML(ctx context.Context, origURL string, pageURL *url
 	}
 
 	// 当 Readability 提取为空，或将纯表格/多代码块 API 文档误裁至低于阈值一半时，回退至已预处理的语义容器快照
-	if !meta.tooManyNodes && (mdText == "" || (fallbackRoot != nil && textnorm.RuneCount(mdText) < max(p.minContentRunes/2, 80))) {
+	if !meta.tooManyNodes && (mdText == "" || (fallbackRoot != nil && textnorm.RuneCount(mdText) < max(p.minContentChars/2, 80))) {
 		var candMD string
 		if fallbackRoot != nil {
 			candMD = textnorm.CleanPlainText(htmlmd.RenderNode(fallbackRoot, renderOpts))
@@ -135,7 +135,7 @@ func (p *Provider) extractHTML(ctx context.Context, origURL string, pageURL *url
 		return nil, core.NewError(core.CodeContentUnavailable, "extracted HTML content is empty").WithProvider(ProviderName)
 	}
 
-	qr := textnorm.EvaluatePageQuality(title, mdText, p.minContentRunes)
+	qr := textnorm.EvaluatePageQuality(title, mdText, p.minContentChars)
 	return &core.FetchOutcome{
 		Page: &core.Page{
 			URL:        origURL,

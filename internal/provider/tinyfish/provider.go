@@ -19,8 +19,7 @@ type Options struct {
 	Timeout      time.Duration
 	FetchTimeout time.Duration
 	Concurrency  int
-	SearchQPS    float64
-	FetchQPS     float64
+	QPS          float64
 	PriceSearch  string
 	PriceFetch   string
 }
@@ -82,8 +81,8 @@ func New(opts Options, client *httpx.Client) (*Provider, bool, error) {
 		fetchTimeout: fetchTimeout,
 		client:       client,
 		pool:         pool,
-		searchGate:   httpx.NewGate(conc, opts.SearchQPS),
-		fetchGate:    httpx.NewGate(conc, opts.FetchQPS),
+		searchGate:   httpx.NewGate(conc, opts.QPS),
+		fetchGate:    httpx.NewGate(conc, opts.QPS),
 		searchCost:   sCost,
 		fetchCost:    fCost,
 	}, true, nil

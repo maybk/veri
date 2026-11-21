@@ -229,7 +229,7 @@ func buildWallExhaustedError(providerName, reason string, hadAPIChain bool, stra
 	if strategyLabel == string(core.FetchLocalOnly) {
 		return core.NewError(core.CodeContentUnavailable, fmt.Sprintf("page blocked by JavaScript or anti-bot challenge (%s) under local_only strategy", reason)).
 			WithProvider(providerName).
-			WithHint("Retry with default `api_first` strategy or specify a cloud extractor with `-p`.").
+			WithHint("Retry with default `api_first` strategy or explicitly select a cloud extractor.").
 			WithHintKey("hint.local_only_js_wall")
 	}
 	return core.NewError(core.CodeContentUnavailable, fmt.Sprintf("page blocked by JavaScript or anti-bot challenge (%s) and no API extractor is enabled", reason)).

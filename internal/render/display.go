@@ -63,3 +63,36 @@ func FormatOutlinePreview(outline []core.PageSection, limit int) string {
 	}
 	return strings.Join(parts, " | ")
 }
+
+const (
+	noteSectionMissMarker = "not found; showing page preview"
+	noteMatchMissMarker   = "had 0 hits"
+)
+
+// ResolveFetchContinueScope 根据响应 notes 判定续读时仍应保留的 section 与 match 作用域。
+// 当章节未命中回退至整页预览时，match 并未执行，因此 section 与 match 均须丢弃，避免将整页 offset 套用到失效视图。
+func ResolveFetchContinueScope(section, match string, notes []string) (activeSection, activeMatch string) {
+	sec := strings.TrimSpace(section)
+	mat := strings.TrimSpace(match)
+	if sec == "" && mat == "" {
+		return "", ""
+	}
+	for _, n := range notes {
+		if strings.Contains(n, noteSectionMissMarker) {
+			return "", ""
+		}
+		if strings.Contains(n, noteMatchMissMarker) {
+			mat = ""
+		}
+	}
+	return sec, mat
+}
+
+func hasScopedMissNote(notes []string) bool {
+	for _, n := range notes {
+		if strings.Contains(n, noteSectionMissMarker) || strings.Contains(n, noteMatchMissMarker) {
+			return true
+		}
+	}
+	return false
+}

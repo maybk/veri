@@ -18,6 +18,7 @@ import (
 
 	"veri/internal/config"
 	"veri/internal/core"
+	"veri/internal/router"
 	"veri/internal/spec"
 )
 
@@ -319,5 +320,125 @@ func TestSearchMCPCacheIsolatesIncludeExtraAndNormalizesOptions(t *testing.T) {
 	})
 	if err != nil || !envNormHit.Meta.Cached {
 		t.Fatalf("expected normalized Options to hit search cache, cached=%v err=%v", envNormHit != nil && envNormHit.Meta.Cached, err)
+	}
+
+	// 3. 未指定 Providers（走自动/分链路由）与显式传入 search.providers 必须隔离缓存键，避免英文分链或融合池误命中缓存
+	cfg := config.Default().Search
+	kAuto := buildSearchCacheKey(&core.SearchRequest{Query: "golang context"}, cfg, 24000)
+	kExplicit := buildSearchCacheKey(&core.SearchRequest{Query: "golang context", Providers: cfg.Providers}, cfg, 24000)
+	if kAuto == kExplicit {
+		t.Fatal("auto-routed search cache key must not collide with explicit search.providers cache key")
+	}
+
+	// 4. 大小写/空白扩展参数均准确触发 fresh 缓存旁路
+	for _, opts := range []map[string]string{
+		{" Fresh ": " TRUE "},
+		{" Exa.Max_Age_Hours ": " 0 "},
+		{" TINYFISH_TTL ": "0"},
+	} {
+		if !isFreshFetchBypass(opts) {
+			t.Fatalf("expected isFreshFetchBypass=true for %+v", opts)
+		}
+	}
+}
+
+type panicAwareFetcher struct {
+	name      string
+	panicHost string
+}
+
+func (f *panicAwareFetcher) Name() string                    { return f.name }
+func (f *panicAwareFetcher) Capabilities() core.Capabilities { return core.Capabilities{} }
+func (f *panicAwareFetcher) Fetch(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
+	if strings.Contains(req.URL, f.panicHost) {
+		panic("unexpected extractor panic with sk-batch-secret-9999")
+	}
+	return &core.FetchOutcome{
+		Page: &core.Page{
+			URL:        req.URL,
+			Title:      "OK Page",
+			Content:    "# OK\n\nClean body content from extractor.",
+			TotalChars: 40,
+			Provider:   f.name,
+			SourceType: core.SourceGeneric,
+		},
+		Cost: &core.Cost{Currency: core.CurrencyUSD, Micros: 1000},
+	}, nil
+}
+
+func TestBatchFetchPanicRecoveryAndMCPDoubleCheckCache(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "batch-panic.toml")
+	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
+		if k == "DEEPSEEK_API_KEY" {
+			return "sk-batch-secret-9999"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := New(loaded, "0.1.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf := &panicAwareFetcher{name: spec.ProviderDeepSeek, panicHost: "panic.example.com"}
+	application.enabledProviders = []core.Provider{pf}
+	application.loaded.Config.Fetch.Strategy = string(core.FetchAPIOnly)
+	application.baseRouterOpts.FetchProviders = []string{spec.ProviderDeepSeek}
+	application.baseRouterOpts.FetchProvidersGlobal = nil
+	application.baseRouterOpts.FetchStrategy = core.FetchAPIOnly
+	application.cliRouter = router.New(application.baseRouterOpts, application.enabledProviders)
+
+	// 1. 批量抓取中单页 goroutine 发生 panic 时必须被隔离恢复、脱敏且不影响同批正常页
+	env, batchErr := application.FetchBatchMCP(t.Context(), []string{
+		"https://ok.example.com/a",
+		"https://panic.example.com/boom",
+	}, nil)
+	if batchErr != nil || !env.OK || !env.Meta.Partial || len(env.Pages) != 2 {
+		t.Fatalf("expected partial batch recovery, got env=%+v err=%v", env, batchErr)
+	}
+	if env.Pages[0].Error != nil || env.Pages[0].Title != "OK Page" {
+		t.Fatalf("expected healthy page unaffected, got %+v", env.Pages[0])
+	}
+	if env.Pages[1].Error == nil || env.Pages[1].Error.Code != core.CodeInternal || strings.Contains(env.Pages[1].Error.Message, "sk-batch-secret-9999") {
+		t.Fatalf("expected sanitized internal error on panic branch, got %+v", env.Pages[1].Error)
+	}
+
+	// 2. FetchMCP 共享航班 double-check 命中缓存时，必须标 cached=true 且清零 Cost/DurationMS，同时不破坏原缓存页
+	targetURL := "https://ok.example.com/double-check"
+	cacheKey := buildFetchCacheKey(targetURL, core.FetchAPIOnly, nil, nil)
+	orig := &core.Envelope{
+		Schema: spec.SchemaVersion,
+		OK:     true,
+		Kind:   spec.KindFetch,
+		Page: &core.Page{
+			URL:        targetURL,
+			Title:      "Cached Doc",
+			Content:    "# Cached Doc\n\n" + strings.Repeat("alpha beta gamma ", 100),
+			TotalChars: 1715,
+			Provider:   spec.ProviderDeepSeek,
+			SourceType: core.SourceGeneric,
+		},
+		Meta: core.Meta{
+			Strategy:   string(core.FetchAPIOnly),
+			Providers:  []core.ProviderReport{{Name: spec.ProviderDeepSeek, Status: core.ProviderStatusOK, Results: 1, Cost: &core.Cost{Currency: core.CurrencyUSD, Micros: 1000}}},
+			Cost:       []core.Cost{{Currency: core.CurrencyUSD, Micros: 1000}},
+			DurationMS: 420,
+		},
+	}
+	application.ensureMCP()
+	application.fetchCache.Set(cacheKey, orig)
+	// 模拟进入 sfFetch 回调后的 double-check 路径
+	viewed := application.buildViewedFetchEnvelope(orig, &core.FetchRequest{URL: targetURL, MaxChars: 100}, true)
+	if !viewed.Meta.Cached || len(viewed.Meta.Cost) != 0 || viewed.Meta.DurationMS != 0 || viewed.Meta.Providers[0].Cost != nil {
+		t.Fatalf("expected cached view to zero cost/duration and mark cached=true, got %+v", viewed.Meta)
+	}
+	if orig.Meta.Cached || len(orig.Meta.Cost) != 1 || orig.Meta.DurationMS != 420 {
+		t.Fatalf("cached view mutated original cached envelope: %+v", orig.Meta)
+	}
+	// 再次直接走 FetchMCP 验证 double-check 与缓存命中路径一致
+	dcEnv, dcErr := application.FetchMCP(t.Context(), &core.FetchRequest{URL: targetURL, MaxChars: 120})
+	if dcErr != nil || !dcEnv.OK || !dcEnv.Meta.Cached || len(dcEnv.Meta.Cost) != 0 || dcEnv.Meta.DurationMS != 0 {
+		t.Fatalf("expected FetchMCP cache hit with cached=true and zero cost, got meta=%+v err=%v", dcEnv.Meta, dcErr)
 	}
 }

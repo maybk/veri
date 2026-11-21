@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"veri/internal/core"
@@ -123,7 +124,7 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		},
 		"freshness": map[string]any{
 			"type":        "string",
-			"description": `Optional time range: "day", "week", "month", "year", "7d", "3m", "1y", or "YYYY-MM-DD..YYYY-MM-DD".`,
+			"description": `Optional time range: "day", "week", "month", "year", "7d", "3m", "1y", "2026-08-01..", or "2026-08-01..2026-08-31".`,
 		},
 		"lang": map[string]any{
 			"type":        "array",
@@ -136,7 +137,7 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		},
 		"fusion": map[string]any{
 			"type":        "boolean",
-			"description": fmt.Sprintf("Set true to query multiple providers concurrently via RRF, or false to force sequential chain (default strategy from config: %s).", effStrategy),
+			"description": fmt.Sprintf("Set true for concurrent RRF fusion — recommended for open research, comparisons, and cross-verification (uses language-aware config fusion pools or top 3 enabled when providers is omitted; combines with providers[] to fuse explicit sources) — or false for sequential fallback (default strategy from config: %s).", effStrategy),
 		},
 		"strict": map[string]any{
 			"type":        "boolean",
@@ -155,13 +156,13 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		"options": map[string]any{
 			"type":                 "object",
 			"additionalProperties": map[string]any{"type": "string"},
-			"description":          searchOptionsDescription(effZhihuScope),
+			"description":          searchOptionsDescription(effZhihuScope, enabledSearchers),
 		},
 		"providers": map[string]any{
 			"type":        "array",
 			"minItems":    1,
 			"items":       map[string]any{"type": "string", "enum": allSearchProviders},
-			"description": fmt.Sprintf("Explicitly select search provider(s) in order; a single entry disables fallback (enabled: %s).", enabledHint),
+			"description": fmt.Sprintf("Explicitly select search provider(s) in order; omit for automatic language-aware routing; a single entry disables fallback (enabled: %s).", enabledHint),
 		},
 	}
 
@@ -215,7 +216,7 @@ func buildFetchInputSchema(def fetchSchemaDefaults, enabledFetchers []string) ma
 		"offset": map[string]any{
 			"type":        "integer",
 			"minimum":     0,
-			"description": "Character offset for paginated continuation (scoped to section/match when set; default: 0).",
+			"description": "Character offset for paginated continuation; keep the same section/match when continuing a scoped fetch (default: 0).",
 		},
 		"strategy": map[string]any{
 			"type":        "string",
@@ -230,18 +231,18 @@ func buildFetchInputSchema(def fetchSchemaDefaults, enabledFetchers []string) ma
 		},
 		"fresh": map[string]any{
 			"type":        "boolean",
-			"description": "Bypass cache and force live page extraction when supported.",
+			"description": "Bypass MCP in-process cache and force live upstream extraction when supported.",
 		},
 		"options": map[string]any{
 			"type":                 "object",
 			"additionalProperties": map[string]any{"type": "string"},
-			"description":          fetchOptionsDescription(),
+			"description":          fetchOptionsDescription(enabledFetchers),
 		},
 		"providers": map[string]any{
 			"type":        "array",
 			"minItems":    1,
 			"items":       map[string]any{"type": "string", "enum": allFetchProviders},
-			"description": fmt.Sprintf("Explicitly select extractor(s) in order; a single entry disables fallback (enabled: %s; mutually exclusive with strategy).", enabledHint),
+			"description": fmt.Sprintf("Explicitly select extractor(s) in order; omit for automatic routing; a single entry disables fallback (enabled: %s; mutually exclusive with strategy).", enabledHint),
 		},
 	}
 
@@ -259,39 +260,123 @@ func enabledListLabel(items []string) string {
 	return strings.Join(items, ", ")
 }
 
-func searchOptionsDescription(effZhihuScope string) string {
-	parts := []string{
-		fmt.Sprintf("%q", spec.OptExaSearchType),
-		fmt.Sprintf("%q", spec.OptExaCategory),
-		fmt.Sprintf("%q", spec.OptTavilySearchDepth),
-		fmt.Sprintf("%q", spec.OptTavilyTopic),
-		fmt.Sprintf("%q", spec.OptBraveMode),
-		fmt.Sprintf("%q", spec.OptBraveThreshold),
-		fmt.Sprintf("%q", spec.OptBraveGoggles),
-		fmt.Sprintf("%q", spec.OptTinyFishDomainType),
-		fmt.Sprintf("%q", spec.OptWSAIndustry),
-		fmt.Sprintf("%q", spec.OptWSAMode),
-		fmt.Sprintf("%q [%s|%s]", spec.OptKeenableMode, spec.KeenableModePro, spec.KeenableModeRealtime),
-		fmt.Sprintf("%q [%s=web|%s=Zhihu Q&A/articles, default: %s]", spec.OptZhihuScope, spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu, effZhihuScope),
-		fmt.Sprintf("%q [%s|%s|%s, %s only]", spec.OptZhihuSearchDB, spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic, spec.ZhihuScopeGlobal),
-		fmt.Sprintf("%q [%s only, e.g. VoteUpCount:desc]", spec.OptZhihuSort, spec.ZhihuScopeZhihu),
-		fmt.Sprintf("%q [%s|%s|%s|%s]", spec.OptLinkupDepth, spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep),
-		fmt.Sprintf("%q [%s|%s|%s|%s]", spec.OptParallelMode, spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced),
-		fmt.Sprintf("%q [2-letter country code, e.g. us, gb, jp]", spec.OptParallelLocation),
-		fmt.Sprintf("%q [research|pdf|developer|gov]", spec.OptFirecrawlCategory),
-	}
-	return "Optional provider options (e.g. " + strings.Join(parts, ", ") + ")."
+type providerOptionEntry struct {
+	provider string
+	items    []string
 }
 
-func fetchOptionsDescription() string {
-	parts := []string{
-		fmt.Sprintf("%q [%s|%s]", spec.OptTavilyExtractDepth, spec.TavilyDepthBasic, spec.TavilyDepthAdvanced),
-		fmt.Sprintf("%q", spec.OptTinyFishTTL),
-		fmt.Sprintf("%q", spec.OptExaMaxAgeHours),
-		fmt.Sprintf("%q [%s|%s]", spec.OptLinkupFetchMode, spec.LinkupFetchModeStandard, spec.LinkupFetchModePro),
-		fmt.Sprintf("%q [true|false]", spec.OptLinkupRenderJS),
-		fmt.Sprintf("%q [%s|%s|%s]", spec.OptFirecrawlProxy, spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced),
-		fmt.Sprintf("%q", spec.OptFirecrawlMaxPages),
+// searchOptionsDescription 按当前已启用的检索源动态组装 options 描述，减少未启用厂商的常驻上下文占用与误调用。
+func searchOptionsDescription(effZhihuScope string, enabledSearchers []string) string {
+	catalog := []providerOptionEntry{
+		{
+			provider: spec.ProviderExa,
+			items: []string{
+				fmt.Sprintf("%q", spec.OptExaSearchType),
+				fmt.Sprintf("%q", spec.OptExaCategory),
+			},
+		},
+		{
+			provider: spec.ProviderTavily,
+			items: []string{
+				fmt.Sprintf("%q", spec.OptTavilySearchDepth),
+				fmt.Sprintf("%q", spec.OptTavilyTopic),
+			},
+		},
+		{
+			provider: spec.ProviderBrave,
+			items: []string{
+				fmt.Sprintf("%q", spec.OptBraveMode),
+				fmt.Sprintf("%q", spec.OptBraveThreshold),
+				fmt.Sprintf("%q", spec.OptBraveGoggles),
+			},
+		},
+		{
+			provider: spec.ProviderTinyFish,
+			items:    []string{fmt.Sprintf("%q", spec.OptTinyFishDomainType)},
+		},
+		{
+			provider: spec.ProviderTencentWSA,
+			items: []string{
+				fmt.Sprintf("%q", spec.OptWSAIndustry),
+				fmt.Sprintf("%q", spec.OptWSAMode),
+			},
+		},
+		{
+			provider: spec.ProviderKeenable,
+			items:    []string{fmt.Sprintf("%q [%s|%s]", spec.OptKeenableMode, spec.KeenableModePro, spec.KeenableModeRealtime)},
+		},
+		{
+			provider: spec.ProviderZhihu,
+			items: []string{
+				fmt.Sprintf("%q [%s=web|%s=Zhihu Q&A/articles, default: %s]", spec.OptZhihuScope, spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu, effZhihuScope),
+				fmt.Sprintf("%q [%s|%s|%s, %s only]", spec.OptZhihuSearchDB, spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic, spec.ZhihuScopeGlobal),
+				fmt.Sprintf("%q [%s only, e.g. VoteUpCount:desc]", spec.OptZhihuSort, spec.ZhihuScopeZhihu),
+			},
+		},
+		{
+			provider: spec.ProviderLinkup,
+			items:    []string{fmt.Sprintf("%q [%s|%s|%s|%s]", spec.OptLinkupDepth, spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep)},
+		},
+		{
+			provider: spec.ProviderParallel,
+			items: []string{
+				fmt.Sprintf("%q [%s|%s|%s|%s]", spec.OptParallelMode, spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced),
+				fmt.Sprintf("%q [2-letter country code, e.g. us, gb, jp]", spec.OptParallelLocation),
+			},
+		},
+		{
+			provider: spec.ProviderFirecrawl,
+			items:    []string{fmt.Sprintf("%q [research|pdf|developer|gov]", spec.OptFirecrawlCategory)},
+		},
 	}
-	return "Optional extractor options (e.g. " + strings.Join(parts, ", ") + ")."
+	return formatOptionsDescription("provider", "a search provider", catalog, enabledSearchers)
+}
+
+// fetchOptionsDescription 按当前已启用的提取源动态组装 options 描述。
+func fetchOptionsDescription(enabledFetchers []string) string {
+	catalog := []providerOptionEntry{
+		{
+			provider: spec.ProviderTavily,
+			items:    []string{fmt.Sprintf("%q [%s|%s]", spec.OptTavilyExtractDepth, spec.TavilyDepthBasic, spec.TavilyDepthAdvanced)},
+		},
+		{
+			provider: spec.ProviderTinyFish,
+			items:    []string{fmt.Sprintf("%q", spec.OptTinyFishTTL)},
+		},
+		{
+			provider: spec.ProviderExa,
+			items:    []string{fmt.Sprintf("%q", spec.OptExaMaxAgeHours)},
+		},
+		{
+			provider: spec.ProviderLinkup,
+			items: []string{
+				fmt.Sprintf("%q [%s|%s]", spec.OptLinkupFetchMode, spec.LinkupFetchModeStandard, spec.LinkupFetchModePro),
+				fmt.Sprintf("%q [true|false]", spec.OptLinkupRenderJS),
+			},
+		},
+		{
+			provider: spec.ProviderFirecrawl,
+			items: []string{
+				fmt.Sprintf("%q [%s|%s|%s]", spec.OptFirecrawlProxy, spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced),
+				fmt.Sprintf("%q", spec.OptFirecrawlMaxPages),
+			},
+		},
+	}
+	return formatOptionsDescription("extractor", "an extractor", catalog, enabledFetchers)
+}
+
+func formatOptionsDescription(noun, configureTarget string, catalog []providerOptionEntry, enabled []string) string {
+	if len(enabled) == 0 {
+		return fmt.Sprintf("Optional %s-specific key=value options (configure %s to see supported keys).", noun, configureTarget)
+	}
+	var parts []string
+	for _, entry := range catalog {
+		if slices.Contains(enabled, entry.provider) {
+			parts = append(parts, entry.items...)
+		}
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("Optional %s-specific key=value options — omit by default (no extra keys required for currently enabled %ss).", noun, noun)
+	}
+	return fmt.Sprintf("Optional %s options — omit by default; supported for enabled %ss: %s.", noun, noun, strings.Join(parts, ", "))
 }

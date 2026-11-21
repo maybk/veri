@@ -49,12 +49,13 @@ func New(application *app.App, version string) *mcp.Server {
 		zhihuScope:      cfg.Providers.Zhihu.Scope,
 	}
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        spec.ToolWebSearch,
-		Title:       toolWebSearchTitle,
-		Description: webSearchDescription,
-		Annotations: annotations,
-		InputSchema: buildSearchInputSchema(searchDef, application.EnabledSearchers()),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, core.Envelope, error) {
+		Name:         spec.ToolWebSearch,
+		Title:        toolWebSearchTitle,
+		Description:  webSearchDescription,
+		Annotations:  annotations,
+		InputSchema:  buildSearchInputSchema(searchDef, application.EnabledSearchers()),
+		OutputSchema: buildSearchOutputSchema(),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, SearchOutput, error) {
 		return handleWebSearch(ctx, application, cfg.MCP.TextFormat, cfg.Search.Count, cfg.MCP.MaxCount, in)
 	})
 
@@ -63,12 +64,13 @@ func New(application *app.App, version string) *mcp.Server {
 		defaultStrategy: cfg.Fetch.Strategy,
 	}
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        spec.ToolWebFetch,
-		Title:       toolWebFetchTitle,
-		Description: webFetchDescription,
-		Annotations: annotations,
-		InputSchema: buildFetchInputSchema(fetchDef, application.EnabledFetchers()),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in FetchInput) (*mcp.CallToolResult, core.Envelope, error) {
+		Name:         spec.ToolWebFetch,
+		Title:        toolWebFetchTitle,
+		Description:  webFetchDescription,
+		Annotations:  annotations,
+		InputSchema:  buildFetchInputSchema(fetchDef, application.EnabledFetchers()),
+		OutputSchema: buildFetchOutputSchema(),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in FetchInput) (*mcp.CallToolResult, FetchOutput, error) {
 		return handleWebFetch(ctx, application, cfg.MCP.TextFormat, in)
 	})
 
@@ -125,16 +127,16 @@ func RunIO(ctx context.Context, application *app.App, version string, in io.Read
 	return err
 }
 
-func handleWebSearch(ctx context.Context, application *app.App, textFormat string, cfgCount, maxCount int, in SearchInput) (res *mcp.CallToolResult, outEnv core.Envelope, retErr error) {
+func handleWebSearch(ctx context.Context, application *app.App, textFormat string, cfgCount, maxCount int, in SearchInput) (res *mcp.CallToolResult, out SearchOutput, retErr error) {
 	defer func() {
 		if r := recover(); r != nil {
-			res, outEnv, retErr = buildRecoveredToolError(application, spec.KindSearch, in.Query, textFormat, r)
+			res, out, retErr = buildSearchErrorResult(application, in.Query, textFormat, recoveredCoreError(application, r))
 		}
 	}()
 
 	fresh, fErr := core.ParseFreshness(in.Freshness, time.Now())
 	if fErr != nil {
-		return buildValidationErrorResult(application, spec.KindSearch, in.Query, textFormat, core.AsError(fErr))
+		return buildSearchErrorResult(application, in.Query, textFormat, core.AsError(fErr))
 	}
 
 	reqCount := in.Count
@@ -178,26 +180,18 @@ func handleWebSearch(ctx context.Context, application *app.App, textFormat strin
 
 	env, _ := application.SearchMCP(ctx, req)
 	if env == nil {
-		se := core.NewError(core.CodeInternal, "unexpected nil search envelope")
-		env = &core.Envelope{
-			Schema: spec.SchemaVersion,
-			OK:     false,
-			Kind:   spec.KindSearch,
-			Query:  application.ScrubText(in.Query),
-			Meta:   core.Meta{Providers: []core.ProviderReport{}, Cost: []core.Cost{}},
-			Error:  se.ToErrorInfo(),
-		}
+		env = buildErrorEnvelope(application, spec.KindSearch, in.Query, core.NewError(core.CodeInternal, "unexpected nil search envelope"))
 	}
 
 	text, err := render.FormatMCPSearchText(env, textFormat)
 	if err != nil {
-		return nil, core.Envelope{}, err
+		return nil, SearchOutput{}, err
 	}
 
-	return buildToolCallResult(env, text)
+	return buildToolCallResult(env.OK, toSearchOutput(env), text)
 }
 
-func handleWebFetch(ctx context.Context, application *app.App, textFormat string, in FetchInput) (res *mcp.CallToolResult, outEnv core.Envelope, retErr error) {
+func handleWebFetch(ctx context.Context, application *app.App, textFormat string, in FetchInput) (res *mcp.CallToolResult, out FetchOutput, retErr error) {
 	singleURL := strings.TrimSpace(in.URL)
 	var batchURLs []string
 	for _, u := range in.URLs {
@@ -212,19 +206,19 @@ func handleWebFetch(ctx context.Context, application *app.App, textFormat string
 
 	defer func() {
 		if r := recover(); r != nil {
-			res, outEnv, retErr = buildRecoveredToolError(application, spec.KindFetch, primaryLabel, textFormat, r)
+			res, out, retErr = buildFetchErrorResult(application, primaryLabel, textFormat, recoveredCoreError(application, r))
 		}
 	}()
 
 	if singleURL != "" && len(batchURLs) > 0 {
 		se := core.NewError(core.CodeInvalidArgument, "cannot specify both url and urls").
 			WithHint("Provide either `url` for a single page or `urls` for batch extraction.")
-		return buildValidationErrorResult(application, spec.KindFetch, primaryLabel, textFormat, se)
+		return buildFetchErrorResult(application, primaryLabel, textFormat, se)
 	}
 	if singleURL == "" && len(batchURLs) == 0 {
 		se := core.NewError(core.CodeInvalidArgument, "either url or urls is required").
 			WithHint("Provide a target `url` or non-empty `urls` array.")
-		return buildValidationErrorResult(application, spec.KindFetch, primaryLabel, textFormat, se)
+		return buildFetchErrorResult(application, primaryLabel, textFormat, se)
 	}
 
 	providers := cleanMCPProviders(in.Providers)
@@ -259,32 +253,27 @@ func handleWebFetch(ctx context.Context, application *app.App, textFormat string
 		env, _ = application.FetchMCP(ctx, req)
 	}
 	if env == nil {
-		se := core.NewError(core.CodeInternal, "unexpected nil fetch envelope")
-		env = &core.Envelope{
-			Schema: spec.SchemaVersion,
-			OK:     false,
-			Kind:   spec.KindFetch,
-			Query:  application.ScrubText(primaryLabel),
-			Meta:   core.Meta{Providers: []core.ProviderReport{}, Cost: []core.Cost{}},
-			Error:  se.ToErrorInfo(),
-		}
+		env = buildErrorEnvelope(application, spec.KindFetch, primaryLabel, core.NewError(core.CodeInternal, "unexpected nil fetch envelope"))
 	}
 
-	text, err := render.FormatMCPFetchText(env, textFormat)
+	text, err := render.FormatMCPFetchTextWithOptions(env, textFormat, render.MCPFetchFormatOptions{
+		Section: req.Section,
+		Match:   req.Match,
+	})
 	if err != nil {
-		return nil, core.Envelope{}, err
+		return nil, FetchOutput{}, err
 	}
 
-	return buildToolCallResult(env, text)
+	return buildToolCallResult(env.OK, toFetchOutput(env), text)
 }
 
-func buildValidationErrorResult(application *app.App, kind, query, textFormat string, se *core.Error) (*mcp.CallToolResult, core.Envelope, error) {
+func buildErrorEnvelope(application *app.App, kind, query string, se *core.Error) *core.Envelope {
 	safeErr := application.ScrubCoreError(se)
 	meta := core.Meta{Providers: []core.ProviderReport{}, Cost: []core.Cost{}}
 	if kind == spec.KindSearch {
 		meta.Strategy = string(core.StrategyAuto)
 	}
-	env := core.Envelope{
+	return &core.Envelope{
 		Schema: spec.SchemaVersion,
 		OK:     false,
 		Kind:   kind,
@@ -292,29 +281,30 @@ func buildValidationErrorResult(application *app.App, kind, query, textFormat st
 		Meta:   meta,
 		Error:  safeErr.ToErrorInfo(),
 	}
-	return renderToolErrorEnvelope(&env, textFormat)
 }
 
-func renderToolErrorEnvelope(env *core.Envelope, textFormat string) (*mcp.CallToolResult, core.Envelope, error) {
-	var txt string
-	if env.Kind == spec.KindFetch {
-		txt, _ = render.FormatMCPFetchText(env, textFormat)
-	} else {
-		txt, _ = render.FormatMCPSearchText(env, textFormat)
-	}
-	return buildToolCallResult(env, txt)
+func buildSearchErrorResult(application *app.App, query, textFormat string, se *core.Error) (*mcp.CallToolResult, SearchOutput, error) {
+	env := buildErrorEnvelope(application, spec.KindSearch, query, se)
+	txt, _ := render.FormatMCPSearchText(env, textFormat)
+	return buildToolCallResult(env.OK, toSearchOutput(env), txt)
 }
 
-func buildToolCallResult(env *core.Envelope, text string) (*mcp.CallToolResult, core.Envelope, error) {
+func buildFetchErrorResult(application *app.App, query, textFormat string, se *core.Error) (*mcp.CallToolResult, FetchOutput, error) {
+	env := buildErrorEnvelope(application, spec.KindFetch, query, se)
+	txt, _ := render.FormatMCPFetchText(env, textFormat)
+	return buildToolCallResult(env.OK, toFetchOutput(env), txt)
+}
+
+func buildToolCallResult[T any](ok bool, out T, text string) (*mcp.CallToolResult, T, error) {
 	res := &mcp.CallToolResult{
-		IsError: !env.OK,
+		IsError: !ok,
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
 	}
 	// 当 IsError 为 true 时主动预设 StructuredContent，前瞻兼容 mcp-go-sdk v1.9.0+ 在错误结果时忽略返回值 Out 的行为。
-	if !env.OK {
-		res.StructuredContent = *env
+	if !ok {
+		res.StructuredContent = out
 	}
-	return res, *env, nil
+	return res, out, nil
 }
 
 func cleanMCPProviders(items []string) []string {
@@ -327,16 +317,7 @@ func cleanMCPProviders(items []string) []string {
 	return providers
 }
 
-func buildRecoveredToolError(application *app.App, kind, query, textFormat string, recovered any) (*mcp.CallToolResult, core.Envelope, error) {
+func recoveredCoreError(application *app.App, recovered any) *core.Error {
 	safeRecovered := application.ScrubText(fmt.Sprintf("%v", recovered))
-	se := core.NewError(core.CodeInternal, fmt.Sprintf("MCP tool handler recovered from panic: %s", safeRecovered))
-	env := core.Envelope{
-		Schema: spec.SchemaVersion,
-		OK:     false,
-		Kind:   kind,
-		Query:  application.ScrubText(query),
-		Meta:   core.Meta{Providers: []core.ProviderReport{}, Cost: []core.Cost{}},
-		Error:  se.ToErrorInfo(),
-	}
-	return renderToolErrorEnvelope(&env, textFormat)
+	return core.NewError(core.CodeInternal, fmt.Sprintf("MCP tool handler recovered from panic: %s", safeRecovered))
 }

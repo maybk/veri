@@ -415,3 +415,42 @@ func TestAPIBaseURLRedactionAndRedirectSecurity(t *testing.T) {
 		t.Fatalf("expected public HTTPS redirect to be allowed, got %v", err)
 	}
 }
+
+func TestGateAcquireDeadlineNoSlotPollutionAndCancelRollback(t *testing.T) {
+	// 1. 已知超时不足以等到下一个 QPS 槽位时应快速失败，且不得推进 nextAllowed 污染后续健康请求
+	g := NewGate(2, 4) // 250ms 间隔
+	rel1, err := g.Acquire(t.Context())
+	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+	rel1()
+
+	shortCtx, cancelShort := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer cancelShort()
+	t0 := time.Now()
+	if _, err := g.Acquire(shortCtx); err == nil {
+		t.Fatal("expected short-deadline acquire to fail immediately")
+	}
+	if elapsed := time.Since(t0); elapsed > 120*time.Millisecond {
+		t.Fatalf("expected fast-fail before QPS wait, took %v", elapsed)
+	}
+
+	// 2. 排队途中被主动取消的尾部请求应回滚预留时间，不把后续正常请求推迟双倍间隔（~475ms）
+	cancelCtx, cancelWait := context.WithCancel(t.Context())
+	defer cancelWait()
+	timer := time.AfterFunc(25*time.Millisecond, cancelWait)
+	defer timer.Stop()
+	if _, err := g.Acquire(cancelCtx); err == nil {
+		t.Fatal("expected canceled acquire to fail")
+	}
+
+	okStart := time.Now()
+	rel2, err := g.Acquire(t.Context())
+	if err != nil {
+		t.Fatalf("healthy acquire after failed/canceled calls: %v", err)
+	}
+	rel2()
+	if elapsed := time.Since(okStart); elapsed > 380*time.Millisecond {
+		t.Fatalf("nextAllowed was polluted by failed/canceled requests: healthy acquire took %v", elapsed)
+	}
+}

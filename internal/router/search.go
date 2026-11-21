@@ -99,6 +99,7 @@ func (r *Router) normalizeSearchRequest(rawReq *core.SearchRequest) (core.Search
 		req.MaxChars = r.opts.SearchMaxChars
 	}
 	req.Providers = cleanProviderKeys(req.Providers)
+	req.Options = spec.NormalizeOptions(req.Options)
 	req.Filters = core.Filters{
 		Sites:        urlnorm.CleanDomainFilters(req.Filters.Sites),
 		ExcludeSites: urlnorm.CleanDomainFilters(req.Filters.ExcludeSites),
@@ -108,28 +109,51 @@ func (r *Router) normalizeSearchRequest(rawReq *core.SearchRequest) (core.Search
 	return req, nil
 }
 
-// selectSearchChain 选择生效检索链与最终路由策略（含可选纯英文 providers_en 分池）。
+// selectSearchChain 选择生效检索链与最终路由策略（含非中文 providers_global 与 fusion_providers_global 分池）。
 func (r *Router) selectSearchChain(req *core.SearchRequest) ([]core.Searcher, core.Strategy, error) {
 	strategy := req.Strategy
 	if len(req.Providers) == 1 {
 		strategy = core.StrategySingle
 	}
 
-	var candidateNames []string
 	explicit := len(req.Providers) > 0
+	var chain []core.Searcher
+	var err error
 	if explicit {
-		candidateNames = req.Providers
-	} else if strategy == core.StrategyFusion && len(r.opts.FusionProviders) > 0 {
-		candidateNames = r.opts.FusionProviders
-	} else if len(r.opts.SearchProvidersEN) > 0 && isEnglishEligibleQuery(req.Query, req.Filters.Lang) {
-		candidateNames = r.opts.SearchProvidersEN
+		chain, err = r.resolveSearchers(req.Providers, len(req.Providers) == 1)
+		if err != nil {
+			return nil, strategy, err
+		}
+	} else if strategy == core.StrategyFusion {
+		chain = r.resolveFusionChain(isNonChineseQuery(req.Query, req.Filters.Lang))
+	} else if len(r.opts.SearchProvidersGlobal) > 0 && isNonChineseQuery(req.Query, req.Filters.Lang) {
+		chain, _ = r.resolveSearchers(r.opts.SearchProvidersGlobal, false)
+		if len(chain) == 0 {
+			chain, _ = r.resolveSearchers(r.opts.SearchProviders, false)
+		}
 	} else {
-		candidateNames = r.opts.SearchProviders
+		chain, _ = r.resolveSearchers(r.opts.SearchProviders, false)
 	}
 
+	if len(chain) == 0 {
+		if explicit {
+			return nil, strategy, core.NewError(core.CodeNoProvider, fmt.Sprintf("requested search provider(s) %s are not enabled or have no configured API key", strings.Join(req.Providers, ", "))).
+				WithHint("Verify provider names or save an API key via `veri key set <provider>`.")
+		}
+		return nil, strategy, core.NewError(core.CodeNoProvider, "no search provider is enabled").
+			WithHint("Configure a search provider via `veri key set <provider>` (see `veri providers`), or set its API key environment variable.")
+	}
+
+	if !explicit && strategy == core.StrategyAuto {
+		chain = orderByHealth(r.health, chain)
+	}
+	return chain, strategy, nil
+}
+
+func (r *Router) resolveSearchers(names []string, strictSingle bool) ([]core.Searcher, error) {
 	var chain []core.Searcher
-	seen := make(map[string]struct{})
-	for _, rawName := range candidateNames {
+	seen := make(map[string]struct{}, len(names))
+	for _, rawName := range names {
 		name := canonicalProviderKey(rawName)
 		if name == "" {
 			continue
@@ -142,28 +166,12 @@ func (r *Router) selectSearchChain(req *core.SearchRequest) ([]core.Searcher, co
 			chain = append(chain, s)
 			continue
 		}
-		if explicit && len(req.Providers) == 1 {
-			return nil, strategy, core.NewError(core.CodeNoProvider, fmt.Sprintf("provider %q is not enabled or has no configured API key", name)).
+		if strictSingle {
+			return nil, core.NewError(core.CodeNoProvider, fmt.Sprintf("provider %q is not enabled or has no configured API key", name)).
 				WithHint("Verify provider name or save its API key via `veri key set <provider>`.")
 		}
 	}
-
-	if len(chain) == 0 {
-		if explicit {
-			return nil, strategy, core.NewError(core.CodeNoProvider, fmt.Sprintf("requested search provider(s) %s are not enabled or have no configured API key", strings.Join(req.Providers, ", "))).
-				WithHint("Verify provider names or save an API key via `veri key set <provider>`.")
-		}
-		return nil, strategy, core.NewError(core.CodeNoProvider, "no search provider is enabled").
-			WithHint("Configure a search provider via `veri key set <provider>` (see `veri providers`), or set its API key environment variable.")
-	}
-
-	if strategy == core.StrategyFusion && !explicit && len(r.opts.FusionProviders) == 0 && len(chain) > spec.DefaultFusionAutoLimit {
-		chain = chain[:spec.DefaultFusionAutoLimit]
-	}
-	if !explicit && strategy == core.StrategyAuto {
-		chain = orderByHealth(r.health, chain)
-	}
-	return chain, strategy, nil
+	return chain, nil
 }
 
 func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain []core.Searcher, strategy core.Strategy, start time.Time) (*core.Envelope, error) {
@@ -258,7 +266,7 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 		}
 
 		if len(results) > 0 || emptyQuorumReached || strategy == core.StrategySingle || !r.opts.FallbackOnEmpty || idx == len(chain)-1 {
-			finalResults, truncated, budgetNotes := applyFieldCapsAndBudget(results, r.opts.SummaryMaxRunes, r.opts.ContentMaxRunes, req.MaxChars)
+			finalResults, truncated, budgetNotes := applyFieldCapsAndBudget(results, r.opts.SummaryMaxChars, r.opts.ContentMaxChars, req.MaxChars)
 			if finalResults == nil {
 				finalResults = []core.Result{}
 			}
@@ -292,18 +300,34 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 	return buildSearchErrorEnvelope(req.Query, string(strategy), reports, len(reports) > 1, costs, start, lastErr), lastErr
 }
 
-func isEnglishEligibleQuery(query string, langs []string) bool {
-	for _, l := range langs {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(l)), "zh") {
+// isNonChineseQuery 判断当前查询是否应走非中文检索链（search.providers_global）。
+// 显式指定语言过滤时以 lang 为准（含中文语言码走中文主链，否则走非中文链）；
+// 未指定时按脚本特征判断：含日文假名或韩文谚文判为非中文，含汉字判为中文，其余（英文及其他语种）判为非中文。
+func isNonChineseQuery(query string, langs []string) bool {
+	hasExplicitLang := false
+	for _, raw := range langs {
+		l := strings.ToLower(strings.TrimSpace(raw))
+		if l == "" {
+			continue
+		}
+		hasExplicitLang = true
+		if l == "zh" || l == "zho" || l == "chinese" || strings.HasPrefix(l, "zh-") || strings.HasPrefix(l, "zh_") {
 			return false
 		}
 	}
+	if hasExplicitLang {
+		return true
+	}
+	hasHan := false
 	for _, r := range query {
-		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
-			return false
+		switch {
+		case unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r):
+			return true
+		case unicode.Is(unicode.Han, r):
+			hasHan = true
 		}
 	}
-	return true
+	return !hasHan
 }
 
 func rawQuery(req *core.SearchRequest) string {

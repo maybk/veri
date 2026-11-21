@@ -21,22 +21,30 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 
 ### 选型与官方申请入口
 
-| 标识 | 能力 | 适用场景 | 官方控制台入口 | 配置命令 |
-| --- | --- | --- | --- | --- |
-| `deepseek` | 搜索、云端提取 | 中英文通用联网检索与正文提取 | [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) | `veri key set deepseek` |
-| `keenable` | 搜索、云端提取 | 通用联网检索与网页 Markdown 提取（默认策略会留存查询与结果） | [Keenable Console](https://app.keenable.ai/console/api-keys) | `veri key set keenable` |
-| `zhihu` | 搜索 | 中文全网搜索（默认）与知乎站内问答/文章检索（`-o zhihu.scope=zhihu`） | [知乎数据开放平台](https://developer.zhihu.com/profile) | `veri key set zhihu` |
-| `exa` | 搜索、云端提取 | 英文技术文档、语义检索与学术内容 | [Exa Dashboard](https://dashboard.exa.ai/api-keys) | `veri key set exa` |
-| `tinyfish` | 搜索、云端提取 | 中英文检索、学术论文与动态网页（SPA / JS）渲染提取 | [TinyFish Console](https://agent.tinyfish.ai/api-keys) | `veri key set tinyfish` |
-| `tencent_wsa` | 搜索 | 中文资讯、政务、学术与财经检索（需开通并创建服务 API Key，非通用 SecretId/Key） | [腾讯云联网搜索控制台](https://console.cloud.tencent.com/wsa) | `veri key set tencent_wsa` |
-| `tavily` | 搜索、云端提取 | 面向 AI Agent 的通用、新闻、财经检索与正文提取 | [Tavily Dashboard](https://app.tavily.com) | `veri key set tavily` |
-| `brave` | 搜索 | 全球网页索引与大模型上下文摘要检索 | [Brave Search API](https://api-dashboard.search.brave.com) | `veri key set brave` |
-| `linkup` | 搜索、云端提取 | 英文检索、HTML/PDF 与按需 JS 渲染提取 | [Linkup Console](https://app.linkup.so) | `veri key set linkup` |
-| `parallel` | 搜索、云端提取 | 英文与通用检索、域名/路径前缀过滤及 JS/PDF 提取（标准条款允许去标识化用于模型训练） | [Parallel Platform](https://platform.parallel.ai) | `veri key set parallel` |
-| `firecrawl` | 搜索、云端提取 | 高难反爬与动态网页提取，支持开源自托管实例 | [Firecrawl Dashboard](https://www.firecrawl.dev/app/api-keys) | `veri key set firecrawl` |
-| `github`（可选） | GitHub 读取 | 公开仓库无需令牌；配置后可提高限额并读取有权限的私有仓库 | [GitHub Tokens](https://github.com/settings/tokens) | `veri key set github` |
+从下表任选 1 个或多个厂商申请密钥，执行 `veri key set <标识>` 即可加密保存并自动启用（多源可叠加自动回退）：
 
-> 各上游服务的计费方式、套餐与调用限额请以对应官方控制台为准。
+| 标识 | 能力 | 免费额度与参考价格 | 适用场景与注意 | 官方入口 |
+| --- | --- | --- | --- | --- |
+| `deepseek` | 搜索、提取 | 无免费档；Search 与 Fetch 均 **¥5 / 1,000 次成功请求（¥0.005/次）**，失败与空结果不计费 | 中英文主力检索与 Markdown 提取（搜 100 QPS / 抓 25 QPS） | [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) |
+| `keenable` | 搜索、提取 | **10 万次/月免费免绑卡**（搜/抓各计 1 次）；超额 $4 / 1,000 次（$0.004/次） | 超大免费月额通用检索与提取；默认策略留存查询与结果 | [Keenable Console](https://app.keenable.ai/console/api-keys) |
+| `zhihu` | 搜索 | 按实名控制台配额发放（每日 00:00 重置；社区实测实名后全网与知乎两池独立，各约 5,000 次/天，未实名约 10 次/天） | 中文全网搜索（默认）与知乎站内问答/文章（`-o zhihu.scope=zhihu`） | [知乎数据开放平台](https://developer.zhihu.com/profile) |
+| `exa` | 搜索、提取 | **$10/月免费免绑卡**（每月 1 日重置）+ 新人礼 $10；超额 `auto` 搜 $7 / 1,000 次（$0.007/次，`lite` $0.004/次、`deep` $0.012/次）、抓 $1 / 1,000 页（$0.001/页） | 英文技术文档、语义检索与 PDF/正文提取；响应直出实收账单 | [Exa Dashboard](https://dashboard.exa.ai/api-keys) |
+| `tinyfish` | 搜索、提取 | **免费免绑卡**：搜 12,000 次/天、抓 1,000 页/天（00:00 UTC 重置） | 中英文检索、学术论文与服务端 SPA / JS 动态渲染及 PDF 提取 | [TinyFish Console](https://agent.tinyfish.ai/api-keys) |
+| `tencent_wsa` | 搜索 | **2,000 次/自然月全版本通用免费**（按账号重置，以控制台为准）；超额按版本 ¥14 / ¥20 / ¥26 / 1,000 次（极速 ¥0.014、标准 ¥0.020、旗舰 ¥0.026/次，失败不计费） | 中文资讯、政务、学术与财经检索（需创建 WSA 服务 API Key） | [腾讯云联网搜索控制台](https://console.cloud.tencent.com/wsa) |
+| `tavily` | 搜索、提取 | **1,000 credits/月免费免绑卡**（`basic` 搜 1 credit/次、`advanced` 2 credits/次；提取每 5 页 1 credit）；按量 $8 / 1,000 credits（$0.008/credit） | AI Agent 通用、新闻与财经检索，支持动态渲染与 PDF 提取 | [Tavily Dashboard](https://app.tavily.com) |
+| `brave` | 搜索 | Search 计划 **$5/月免费（约 1,000 次，需绑卡）**；超额 $5 / 1,000 次（$0.005/次） | 独立全球索引与大模型上下文摘要（`llm/context`）极速检索 | [Brave Search API](https://api-dashboard.search.brave.com) |
+| `linkup` | 搜索、提取 | **每月自动补满至 $20**（职业邮箱免绑卡，公共邮箱需绑卡解锁；约 4,000 次 `fast` 搜，失败/无结果不计费）；超额 `fast`/`standard` 搜 $5 / 1,000 次（$0.005/次，`deep` $0.05/次）、抓 $0.001–$0.01/页 | 英文检索、HTML/PDF 与按需 JS 渲染提取（默认 `fast` 防误触高价） | [Linkup Console](https://app.linkup.so) |
+| `parallel` | 搜索、提取 | **注册赠金最高 $80（免绑卡，按邮箱域名分档，企业/工作邮箱高档、公共邮箱通常较低）**，绑卡另享 **$5/月免费**；超额 `turbo`/`fast` 搜与 Extract 均 $1 / 1,000 次（$0.001/次），`basic`/`advanced` $5 / 1,000 次（$0.005/次） | 英文与通用检索、域名/路径前缀过滤及 JS/PDF 提取；标准条款允许去标识化用于模型训练 | [Parallel Platform](https://platform.parallel.ai) |
+| `firecrawl` | 搜索、提取 | **1,000 credits/月免费免绑卡**（1,000 页抓或 500 次搜，PDF 按页扣点）；支持开源免费自托管 | 高难反爬、动态渲染与自托管提取主力（`proxy=auto` 不加价） | [Firecrawl Dashboard](https://www.firecrawl.dev/app/api-keys) |
+| `github`（可选） | GitHub 读取 | 公开接口免令牌免费；配置 Token 提高每小时限额并可访问授权私有仓库 | 结构化读取仓库、源码行范围、Issue、PR、Discussion、Commit 与 Release | [GitHub Tokens](https://github.com/settings/tokens) |
+
+**常见搭配建议：**
+
+- **零成本免绑卡起步**：中文推荐 `keenable` + `zhihu` + `tencent_wsa`（2,000 次/月）；英文与网页提取推荐 `keenable` + `exa` + `tavily` + `parallel`（有职业邮箱加配 `linkup`），复杂反爬页面补 `firecrawl`（或开源自托管）。
+- **低价高质主力**：中文推荐 `deepseek`（极速低价，失败与空结果不计费）；英文推荐 `parallel`（`fast` 搜与 Extract 均 $1 / 1,000 次，配合 `exa` 做高精补充）。
+- **隐私敏感场景**：`keenable` 默认留存查询与结果、`parallel` 标准条款允许去标识化用于模型训练，处理敏感查询时可在 `config.toml` 中按需禁用或切至其他源。
+
+> 以上免费额度与参考价格核实于 2026-11，上游资费、活动配额与适用条件随时可能调整，请以各官方控制台与定价页为准；`veri` 源码不内置刊例单价，仅在上游返回账单或用户配置 `price_*` 时估算成本。
 
 ### 加密保存与验证
 
@@ -75,7 +83,7 @@ veri doctor --live --yes
 veri "golang mcp sdk official"
 
 # 限定时间范围、站点与返回条数
-# -t 支持 day|week|month|year、7d|3m 或精确区间 YYYY-MM-DD..YYYY-MM-DD
+# -t 支持 day|week|month|year、7d|3m、YYYY-MM-DD.. 或精确区间 YYYY-MM-DD..YYYY-MM-DD
 veri search "go 1.27 release notes" -t 6m -s go.dev -n 5
 
 # 排除指定站点并限定语言
@@ -88,9 +96,12 @@ veri search "sqlite wal checkpoint" -d content -n 3
 veri search "rust async traits" -p exa
 veri search "rust async traits" -p exa,tavily
 
-# 多源并发融合去重（不传 -p 时使用 search.fusion_providers 或前 3 个已启用源）
+# 传递厂商扩展参数（-o key=value，可多次指定；完整键名见 providers.md）
+veri search "go 并发" -p zhihu -o zhihu.scope=zhihu
+
+# 多源并发融合去重（不传 -p 时按当前查询分链使用融合池或前 3 个已启用源）
 veri search "raft leader lease" -F
-veri search "raft leader lease" -F -p deepseek,exa,tavily,brave
+veri search "raft leader lease" -F -p deepseek,exa,parallel,brave
 
 # 输出结构化格式，便于脚本与管道联动（支持 md / json / jsonl / urls）
 veri search "go 1.27" -n 5 --json

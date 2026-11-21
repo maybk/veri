@@ -83,9 +83,12 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 				if se.Provider == "" {
 					se = se.WithProvider(s.Name())
 				}
-				r.health.recordError(s.Name(), se)
+				stragglerCanceled := fusionCtx.Err() != nil && ctx.Err() == nil && (se.Code == core.CodeUpstreamTimeout || errors.Is(err, context.Canceled))
+				if !stragglerCanceled {
+					r.health.recordError(s.Name(), se)
+				}
 				status := core.ProviderStatusError
-				if se.Code == core.CodeUpstreamTimeout || errors.Is(fusionCtx.Err(), context.DeadlineExceeded) || (fusionCtx.Err() != nil && ctx.Err() == nil) {
+				if se.Code == core.CodeUpstreamTimeout || errors.Is(fusionCtx.Err(), context.DeadlineExceeded) || stragglerCanceled {
 					status = core.ProviderStatusTimeout
 				}
 				branches[idx] = branchResult{
@@ -109,7 +112,11 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 				graceMu.Lock()
 				nonEmptyDone++
 				if nonEmptyDone >= quorum && graceTimer == nil {
-					graceTimer = time.AfterFunc(defaultFusionStragglerGrace, cancelFusion)
+					grace := r.stragglerGrace
+					if grace <= 0 {
+						grace = defaultFusionStragglerGrace
+					}
+					graceTimer = time.AfterFunc(grace, cancelFusion)
 				}
 				graceMu.Unlock()
 			}
@@ -183,7 +190,7 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 	}
 
 	fused := fuseRRF(branches, r.opts.FusionK, r.weightFor, req.Count)
-	finalResults, truncated, budgetNotes := applyFieldCapsAndBudget(fused, r.opts.SummaryMaxRunes, r.opts.ContentMaxRunes, req.MaxChars)
+	finalResults, truncated, budgetNotes := applyFieldCapsAndBudget(fused, r.opts.SummaryMaxChars, r.opts.ContentMaxChars, req.MaxChars)
 	if finalResults == nil {
 		finalResults = []core.Result{}
 	}

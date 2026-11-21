@@ -49,9 +49,10 @@ veri config show                               # 输出合并并脱敏后的生�
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ui.lang` | `"auto"` | 终端界面语言：`auto`（跟随系统，非中文环境回退英文）、`zh`、`en`（兼容 `zh_CN.UTF-8` 等标准 Locale） |
-| `search.providers` | `["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "parallel", "keenable", "firecrawl"]` | 默认检索优先级链（仅已配置密钥的源参与路由） |
-| `search.providers_en` | `[]` | 可选；查询词不含中日韩字符时优先使用的英文检索链 |
-| `search.fusion_providers` | `[]` | 可选；`--fusion` 模式默认并发检索源集合（如 `["deepseek", "exa", "tavily"]`；为空时取前 3 个已启用源） |
+| `search.providers` | `["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]` | 默认检索链（中文查询优先；显式配置且未设 `providers_global` 时所有语言统一走此链） |
+| `search.providers_global` | `["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"]` | 非中文查询检索链（英文、日韩等或指定非中文 `--lang` 时启用；设 `[]` 关闭） |
+| `search.fusion_providers` | `[]` | `--fusion` 并发源列表（中文优先；为空取 `search.providers` 前 3 启用源；仅配此项时所有语言统一使用） |
+| `search.fusion_providers_global` | `[]` | `--fusion` 非中文并发源列表（为空取 `search.providers_global` 前 3 启用源；设 `[]` 关闭分池） |
 | `search.strategy` | `"auto"` | `auto`（链式回退）或 `fusion`（多源并发 RRF 融合） |
 | `search.count` | `8` | 默认返回条数，范围 `1`–`50` |
 | `search.detail` | `"summary"` | 结果详略级别：`snippet`、`summary`、`content` |
@@ -59,15 +60,15 @@ veri config show                               # 输出合并并脱敏后的生�
 | `search.fallback_on_empty` | `true` | 当前检索源无结果时自动回退至下一源（连续 2 个原生过滤源无结果时提前终止） |
 | `search.strict_filters` | `false` | `true` 时仅选用原生支持当前过滤条件的检索源，禁止本地后过滤模拟 |
 | `search.fusion_k` | `60` | RRF（Reciprocal Rank Fusion）排名平滑常数 |
-| `search.summary_max_runes` | `800` | 单条结果 `summary` 最大字符数 |
-| `search.content_max_runes` | `0` | 单条结果 `content` 最大字符数（`0` 表示不限制） |
+| `search.summary_max_chars` | `800` | 单条结果 `summary` 最大字符数 |
+| `search.content_max_chars` | `0` | 单条结果 `content` 最大字符数（`0` 表示不限制） |
 | `search.max_chars` | `0` | CLI 检索整包字符预算上限（`0` 表示不限制） |
 | `fetch.strategy` | `"api_first"` | 提取路由策略：`api_first`（云端优先、本地回退）、`smart_local`、`local_only`、`api_only` |
-| `fetch.providers` | `["deepseek", "tinyfish", "tavily", "exa", "linkup", "parallel", "keenable", "firecrawl"]` | 默认云端网页提取链（中文站点优先使用；显式配置且未配置 `providers_global` 时统一按此顺序执行） |
-| `fetch.providers_global` | `["exa", "tavily", "linkup", "parallel", "tinyfish", "keenable", "firecrawl", "deepseek"]` | 非中文站点优先使用的云端提取链（设为空数组 `[]` 可关闭分链） |
+| `fetch.providers` | `["keenable", "tavily", "firecrawl", "parallel", "exa", "linkup", "deepseek", "tinyfish"]` | 默认云端提取链（中文站优先；显式配置且未设 `providers_global` 时所有站点统一走此链） |
+| `fetch.providers_global` | `["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"]` | 非中文站云端提取链（设 `[]` 关闭分链） |
 | `fetch.timeout` | `"45s"` | 单次网页提取总超时（作为外层上限覆盖各源 `fetch_timeout`） |
 | `fetch.max_bytes` | `"5MB"` | 本地抓取解压后响应体上限 |
-| `fetch.min_content_runes` | `300` | 本地提取正文质量闸门最少字符阈值 |
+| `fetch.min_content_chars` | `300` | 本地提取正文质量闸门最少字符阈值 |
 | `fetch.respect_robots` | `false` | 本地抓取前是否检查并遵循目标站点 `robots.txt` |
 | `fetch.user_agent` | `"browser"` | 本地抓取 User-Agent：`browser`、`veri` 或自定义字符串 |
 | `fetch.max_chars` | `0` | CLI 网页提取默认返回字符上限（`0` 表示返回全文） |
@@ -79,7 +80,7 @@ veri config show                               # 输出合并并脱敏后的生�
 | `mcp.text_format` | `"markdown"` | MCP 文本块格式：`markdown` 或 `json` |
 | `mcp.search_max_chars` | `24000` | `web_search` 默认字符预算上限 |
 | `mcp.fetch_max_chars` | `30000` | `web_fetch` 默认字符预算上限 |
-| `mcp.content_max_runes` | `3000` | MCP 检索单条结果 `content` 最大字符数 |
+| `mcp.content_max_chars` | `3000` | MCP 检索单条结果 `content` 最大字符数 |
 | `mcp.max_count` | `20` | `web_search` 单次最大返回条数 |
 | `mcp.cache_ttl` | `"5m"` | MCP 进程内相同请求缓存有效期（设为 `"0s"` 关闭） |
 | `mcp.cache_size` | `256` | MCP 进程内 LRU 缓存最大条目数（设为 `0` 关闭） |

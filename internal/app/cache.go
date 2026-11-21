@@ -264,7 +264,7 @@ func buildSearchCacheKey(req *core.SearchRequest, searchCfg config.SearchConfig,
 		FreshEnd     string            `json:"before,omitempty"`
 		FreshUnit    string            `json:"unit,omitempty"`
 		FreshN       int               `json:"n,omitzero"`
-		Providers    []string          `json:"providers"`
+		Providers    []string          `json:"providers,omitempty"`
 		Strategy     string            `json:"strategy"`
 		Strict       bool              `json:"strict"`
 		IncludeExtra bool              `json:"extra,omitzero"`
@@ -288,9 +288,6 @@ func buildSearchCacheKey(req *core.SearchRequest, searchCfg config.SearchConfig,
 		maxChars = defaultMaxChars
 	}
 	provs := normalizeCacheProviders(req.Providers)
-	if len(provs) == 0 {
-		provs = searchCfg.Providers
-	}
 	var afterStr, beforeStr, unitStr string
 	var freshN int
 	if f := req.Filters.Freshness; f != nil {
@@ -344,16 +341,12 @@ func buildFetchCacheKey(rawURL string, strategy core.FetchStrategy, providers []
 }
 
 func normalizeCacheOptions(options map[string]string, skipKey string) map[string]string {
-	var out map[string]string
-	for k, v := range options {
-		lk := strings.ToLower(strings.TrimSpace(k))
-		if lk == "" || (skipKey != "" && lk == skipKey) {
-			continue
+	out := spec.NormalizeOptions(options)
+	if skipKey != "" {
+		delete(out, skipKey)
+		if len(out) == 0 {
+			return nil
 		}
-		if out == nil {
-			out = make(map[string]string, len(options))
-		}
-		out[lk] = strings.TrimSpace(v)
 	}
 	return out
 }
@@ -362,12 +355,7 @@ func isFreshFetchBypass(opts map[string]string) bool {
 	if spec.IsFreshFetchOption(opts) {
 		return true
 	}
-	for _, key := range []string{spec.OptTinyFishTTL, spec.OptTinyFishTTLAlias, spec.OptExaMaxAgeHours, spec.OptExaMaxAgeAlias} {
-		if strings.TrimSpace(opts[key]) == "0" {
-			return true
-		}
-	}
-	return false
+	return spec.LookupOption(opts, spec.OptTinyFishTTL, spec.OptTinyFishTTLAlias, spec.OptExaMaxAgeHours, spec.OptExaMaxAgeAlias) == "0"
 }
 
 func canonicalFetchTargetKey(rawURL string) string {

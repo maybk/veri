@@ -17,8 +17,8 @@ const (
 	DefaultConcurrency = spec.DefaultProviderConcurrency
 	// DefaultMaxBytes 默认解压后最大响应体字节数（5 MB）。
 	DefaultMaxBytes = httpx.DefaultFetchResponseMaxBytes
-	// DefaultMinContentRunes 默认正文质量闸门最小非空白字符数。
-	DefaultMinContentRunes = spec.DefaultMinContentRunes
+	// DefaultMinContentChars 默认正文质量闸门最小非空白字符数。
+	DefaultMinContentChars = spec.DefaultMinContentChars
 
 	maxFetchURLLength = spec.DefaultMaxURLLength
 )

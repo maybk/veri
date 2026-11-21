@@ -144,6 +144,10 @@ type keyListEntry struct {
 	Masked         string `json:"masked"`
 }
 
+type keyListJSONOutput struct {
+	Keys []keyListEntry `json:"keys"`
+}
+
 func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
@@ -196,7 +200,7 @@ func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
 			}
 
 			if jsonOut {
-				text, jErr := render.MarshalEnvelopeJSON(entries)
+				text, jErr := render.MarshalEnvelopeJSON(keyListJSONOutput{Keys: entries})
 				if jErr != nil {
 					return jErr
 				}

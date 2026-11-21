@@ -79,6 +79,12 @@ func (a *App) runBatchFetch(ctx context.Context, rawURLs []string, baseReq *core
 	g.SetLimit(spec.DefaultBatchFetchConcurrency)
 	for idx, u := range cleaned {
 		g.Go(func() error {
+			defer func() {
+				if rec := recover(); rec != nil {
+					subEnvs[idx] = nil
+					subErrs[idx] = a.ScrubCoreError(core.NewError(core.CodeInternal, fmt.Sprintf("batch fetch branch recovered from panic: %v", rec)))
+				}
+			}()
 			itemReq := tpl
 			itemReq.URL = u
 			itemReq.MaxChars = perPageMax

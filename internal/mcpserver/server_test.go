@@ -153,7 +153,7 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 		t.Fatalf("empty search result must NOT set IsError=true: res=%+v err=%v", resEmpty, err)
 	}
 
-	// 4. 验证 Schema 零 default（不覆盖用户配置）且无冗余 provider 单数参数，并校验 options 可发现性提示与 web_fetch 单页、批量去重标签、url+urls 互斥
+	// 4. 验证 Schema 零 default（不覆盖用户配置）且无冗余 provider 单数参数，并验证 web_fetch 单页、批量去重标签、url+urls 互斥
 	searchSchema := buildSearchInputSchema(searchSchemaDefaults{
 		defaultCount:    3,
 		maxCount:        20,
@@ -176,14 +176,14 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 		"global=web|zhihu=Zhihu Q&A/articles, default: zhihu",
 		spec.OptZhihuSearchDB,
 		spec.OptZhihuSort,
-		spec.OptKeenableMode,
-		spec.OptLinkupDepth,
-		spec.OptParallelMode,
-		spec.OptParallelLocation,
-		spec.OptFirecrawlCategory,
 	} {
 		if !strings.Contains(sOptDesc, want) {
-			t.Fatalf("web_search options description missing %q: %q", want, sOptDesc)
+			t.Fatalf("web_search options description missing enabled provider option %q: %q", want, sOptDesc)
+		}
+	}
+	for _, unwanted := range []string{spec.OptKeenableMode, spec.OptLinkupDepth, spec.OptParallelMode, spec.OptFirecrawlCategory} {
+		if strings.Contains(sOptDesc, unwanted) {
+			t.Fatalf("web_search options description should omit disabled provider option %q: %q", unwanted, sOptDesc)
 		}
 	}
 
@@ -205,15 +205,8 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 		t.Fatalf("expected strategy description to mention configured default %q, got %q", core.FetchLocalOnly, stratDesc)
 	}
 	fOptDesc, _ := fProps["options"].(map[string]any)["description"].(string)
-	for _, want := range []string{
-		spec.OptLinkupFetchMode,
-		spec.OptLinkupRenderJS,
-		spec.OptFirecrawlProxy,
-		spec.OptFirecrawlMaxPages,
-	} {
-		if !strings.Contains(fOptDesc, want) {
-			t.Fatalf("web_fetch options description missing %q: %q", want, fOptDesc)
-		}
+	if strings.Contains(fOptDesc, spec.OptFirecrawlProxy) || !strings.Contains(fOptDesc, "no extra keys required") {
+		t.Fatalf("expected local-only web_fetch options description to omit disabled cloud options, got %q", fOptDesc)
 	}
 
 	// url 与 urls 同时传入必须返回 IsError=true
@@ -459,19 +452,19 @@ base_url = %q
 	if err != nil || !resEmptyFetch.IsError || !strings.Contains(resEmptyFetch.Content[0].(*mcp.TextContent).Text, "either url or urls is required") {
 		t.Fatalf("expected missing url/urls error, got res=%+v err=%v", resEmptyFetch, err)
 	}
-	// buildRecoveredToolError 兜底保护与脱敏验证（含已知配置密钥、socks5 代理凭据与 Basic 认证头）
-	recRes, recEnv, recErr := buildRecoveredToolError(application, spec.KindFetch, "https://u:PanicQueryPass55@example.org", spec.TextFormatMarkdown, "boom sk-test-config-default socks5://u:p@127.0.0.1:1080 Authorization: Basic dXNlcjpwYXNzMTIz")
+	// panic 兜底保护与脱敏验证（含已知配置密钥、socks5 代理凭据与 Basic 认证头）
+	recRes, recOut, recErr := buildFetchErrorResult(application, "https://u:PanicQueryPass55@example.org", spec.TextFormatMarkdown, recoveredCoreError(application, "boom sk-test-config-default socks5://u:p@127.0.0.1:1080 Authorization: Basic dXNlcjpwYXNzMTIz"))
 	recTxt := recRes.Content[0].(*mcp.TextContent).Text
-	if recErr != nil || !recRes.IsError || recEnv.OK || !strings.Contains(recTxt, "boom") {
-		t.Fatalf("unexpected buildRecoveredToolError fetch result: res=%+v env=%+v err=%v", recRes, recEnv, recErr)
+	if recErr != nil || !recRes.IsError || recOut.OK || !strings.Contains(recTxt, "boom") {
+		t.Fatalf("unexpected recovered fetch error result: res=%+v out=%+v err=%v", recRes, recOut, recErr)
 	}
 	for _, leaked := range []string{"PanicQueryPass55", "sk-test-config-default", "u:p@", "dXNlcjpwYXNzMTIz"} {
-		if strings.Contains(recTxt, leaked) || strings.Contains(recEnv.Query, leaked) || strings.Contains(recEnv.Error.Message, leaked) {
-			t.Fatalf("buildRecoveredToolError leaked %q: txt=%s env=%+v", leaked, recTxt, recEnv)
+		if strings.Contains(recTxt, leaked) || strings.Contains(recOut.Query, leaked) || strings.Contains(recOut.Error.Message, leaked) {
+			t.Fatalf("recovered fetch error leaked %q: txt=%s out=%+v", leaked, recTxt, recOut)
 		}
 	}
-	recResS, _, _ := buildRecoveredToolError(nil, spec.KindSearch, "q", spec.TextFormatMarkdown, "boom2")
+	recResS, _, _ := buildSearchErrorResult(nil, "q", spec.TextFormatMarkdown, recoveredCoreError(nil, "boom2"))
 	if !recResS.IsError || !strings.Contains(recResS.Content[0].(*mcp.TextContent).Text, "boom2") {
-		t.Fatalf("unexpected buildRecoveredToolError search result: %+v", recResS)
+		t.Fatalf("unexpected recovered search error result: %+v", recResS)
 	}
 }

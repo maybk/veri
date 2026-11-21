@@ -103,7 +103,7 @@ func (r *Router) fetchLocalPinned(ctx context.Context, req *core.FetchRequest, p
 	if cloudOnly {
 		se := core.NewError(core.CodeBlockedByPolicy, "refusing to send local or private URL to external cloud extractor").
 			WithMsgKey("err.private_url_cloud_blocked").
-			WithHint("Use local extraction (api_first, smart_local, or -p local) and set network.allow_private = true in config.toml if needed.").
+			WithHint("Use local extraction (`api_first`, `smart_local`, or the `local` extractor) and set network.allow_private = true in config.toml if needed.").
 			WithHintKey("hint.private_url_cloud_blocked")
 		return buildFetchErrorEnvelope(req.URL, strategyLabel, nil, false, nil, start, se), se
 	}
@@ -144,6 +144,7 @@ func (r *Router) normalizeFetchRequest(rawReq *core.FetchRequest) (core.FetchReq
 	}
 
 	req.Providers = cleanProviderKeys(req.Providers)
+	req.Options = spec.NormalizeOptions(req.Options)
 	rawStrategy := strings.TrimSpace(string(req.Strategy))
 	if len(req.Providers) > 0 && rawStrategy != "" {
 		return core.FetchRequest{}, nil, core.NewError(core.CodeInvalidArgument, "cannot specify both explicit providers and fetch strategy").

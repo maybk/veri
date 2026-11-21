@@ -206,34 +206,52 @@ func DefaultEnvRef(provider string) string {
 	return "env:" + vars[0]
 }
 
-// DefaultSearchProviders 返回内置默认检索路由链的独立副本。
+// DefaultSearchProviders 返回内置默认检索路由链的独立副本（中文与中英混合查询优先使用）。
 func DefaultSearchProviders() []string {
 	return []string{
 		ProviderDeepSeek,
-		ProviderExa,
-		ProviderZhihu,
-		ProviderTinyFish,
-		ProviderTencentWSA,
-		ProviderTavily,
-		ProviderBrave,
-		ProviderLinkup,
-		ProviderParallel,
 		ProviderKeenable,
+		ProviderTencentWSA,
+		ProviderZhihu,
+		ProviderBrave,
+		ProviderParallel,
+		ProviderExa,
+		ProviderTavily,
+		ProviderLinkup,
+		ProviderTinyFish,
 		ProviderFirecrawl,
 	}
 }
 
-// DefaultFetchProviders 返回内置默认云端网页提取路由链的独立副本。
-func DefaultFetchProviders() []string {
+// DefaultSearchProvidersGlobal 返回非中文查询（英文、日韩及其他语种）使用的默认检索顺序
+// （仅在用户未显式配置 search.providers 与 search.providers_global 时生效）。
+func DefaultSearchProvidersGlobal() []string {
 	return []string{
+		ProviderKeenable,
+		ProviderParallel,
+		ProviderExa,
+		ProviderBrave,
+		ProviderLinkup,
+		ProviderTavily,
 		ProviderDeepSeek,
 		ProviderTinyFish,
+		ProviderFirecrawl,
+		ProviderTencentWSA,
+		ProviderZhihu,
+	}
+}
+
+// DefaultFetchProviders 返回内置默认云端网页提取路由链的独立副本（中文站点优先使用）。
+func DefaultFetchProviders() []string {
+	return []string{
+		ProviderKeenable,
 		ProviderTavily,
+		ProviderFirecrawl,
+		ProviderParallel,
 		ProviderExa,
 		ProviderLinkup,
-		ProviderParallel,
-		ProviderKeenable,
-		ProviderFirecrawl,
+		ProviderDeepSeek,
+		ProviderTinyFish,
 	}
 }
 
@@ -241,12 +259,12 @@ func DefaultFetchProviders() []string {
 func DefaultFetchProvidersGlobal() []string {
 	return []string{
 		ProviderExa,
-		ProviderTavily,
-		ProviderLinkup,
 		ProviderParallel,
-		ProviderTinyFish,
+		ProviderTavily,
 		ProviderKeenable,
+		ProviderLinkup,
 		ProviderFirecrawl,
+		ProviderTinyFish,
 		ProviderDeepSeek,
 	}
 }

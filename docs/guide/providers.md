@@ -1,6 +1,6 @@
 # 检索与提取源说明
 
-> 寻找各检索源的 API Key 申请入口与日常用法，请先看 [使用指南](./usage.md)。
+> 寻找各检索源的免费额度、参考价格、API Key 申请入口与日常用法，请先看 [使用指南](./usage.md)。
 
 `veri` 采用正交适配器架构：检索源实现 `core.Searcher`，网页提取源实现 `core.Fetcher`。启动时按 `providers.<name>.enabled` 与已配置的凭据启用对应适配器，未启用或未配置密钥的适配器静默跳过。
 
@@ -24,9 +24,9 @@
 
 ## 检索选路模式
 
-1. **链式自动回退（`auto`，默认）**：按 `search.providers` 顺序（纯英文查询且配置了 `search.providers_en` 时优先使用英文链）依次尝试已启用检索源。遇到鉴权失败、配额耗尽、限流、超时或上游不可用等可回退错误时自动切换下一源；开启 `fallback_on_empty` 时空结果也会继续向后尝试。
+1. **链式自动回退（`auto`，默认）**：中文查询按 `search.providers` 顺序执行，非中文查询（英文、日韩等或指定非中文 `--lang`）默认走 `search.providers_global`（设 `[]` 或仅显式配置 `search.providers` 时统一走主链）。遇鉴权、配额、限流、超时等可回退错误自动切下一源；开启 `fallback_on_empty` 时空结果也继续回退。
 2. **显式单源（`-p <name>`）**：仅调用指定检索源，失败时直接返回该源的结构化错误，不隐式切换其他源。
-3. **多源并发融合（`--fusion` / `-F`）**：并发调用多路检索源（可通过 `-p a,b` 或 `search.fusion_providers` 指定），经 URL 规范化去重后使用加权 Reciprocal Rank Fusion（`RRF`）重排合并结果；只要至少一路成功即返回融合结果，并在 `meta.providers` 中记录失败支路。
+3. **多源并发融合（`--fusion` / `-F`）**：并发调用多路检索源（可用 `-p a,b` 或 `search.fusion_providers` / `search.fusion_providers_global` 指定；未指定时按当前查询分链取前 3 个已启用源），去重后以加权 RRF 重排合并；任一路成功即返回结果，失败支路记入 `meta.providers`。
 4. **过滤能力降级与严格模式**：当所选检索源不原生支持某项过滤条件（如排除多个站点或精确日期范围）时，路由器默认在拉取结果后执行本地后过滤，并在 `meta.notes` 中标注降级说明；传入 `--strict`（或 `strict: true`）则跳过不具备对应原生过滤能力的检索源。
 
 ## 网页提取策略

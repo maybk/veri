@@ -6,7 +6,8 @@
 
 - `doc.go`：包级说明与依赖边界。
 - `prompts.go`：MCP 服务端系统指引与标准工具英文描述提示词常量。
-- `schema.go`：工具输入结构体、字段边界常量与输入/输出 JSON Schema 定义。
+- `schema.go`：工具输入结构体、字段边界常量与输入 JSON Schema 定义。
+- `schema_output.go`：专用结构化输出类型（`SearchOutput` / `FetchOutput`）与基于 `$defs` 去重的输出 JSON Schema 定义。
 - `server.go`：MCP 服务端构造、stdio 取消信号即时中断桥接、工具注册与结构化响应封装。
 
 ## 开发规范

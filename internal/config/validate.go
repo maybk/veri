@@ -30,17 +30,20 @@ func validateConfig(cfg *Config) error {
 	if cfg.Search.FusionK < 1 {
 		return core.NewError(core.CodeInvalidArgument, "search.fusion_k must be >= 1")
 	}
-	if cfg.Search.SummaryMaxRunes < 0 || cfg.Search.ContentMaxRunes < 0 || cfg.Search.MaxChars < 0 {
-		return core.NewError(core.CodeInvalidArgument, "search rune/char budgets must be >= 0")
+	if cfg.Search.SummaryMaxChars < 0 || cfg.Search.ContentMaxChars < 0 || cfg.Search.MaxChars < 0 {
+		return core.NewError(core.CodeInvalidArgument, "search char budgets must be >= 0")
 	}
 	var err error
 	if cfg.Search.Providers, err = normalizeProviderList("search.providers", cfg.Search.Providers, spec.RoleSearch); err != nil {
 		return err
 	}
-	if cfg.Search.ProvidersEN, err = normalizeProviderList("search.providers_en", cfg.Search.ProvidersEN, spec.RoleSearch); err != nil {
+	if cfg.Search.ProvidersGlobal, err = normalizeProviderList("search.providers_global", cfg.Search.ProvidersGlobal, spec.RoleSearch); err != nil {
 		return err
 	}
 	if cfg.Search.FusionProviders, err = normalizeProviderList("search.fusion_providers", cfg.Search.FusionProviders, spec.RoleSearch); err != nil {
+		return err
+	}
+	if cfg.Search.FusionProvidersGlobal, err = normalizeProviderList("search.fusion_providers_global", cfg.Search.FusionProvidersGlobal, spec.RoleSearch); err != nil {
 		return err
 	}
 
@@ -50,8 +53,8 @@ func validateConfig(cfg *Config) error {
 	if cfg.Fetch.MaxBytes <= 0 {
 		return core.NewError(core.CodeInvalidArgument, "fetch.max_bytes must be > 0")
 	}
-	if cfg.Fetch.MinContentRunes < 0 || cfg.Fetch.MaxChars < 0 {
-		return core.NewError(core.CodeInvalidArgument, "fetch.min_content_runes and fetch.max_chars must be >= 0")
+	if cfg.Fetch.MinContentChars < 0 || cfg.Fetch.MaxChars < 0 {
+		return core.NewError(core.CodeInvalidArgument, "fetch.min_content_chars and fetch.max_chars must be >= 0")
 	}
 	if cfg.Fetch.Providers, err = normalizeProviderList("fetch.providers", cfg.Fetch.Providers, spec.RoleFetch); err != nil {
 		return err
@@ -65,7 +68,7 @@ func validateConfig(cfg *Config) error {
 	default:
 		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid mcp.text_format %q: must be markdown or json", cfg.MCP.TextFormat))
 	}
-	if cfg.MCP.SearchMaxChars < 0 || cfg.MCP.FetchMaxChars < 0 || cfg.MCP.ContentMaxRunes < 0 || cfg.MCP.MaxCount < 0 || cfg.MCP.CacheSize < 0 {
+	if cfg.MCP.SearchMaxChars < 0 || cfg.MCP.FetchMaxChars < 0 || cfg.MCP.ContentMaxChars < 0 || cfg.MCP.MaxCount < 0 || cfg.MCP.CacheSize < 0 {
 		return core.NewError(core.CodeInvalidArgument, "mcp budget, max_count, and cache_size settings must be >= 0")
 	}
 
@@ -213,7 +216,7 @@ func validateProviders(p *ProvidersConfig) error {
 			if w <= 0 || math.IsNaN(w) || math.IsInf(w, 0) {
 				return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("providers.%s.weight must be a positive finite number", provName))
 			}
-		case (fieldTag == "qps" || strings.HasSuffix(fieldTag, "_qps")) && val.Kind() == reflect.Float64:
+		case fieldTag == "qps" && val.Kind() == reflect.Float64:
 			q := val.Float()
 			if q < 0 || math.IsNaN(q) || math.IsInf(q, 0) {
 				return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("providers.%s.%s must be a finite number >= 0", provName, fieldTag))

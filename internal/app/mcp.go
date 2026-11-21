@@ -14,7 +14,7 @@ func (a *App) ensureMCP() {
 		cfg := a.loaded.Config
 		mcpOpts := a.baseRouterOpts
 		mcpOpts.SearchMaxChars = cfg.MCP.SearchMaxChars
-		mcpOpts.ContentMaxRunes = cfg.MCP.ContentMaxRunes
+		mcpOpts.ContentMaxChars = cfg.MCP.ContentMaxChars
 		// MCP 抓取路由强制不设路由级截断，完整正文交由 fetchCache 缓存后在 FetchMCP 按请求动态切片分页。
 		mcpOpts.FetchMaxChars = 0
 
@@ -114,7 +114,9 @@ func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envel
 	fullEnv, completed, doErr := a.sfFetch.Do(waitCtx, sfKey, func(sharedCtx context.Context) (*core.Envelope, error) {
 		if !bypassCacheRead {
 			if cachedFull, ok := a.fetchCache.Get(cacheKey); ok {
-				return cachedFull, nil
+				cp := *cachedFull
+				cp.Meta.Cached = true
+				return &cp, nil
 			}
 		}
 		fullReq := *req
@@ -146,7 +148,7 @@ func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envel
 	if doErr != nil || !fullEnv.OK || fullEnv.Page == nil {
 		return fullEnv.Clone(), doErr
 	}
-	return a.buildViewedFetchEnvelope(fullEnv, &viewReq, false), nil
+	return a.buildViewedFetchEnvelope(fullEnv, &viewReq, fullEnv.Meta.Cached), nil
 }
 
 func (a *App) buildMCPErrorEnvelope(kind, query string, se *core.Error) *core.Envelope {
@@ -168,9 +170,18 @@ func withCallerTimeout(ctx context.Context, d time.Duration) (context.Context, c
 }
 
 func (a *App) buildViewedFetchEnvelope(full *core.Envelope, viewReq *core.FetchRequest, cached bool) *core.Envelope {
-	cp := full.Clone()
 	viewedPage, viewNotes := router.ApplyPageView(full.Page, viewReq)
-	cp.Page = viewedPage
+	cp := &core.Envelope{
+		Schema: full.Schema,
+		OK:     full.OK,
+		Kind:   full.Kind,
+		Query:  full.Query,
+		Page:   viewedPage,
+		Meta:   full.Meta.Clone(),
+	}
+	if full.Error != nil {
+		cp.Error = new(*full.Error)
+	}
 	for _, note := range viewNotes {
 		cp.Meta.Notes = append(cp.Meta.Notes, a.ScrubText(note))
 	}

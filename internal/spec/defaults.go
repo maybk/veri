@@ -13,14 +13,14 @@ const (
 	MaxBatchFetchURLs                  = 10
 	MaxMCPBatchFetchURLs               = 5
 	DefaultBatchFetchConcurrency       = 4
-	DefaultSummaryMaxRunes             = 800
+	DefaultSummaryMaxChars             = 800
 	DefaultSnippetMaxRunes             = 200
 	DefaultMCPSearchMaxChars           = 24000
 	DefaultMCPFetchMaxChars            = 30000
-	DefaultMCPContentMaxRunes          = 3000
+	DefaultMCPContentMaxChars          = 3000
 	DefaultMCPCacheSize                = 256
 	MinMCPFetchMaxChars                = 1000
-	DefaultMinContentRunes             = 300
+	DefaultMinContentChars             = 300
 	DefaultProviderConcurrency         = 4
 	DefaultFirecrawlConcurrency        = 2
 	DefaultFirecrawlMaxPDFPages        = 20

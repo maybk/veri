@@ -6,25 +6,20 @@
 
 ### 新增
 
-- 新增 Keenable、知乎（全网与站内搜索）、Linkup、Parallel 与 Firecrawl（支持云端与自托管）5 个检索与提取源。
+- 新增 Keenable、知乎、Linkup、Parallel 与 Firecrawl（支持云端与自托管）5 个检索与提取源。
 
 ### 变更
 
-- 优化非中文站点默认云端提取顺序，支持 Tavily、Linkup、Parallel 与 Firecrawl 的 PDF 及动态渲染提取。
-- 自动清理网页提取标题中多余的锚点符号（如 `[¶]`、`[#]`），提升正文与大纲可读性。
-- `veri doctor` 与默认配置模板展示当前生效策略与链路。
-- 默认检索输出精简站点图标以节省上下文，启用 `--extra` 时返回图标与扩展元数据。
-- 优化 `--max-chars` 紧预算下的搜索结果裁剪，优先保留靠前结果摘要。
-- 优化 `veri providers`、`veri key list`、`veri doctor` 输出排版，同步更新 MCP 工具说明、Agent Skill 与使用文档。
+- 优化默认检索与提取选路，内置非中文查询分链与双融合池，并扩展 PDF 与动态网页提取支持。
+- 精简默认搜索输出，新增 `--extra` 参数按需返回扩展元数据。
+- 统一配置字段命名（`*_global`、`*_chars`、`qps`）与 `veri providers --json` / `veri key list --json` 顶层 JSON 对象格式，优化 `veri doctor` 路由展示。
 
 ### 修复
 
-- 修复 `veri fetch --section` 未命中时返回全文的问题，改为返回预览与章节大纲。
-- 修复长文档章节大纲字数统计与分页续读偏移不一致的问题。
-- 修复自定义提取顺序在未配置全球链时仍被自动重排的问题。
-- 修复 DeepSeek 在 `--lang --strict` 严格模式下放行不匹配语言结果的问题。
-- 修复 `veri fetch --match` 匹配大型源码文件时输出整文件的问题，改为返回带行号的紧凑片段。
-- 修复源码与 Markdown 链接提取结果缺少标题的问题。
+- 修复 `veri fetch` 在 `--section` / `--match` 定位、大文件片段提取及分页续读中的异常。
+- 修复自定义提取顺序被默认全球链覆盖的问题。
+- 修复严格语言过滤（`--lang --strict`）放行不匹配结果的问题。
+- 修复部分网页与源码链接提取结果缺少标题或残留标题锚点的问题。
 
 ## [0.1.1] - 2026-11-20
 

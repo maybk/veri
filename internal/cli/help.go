@@ -58,6 +58,7 @@ var rootCoreSearchFlags = []string{
 	"count",
 	"detail",
 	"provider",
+	"fusion",
 	"site",
 	"freshness",
 	"format",

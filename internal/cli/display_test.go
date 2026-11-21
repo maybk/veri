@@ -49,7 +49,7 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	cfgPath := filepath.Join(tmpDir, "config.toml")
 	repoFS := os.DirFS(filepath.Join("..", ".."))
 
-	// deepseek = config.toml 明文，exa = 环境变量，tinyfish = 加密凭据库
+	// deepseek = config.toml 明文，exa/tavily = 环境变量，tinyfish = 加密凭据库
 	if err := os.WriteFile(cfgPath, []byte("[providers.deepseek]\napi_key = \"sk-plain-config-1234\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,8 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	}
 
 	env := map[string]string{
-		"EXA_API_KEY": "exa-env-secret-9999",
+		"EXA_API_KEY":    "exa-env-secret-9999",
+		"TAVILY_API_KEY": "tvly-env-secret-8888",
 	}
 	run := func(args ...string) (int, string, string) {
 		var outBuf, errBuf bytes.Buffer
@@ -78,12 +79,12 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	if strings.Contains(provZH, "·") {
 		t.Fatalf("providers zh should not contain middle dot: %s", provZH)
 	}
-	for _, want := range []string{"来源", "超时", "配置文件", "环境变量", "加密库", "10s/25s", "concurrency=4", "min_runes=300, max_bytes=5MB"} {
+	for _, want := range []string{"来源", "超时", "配置文件", "环境变量", "加密库", "10s/25s", "concurrency=4", "min_chars=300, max_bytes=5MB"} {
 		if !strings.Contains(provZH, want) {
 			t.Fatalf("providers zh missing %q:\n%s", want, provZH)
 		}
 	}
-	assertColumnAligned(t, provZH, "说明", "concurrency=4", "type=auto", "min_runes=300, max_bytes=5MB")
+	assertColumnAligned(t, provZH, "说明", "concurrency=4", "type=auto", "min_chars=300, max_bytes=5MB")
 
 	// 2. veri providers 英文 7 列布局与对齐检查
 	code, provEN, errOut := run("--ui-lang", "en", "providers")
@@ -95,17 +96,18 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 			t.Fatalf("providers en missing %q:\n%s", want, provEN)
 		}
 	}
-	assertColumnAligned(t, provEN, "DETAILS", "concurrency=4", "type=auto", "min_runes=300, max_bytes=5MB")
+	assertColumnAligned(t, provEN, "DETAILS", "concurrency=4", "type=auto", "min_chars=300, max_bytes=5MB")
 
-	// 3. veri providers --json 输出统一的 source 与 timeout 字段
+	// 3. veri providers --json 输出顶层对象及统一的 source 与 timeout 字段
 	code, provJSON, _ := run("providers", "--json")
-	if code != 0 {
-		t.Fatalf("providers --json failed: code=%d", code)
+	if code != 0 || !strings.HasPrefix(strings.TrimSpace(provJSON), "{") {
+		t.Fatalf("providers --json failed or not top-level object: code=%d out=%s", code, provJSON)
 	}
-	var statuses []app.ProviderStatus
-	if err := json.Unmarshal([]byte(provJSON), &statuses); err != nil {
+	var provEnvelope providersJSONOutput
+	if err := json.Unmarshal([]byte(provJSON), &provEnvelope); err != nil {
 		t.Fatalf("unmarshal providers json: %v", err)
 	}
+	statuses := provEnvelope.Providers
 	byName := make(map[string]app.ProviderStatus, len(statuses))
 	for _, s := range statuses {
 		byName[s.Name] = s
@@ -123,31 +125,31 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 		t.Fatalf("expected disabled brave JSON status to omit timeout, got %+v", byName["brave"])
 	}
 
-	// 4. veri key list 表格与 --json 均统一输出 config.toml / secrets.json / env:...
+	// 4. veri key list 表格与 --json（顶层对象）均统一输出 config.toml / secrets.json / env:...
 	code, klZH, _ := run("--ui-lang", "zh", "key", "list")
 	if code != 0 || !strings.Contains(klZH, spec.ConfigFileName) || !strings.Contains(klZH, spec.SecretsFileName) || !strings.Contains(klZH, "env:EXA_API_KEY") {
 		t.Fatalf("unexpected key list output (code=%d):\n%s", code, klZH)
 	}
 	code, klJSON, _ := run("key", "list", "--json")
-	if code != 0 {
-		t.Fatalf("key list --json failed: code=%d", code)
+	if code != 0 || !strings.HasPrefix(strings.TrimSpace(klJSON), "{") {
+		t.Fatalf("key list --json failed or not top-level object: code=%d out=%s", code, klJSON)
 	}
-	var keyEntries []keyListEntry
-	if err := json.Unmarshal([]byte(klJSON), &keyEntries); err != nil {
+	var klEnvelope keyListJSONOutput
+	if err := json.Unmarshal([]byte(klJSON), &klEnvelope); err != nil {
 		t.Fatalf("unmarshal key list json: %v", err)
 	}
-	for _, e := range keyEntries {
+	for _, e := range klEnvelope.Keys {
 		if e.Provider == "deepseek" && e.ActiveSource != spec.ConfigFileName {
 			t.Fatalf("expected key list --json active_source=%q, got %q", spec.ConfigFileName, e.ActiveSource)
 		}
 	}
 
-	// 5. veri doctor 独立路由行与内嵌表格（无中点错位，并清晰展示默认融合池与全球提取路由）
+	// 5. veri doctor 独立路由行与内嵌表格（无中点错位，并清晰展示中英文检索路由、双融合池与全球提取路由）
 	code, docZH, _ := run("--ui-lang", "zh", "doctor")
 	if code != 0 || strings.Contains(docZH, "·") {
 		t.Fatalf("doctor zh failed or contained middle dot (code=%d):\n%s", code, docZH)
 	}
-	for _, want := range []string{"- 运行环境: veri 0.1.2", "- 检索路由（auto）:", "- 默认融合池（-F）:", "- 提取路由（api_first）:", "- 全球提取路由:", "超时"} {
+	for _, want := range []string{"- 运行环境: veri 0.1.2", "- 检索路由（auto，中文）:", "- 检索路由（非中文）:", "- 默认融合池（-F，中文）:", "- 默认融合池（-F，非中文）:", "- 提取路由（api_first，中文站）:", "- 提取路由（非中文站）:", "超时"} {
 		if !strings.Contains(docZH, want) {
 			t.Fatalf("doctor zh missing %q:\n%s", want, docZH)
 		}
@@ -156,10 +158,20 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	if code != 0 || strings.Contains(docEN, "·") {
 		t.Fatalf("doctor en failed or contained middle dot (code=%d):\n%s", code, docEN)
 	}
-	for _, want := range []string{"- Runtime: veri 0.1.2", "- Search chain (auto):", "- Fusion pool (-F):", "- Fetch chain (api_first):", "- Fetch chain (global):", "TIMEOUT"} {
+	for _, want := range []string{"- Runtime: veri 0.1.2", "- Search chain (auto, Chinese):", "- Search chain (non-Chinese):", "- Fusion pool (-F, Chinese):", "- Fusion pool (-F, non-Chinese):", "- Fetch chain (api_first, CN sites):", "- Fetch chain (global sites):", "TIMEOUT"} {
 		if !strings.Contains(docEN, want) {
 			t.Fatalf("doctor en missing %q:\n%s", want, docEN)
 		}
+	}
+
+	// 5b. 关闭中英/全球分链时 doctor 展示简洁单链标签
+	singleChainCfg := filepath.Join(tmpDir, "single-chain.toml")
+	if err := os.WriteFile(singleChainCfg, []byte("[search]\nproviders = [\"deepseek\"]\n[fetch]\nproviders = [\"deepseek\"]\n[providers.deepseek]\napi_key = \"sk-single-chain-1234\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var scOut, scErr bytes.Buffer
+	if c := ExecuteContext(t.Context(), []string{"--config", singleChainCfg, "--no-color", "--ui-lang", "zh", "doctor"}, repoFS, BuildInfo{Version: "0.1.2"}, strings.NewReader(""), &scOut, &scErr, func(string) string { return "" }); c != 0 || !strings.Contains(scOut.String(), "- 检索路由（auto）:") || !strings.Contains(scOut.String(), "- 默认融合池（-F）:") || !strings.Contains(scOut.String(), "- 提取路由（api_first）:") {
+		t.Fatalf("expected unsplit doctor labels when no split chain active (code=%d):\n%s", c, scOut.String())
 	}
 
 	// 6. veri update --help 跨分组标志与描述列对齐
@@ -174,7 +186,7 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	assertColumnAligned(t, updFlagsSection, "--check", "--mirror", "--config", "--ui-lang", "--quiet", "--help")
 	assertColumnAligned(t, updFlagsSection, "仅检查版本状态", "指定配置文件路径", "显示当前命令的帮助说明")
 
-	// 7. veri --help 常用检索参数与全局参数描述列对齐
+	// 7. veri --help 常用检索参数（含 -F/--fusion）与全局参数描述列对齐
 	code, rootHelp, _ := run("--ui-lang", "zh", "--help")
 	if code != 0 {
 		t.Fatalf("root --help failed: code=%d", code)
@@ -183,8 +195,8 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	if !hasRootFlags {
 		t.Fatalf("root --help missing search flags section:\n%s", rootHelp)
 	}
-	assertColumnAligned(t, rootFlagsSection, "--count", "--format", "--config", "--quiet", "--version")
-	assertColumnAligned(t, rootFlagsSection, "返回结果条数", "指定配置文件路径", "显示当前命令的帮助说明")
+	assertColumnAligned(t, rootFlagsSection, "--count", "--fusion", "--format", "--config", "--quiet", "--version")
+	assertColumnAligned(t, rootFlagsSection, "返回结果条数", "多源并发检索", "指定配置文件路径", "显示当前命令的帮助说明")
 
 	// 8. formatFetchContinueArgs 精确拼装带 --section / --match 的续读参数，未命中回退时不重复携带
 	if got := formatFetchContinueArgs("", "", nil, 2000); got != "--offset 2000" {
@@ -195,6 +207,9 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	}
 	if got := formatFetchContinueArgs("Missing", "", []string{`section "Missing" not found; showing page preview and heading outline`}, 2000); got != "--offset 2000" {
 		t.Fatalf("expected section miss to drop --section from continue args, got %q", got)
+	}
+	if got := formatFetchContinueArgs("Missing", "chan", []string{`section "Missing" not found; showing page preview and heading outline`}, 2000); got != "--offset 2000" {
+		t.Fatalf("expected section miss with match to drop both --section and --match from continue args, got %q", got)
 	}
 	if got := formatFetchContinueArgs("Concurrency", "chan", []string{`match "chan" had 0 hits in section "Concurrency"; showing section preview and outline`}, 800); got != `--section "Concurrency" --offset 800` {
 		t.Fatalf("expected match miss inside section to keep --section only, got %q", got)

@@ -18,6 +18,10 @@ import (
 	"veri/internal/spec"
 )
 
+type providersJSONOutput struct {
+	Providers []app.ProviderStatus `json:"providers"`
+}
+
 func newProvidersCmd(rt *runtimeEnv) *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
@@ -32,7 +36,10 @@ func newProvidersCmd(rt *runtimeEnv) *cobra.Command {
 			}
 			statuses := application.ProviderStatuses()
 			if jsonOut {
-				text, jErr := render.MarshalEnvelopeJSON(statuses)
+				if statuses == nil {
+					statuses = []app.ProviderStatus{}
+				}
+				text, jErr := render.MarshalEnvelopeJSON(providersJSONOutput{Providers: statuses})
 				if jErr != nil {
 					return jErr
 				}
@@ -248,16 +255,27 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 			if len(rep.FetchChain) > 0 {
 				fetchLabel = strings.Join(rep.FetchChain, " -> ")
 			}
-			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain", "strategy", rep.SearchStrategy, "chain", searchLabel))
-			if len(rep.SearchChainEN) > 0 {
-				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain_en", "chain", strings.Join(rep.SearchChainEN, " -> ")))
+			if len(rep.SearchChainGlobal) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain_split", "strategy", rep.SearchStrategy, "chain", searchLabel))
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain_global", "chain", strings.Join(rep.SearchChainGlobal, " -> ")))
+			} else {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.search_chain", "strategy", rep.SearchStrategy, "chain", searchLabel))
 			}
+			fusionLabel := noneLabel
 			if len(rep.FusionChain) > 0 {
-				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fusion_chain", "chain", strings.Join(rep.FusionChain, " -> ")))
+				fusionLabel = strings.Join(rep.FusionChain, " -> ")
 			}
-			_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain", "strategy", rep.FetchStrategy, "chain", fetchLabel))
+			if len(rep.FusionChainGlobal) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fusion_chain_split", "chain", fusionLabel))
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fusion_chain_global", "chain", strings.Join(rep.FusionChainGlobal, " -> ")))
+			} else if len(rep.FusionChain) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fusion_chain", "chain", fusionLabel))
+			}
 			if len(rep.FetchChainGlobal) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain_split", "strategy", rep.FetchStrategy, "chain", fetchLabel))
 				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain_global", "chain", strings.Join(rep.FetchChainGlobal, " -> ")))
+			} else {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fetch_chain", "strategy", rep.FetchStrategy, "chain", fetchLabel))
 			}
 
 			_, _ = fmt.Fprintln(rt.stdout)

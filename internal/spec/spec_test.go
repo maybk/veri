@@ -68,19 +68,41 @@ func TestProviderTableIntegrity(t *testing.T) {
 		t.Fatal("empty role must never match")
 	}
 
-	assertSubset := func(chain string, names []string, role Role) {
+	assertChain := func(chain string, names []string, role Role) {
 		t.Helper()
+		dup := make(map[string]struct{}, len(names))
 		for _, name := range names {
+			if _, exists := dup[name]; exists {
+				t.Errorf("%s contains duplicate provider %q", chain, name)
+			}
+			dup[name] = struct{}{}
 			p, ok := LookupProvider(name)
 			if !ok || !p.Roles.Has(role) {
 				t.Errorf("%s contains %q without role %s", chain, name, role)
 			}
 		}
 	}
-	assertSubset("DefaultSearchProviders", DefaultSearchProviders(), RoleSearch)
-	assertSubset("DefaultFetchProviders", DefaultFetchProviders(), RoleFetch)
-	assertSubset("DefaultFetchProvidersGlobal", DefaultFetchProvidersGlobal(), RoleFetch)
+	assertChain("DefaultSearchProviders", DefaultSearchProviders(), RoleSearch)
+	assertChain("DefaultSearchProvidersGlobal", DefaultSearchProvidersGlobal(), RoleSearch)
+	assertChain("DefaultFetchProviders", DefaultFetchProviders(), RoleFetch)
+	assertChain("DefaultFetchProvidersGlobal", DefaultFetchProvidersGlobal(), RoleFetch)
 
+	allSearchers := ProvidersWithRole(RoleSearch)
+	if !slices.Equal(slices.Sorted(slices.Values(DefaultSearchProviders())), slices.Sorted(slices.Values(allSearchers))) {
+		t.Fatal("DefaultSearchProviders must cover exactly all RoleSearch providers")
+	}
+	if !slices.Equal(slices.Sorted(slices.Values(DefaultSearchProviders())), slices.Sorted(slices.Values(DefaultSearchProvidersGlobal()))) {
+		t.Fatal("DefaultSearchProvidersGlobal must reorder exactly the same providers as DefaultSearchProviders")
+	}
+	var cloudFetchers []string
+	for _, name := range ProvidersWithRole(RoleFetch) {
+		if name != ProviderLocal && name != ProviderGitHub {
+			cloudFetchers = append(cloudFetchers, name)
+		}
+	}
+	if !slices.Equal(slices.Sorted(slices.Values(DefaultFetchProviders())), slices.Sorted(slices.Values(cloudFetchers))) {
+		t.Fatal("DefaultFetchProviders must cover exactly all cloud RoleFetch providers")
+	}
 	if !slices.Equal(slices.Sorted(slices.Values(DefaultFetchProviders())), slices.Sorted(slices.Values(DefaultFetchProvidersGlobal()))) {
 		t.Fatal("DefaultFetchProvidersGlobal must reorder exactly the same providers as DefaultFetchProviders")
 	}

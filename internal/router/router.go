@@ -12,20 +12,23 @@ import (
 
 // Options 配置路由层的检索链、融合参数、超时与字符预算阈值。
 type Options struct {
-	SearchProviders   []string
-	SearchProvidersEN []string
-	FusionProviders   []string
-	DefaultStrategy   core.Strategy
-	DefaultCount      int
-	DefaultDetail     core.Detail
-	SearchTimeout     time.Duration
-	FallbackOnEmpty   bool
-	StrictFilters     bool
-	FusionK           int
-	Weights           map[string]float64
-	SummaryMaxRunes   int
-	ContentMaxRunes   int
-	SearchMaxChars    int
+	SearchProviders               []string
+	SearchProvidersGlobal         []string
+	SearchProvidersExplicit       bool
+	FusionProviders               []string
+	FusionProvidersGlobal         []string
+	FusionProvidersGlobalExplicit bool
+	DefaultStrategy               core.Strategy
+	DefaultCount                  int
+	DefaultDetail                 core.Detail
+	SearchTimeout                 time.Duration
+	FallbackOnEmpty               bool
+	StrictFilters                 bool
+	FusionK                       int
+	Weights                       map[string]float64
+	SummaryMaxChars               int
+	ContentMaxChars               int
+	SearchMaxChars                int
 
 	FetchStrategy          core.FetchStrategy
 	FetchProviders         []string
@@ -38,13 +41,14 @@ type Options struct {
 
 // Router 维护已启用的 Searcher 与 Fetcher 注册表并执行统一路由决策。
 type Router struct {
-	opts        Options
-	searchers   map[string]core.Searcher
-	fetchers    map[string]core.Fetcher
-	specialists []core.SpecialistFetcher
-	localFetch  core.Fetcher
-	health      *healthTracker
-	logger      *slog.Logger
+	opts           Options
+	searchers      map[string]core.Searcher
+	fetchers       map[string]core.Fetcher
+	specialists    []core.SpecialistFetcher
+	localFetch     core.Fetcher
+	health         *healthTracker
+	stragglerGrace time.Duration
+	logger         *slog.Logger
 }
 
 // New 根据已启用的 Provider 实例列表构造 Router。
@@ -64,8 +68,8 @@ func New(opts Options, providers []core.Provider) *Router {
 	if opts.FusionK <= 0 {
 		opts.FusionK = spec.DefaultFusionK
 	}
-	if opts.SummaryMaxRunes <= 0 {
-		opts.SummaryMaxRunes = spec.DefaultSummaryMaxRunes
+	if opts.SummaryMaxChars <= 0 {
+		opts.SummaryMaxChars = spec.DefaultSummaryMaxChars
 	}
 	if opts.FetchStrategy == "" {
 		opts.FetchStrategy = core.DefaultFetchStrategy
@@ -75,6 +79,9 @@ func New(opts Options, providers []core.Provider) *Router {
 	}
 	if len(opts.SearchProviders) == 0 {
 		opts.SearchProviders = spec.DefaultSearchProviders()
+		if len(opts.SearchProvidersGlobal) == 0 && !opts.SearchProvidersExplicit {
+			opts.SearchProvidersGlobal = spec.DefaultSearchProvidersGlobal()
+		}
 	}
 	if len(opts.FetchProviders) == 0 {
 		opts.FetchProviders = spec.DefaultFetchProviders()
@@ -84,11 +91,12 @@ func New(opts Options, providers []core.Provider) *Router {
 	}
 
 	r := &Router{
-		opts:      opts,
-		searchers: make(map[string]core.Searcher),
-		fetchers:  make(map[string]core.Fetcher),
-		health:    newHealthTracker(),
-		logger:    opts.Logger,
+		opts:           opts,
+		searchers:      make(map[string]core.Searcher),
+		fetchers:       make(map[string]core.Fetcher),
+		health:         newHealthTracker(),
+		stragglerGrace: defaultFusionStragglerGrace,
+		logger:         opts.Logger,
 	}
 
 	for _, p := range providers {
@@ -145,16 +153,20 @@ func (r *Router) DefaultSearchStrategy() core.Strategy { return r.opts.DefaultSt
 // FetchStrategy 返回当前生效的默认网页提取路由策略。
 func (r *Router) FetchStrategy() core.FetchStrategy { return r.opts.FetchStrategy }
 
-// ActiveFusionChain 返回 --fusion 模式默认并发调用的已启用检索源列表。
+// ActiveFusionChain 返回中文或统一 --fusion 模式下默认并发调用的已启用检索源列表。
 func (r *Router) ActiveFusionChain() []string {
-	if len(r.opts.FusionProviders) > 0 {
-		return r.filterEnabledSearchers(r.opts.FusionProviders)
+	return searcherNames(r.resolveFusionChain(false))
+}
+
+// ActiveFusionChainGlobal 返回非中文查询在 --fusion 模式下默认并发调用的检索源列表；
+// 当未启用独立非中文融合池或有效融合池与主融合池相同时返回 nil。
+func (r *Router) ActiveFusionChainGlobal() []string {
+	primary := r.ActiveFusionChain()
+	global := searcherNames(r.resolveFusionChain(true))
+	if len(global) == 0 || slices.Equal(global, primary) {
+		return nil
 	}
-	chain := r.filterEnabledSearchers(r.opts.SearchProviders)
-	if len(chain) > spec.DefaultFusionAutoLimit {
-		return chain[:spec.DefaultFusionAutoLimit]
-	}
-	return chain
+	return global
 }
 
 // ActiveFetchChainGlobal 返回非中文站点实际执行的提取链顺序；当未启用独立全球分链或顺序与主链相同时返回 nil。
@@ -237,27 +249,64 @@ func (r *Router) resolveFetchChainOrder(primary, secondary []string, includeExtr
 	return out
 }
 
-// ActiveSearchChainEN 返回当前已启用的英文优先检索链名称列表（未配置时返回 nil）。
-func (r *Router) ActiveSearchChainEN() []string {
-	if len(r.opts.SearchProvidersEN) == 0 {
+// ActiveSearchChainGlobal 返回非中文查询实际执行的检索链顺序；当未启用独立非中文分链或顺序与主链相同时返回 nil。
+func (r *Router) ActiveSearchChainGlobal() []string {
+	if len(r.opts.SearchProvidersGlobal) == 0 {
 		return nil
 	}
-	return r.filterEnabledSearchers(r.opts.SearchProvidersEN)
+	primary := r.filterEnabledSearchers(r.opts.SearchProviders)
+	global := r.filterEnabledSearchers(r.opts.SearchProvidersGlobal)
+	if len(global) == 0 || slices.Equal(global, primary) {
+		return nil
+	}
+	return global
 }
 
-func (r *Router) filterEnabledSearchers(candidates []string) []string {
-	seen := make(map[string]struct{}, len(candidates))
-	var out []string
-	for _, raw := range candidates {
-		name := canonicalProviderKey(raw)
-		if _, ok := r.searchers[name]; ok {
-			if _, dup := seen[name]; !dup {
-				seen[name] = struct{}{}
-				out = append(out, name)
+func (r *Router) resolvePrimaryFusionChain() []core.Searcher {
+	if len(r.opts.FusionProviders) > 0 {
+		chain, _ := r.resolveSearchers(r.opts.FusionProviders, false)
+		return chain
+	}
+	chain, _ := r.resolveSearchers(r.opts.SearchProviders, false)
+	if len(chain) > spec.DefaultFusionAutoLimit {
+		chain = chain[:spec.DefaultFusionAutoLimit]
+	}
+	return chain
+}
+
+func (r *Router) resolveFusionChain(nonChinese bool) []core.Searcher {
+	if nonChinese {
+		if len(r.opts.FusionProvidersGlobal) > 0 {
+			if chain, _ := r.resolveSearchers(r.opts.FusionProvidersGlobal, false); len(chain) > 0 {
+				return chain
+			}
+		} else if !r.opts.FusionProvidersGlobalExplicit && len(r.opts.FusionProviders) == 0 && len(r.opts.SearchProvidersGlobal) > 0 {
+			chain, _ := r.resolveSearchers(r.opts.SearchProvidersGlobal, false)
+			if len(chain) > spec.DefaultFusionAutoLimit {
+				chain = chain[:spec.DefaultFusionAutoLimit]
+			}
+			if len(chain) > 0 {
+				return chain
 			}
 		}
 	}
+	return r.resolvePrimaryFusionChain()
+}
+
+func searcherNames(chain []core.Searcher) []string {
+	if len(chain) == 0 {
+		return nil
+	}
+	out := make([]string, len(chain))
+	for i, s := range chain {
+		out[i] = canonicalProviderKey(s.Name())
+	}
 	return out
+}
+
+func (r *Router) filterEnabledSearchers(candidates []string) []string {
+	chain, _ := r.resolveSearchers(candidates, false)
+	return searcherNames(chain)
 }
 
 func (r *Router) weightFor(name string) float64 {

@@ -19,7 +19,8 @@ const (
 
 	maxSearchCount    = 50
 	maxExcludeDomains = 1000
-	maxFetchChars     = 50000
+	// maxFetchChars 放宽上游默认 50,000 字符截断，避免长文档与 PDF 被提前腰斩，交由路由层统一分页。
+	maxFetchChars     = 500000
 	maxFetchURLLength = spec.DefaultMaxURLLength
 
 	snippetLenSnippet = 300

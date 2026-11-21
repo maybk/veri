@@ -35,7 +35,7 @@ func TestLocalPlainTextRobotsLinkShellAndStatuses(t *testing.T) {
 	defer srv.Close()
 
 	p, _, err := New(Options{
-		MinContentRunes: 50,
+		MinContentChars: 50,
 		RespectRobots:   true,
 		UserAgent:       "veri",
 		Version:         "1.0.0",

@@ -72,3 +72,130 @@ func TestFormatsAndMCPPaginationPrompt(t *testing.T) {
 		t.Fatalf("unexpected md format: %s err=%v", mdOut, err)
 	}
 }
+
+func TestFormatMCPFetchTextWithOptionsScopedPaginationOutlineAndBatchMeta(t *testing.T) {
+	next := 2464
+	env := &core.Envelope{
+		Schema: spec.SchemaVersion,
+		OK:     true,
+		Kind:   spec.KindFetch,
+		Page: &core.Page{
+			URL:        "https://go.dev/doc/effective_go",
+			Title:      "Effective Go",
+			Content:    "## Concurrency\n\nBody...",
+			TotalChars: 12485,
+			NextOffset: &next,
+			Outline: []core.PageSection{
+				{Heading: "Concurrency", Level: 2, Offset: 0, Chars: 12485},
+				{Heading: "Goroutines", Level: 3, Offset: 400, Chars: 850},
+			},
+			Provider:   "exa",
+			SourceType: core.SourceGeneric,
+		},
+	}
+
+	// 1. 命中 section 时续读提示必须保留 section 参数，且大纲展示紧凑字符量
+	secText, err := FormatMCPFetchTextWithOptions(env, spec.TextFormatMarkdown, MCPFetchFormatOptions{Section: "Concurrency"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(secText, `Call web_fetch with section="Concurrency", offset=2464 to continue.`) {
+		t.Fatalf("expected scoped section continuation hint, got:\n%s", secText)
+	}
+	if !strings.Contains(secText, "[0] ## Concurrency (12.5k)") || !strings.Contains(secText, "[400] ### Goroutines (850c)") {
+		t.Fatalf("expected compact char counts in MCP outline, got:\n%s", secText)
+	}
+
+	// 2. section + match 组合命中时同时保留两者
+	comboText, err := FormatMCPFetchTextWithOptions(env, spec.TextFormatMarkdown, MCPFetchFormatOptions{Section: "Concurrency", Match: "buffered"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(comboText, `Call web_fetch with section="Concurrency", match="buffered", offset=2464 to continue.`) {
+		t.Fatalf("expected combined section+match continuation hint, got:\n%s", comboText)
+	}
+
+	// 3. section 未命中回退到整页预览时，不得重复携带失效的 section 或未执行的 match
+	envMissSection := *env
+	envMissSection.Meta.Notes = []string{`section "Missing" not found; showing page preview and heading outline`}
+	missSecText, err := FormatMCPFetchTextWithOptions(&envMissSection, spec.TextFormatMarkdown, MCPFetchFormatOptions{Section: "Missing", Match: "goroutine"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(missSecText, "Call web_fetch with offset=2464 (or section/match) to continue.") {
+		t.Fatalf("expected plain offset continuation after section miss (dropping both section and match), got:\n%s", missSecText)
+	}
+
+	// 3b. 仅传 match 且全页 0 hits 回退到顶部预览时，丢弃失效的 match
+	envMissMatchOnly := *env
+	envMissMatchOnly.Meta.Notes = []string{`match "nope" had 0 hits; showing top preview and outline`}
+	missMatchOnlyText, err := FormatMCPFetchTextWithOptions(&envMissMatchOnly, spec.TextFormatMarkdown, MCPFetchFormatOptions{Match: "nope"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(missMatchOnlyText, "Call web_fetch with offset=2464 (or section/match) to continue.") {
+		t.Fatalf("expected plain offset continuation after top-level match miss, got:\n%s", missMatchOnlyText)
+	}
+
+	// 4. section 命中但 match 0 hits 时，仅保留 section
+	envMissMatch := *env
+	envMissMatch.Meta.Notes = []string{`match "nope" had 0 hits in section "Concurrency"; showing section preview and outline`}
+	missMatchText, err := FormatMCPFetchTextWithOptions(&envMissMatch, spec.TextFormatMarkdown, MCPFetchFormatOptions{Section: "Concurrency", Match: "nope"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(missMatchText, `Call web_fetch with section="Concurrency", offset=2464 to continue.`) {
+		t.Fatalf("expected section-only continuation after match miss in section, got:\n%s", missMatchText)
+	}
+
+	// 5. 批量抓取保留页面元数据行与 scoped 截断提示
+	batchNext := 500
+	batchEnv := &core.Envelope{
+		Schema: spec.SchemaVersion,
+		OK:     true,
+		Kind:   spec.KindFetch,
+		Pages: []core.Page{
+			{
+				URL:        "https://example.com/a",
+				Title:      "Alpha",
+				Site:       "Example",
+				Author:     "Alice",
+				Content:    "Body A",
+				TotalChars: 2000,
+				NextOffset: &batchNext,
+				Provider:   "exa",
+				SourceType: core.SourceGeneric,
+			},
+		},
+		Meta: core.Meta{
+			Providers: []core.ProviderReport{{Name: "exa", Status: core.ProviderStatusOK, Results: 1}},
+		},
+	}
+	batchText, err := FormatMCPFetchTextWithOptions(batchEnv, spec.TextFormatMarkdown, MCPFetchFormatOptions{Section: "Intro"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(batchText, "Site: Example | Author: Alice") || !strings.Contains(batchText, `continue with section="Intro", offset=500`) {
+		t.Fatalf("expected batch metadata and scoped truncation hint, got:\n%s", batchText)
+	}
+
+	// 6. 多页批量中若存在任意未命中降级 note，不跨页猜单页作用域，退回安全的 next_offset 提示
+	mixedBatchEnv := *batchEnv
+	mixedBatchEnv.Pages = append(batchEnv.Pages, core.Page{
+		URL:        "https://example.com/b",
+		Title:      "Beta",
+		Content:    "Body B",
+		TotalChars: 2000,
+		NextOffset: &batchNext,
+		Provider:   "exa",
+		SourceType: core.SourceGeneric,
+	})
+	mixedBatchEnv.Meta.Notes = []string{`section "Intro" not found; showing page preview and heading outline`}
+	mixedBatchText, err := FormatMCPFetchTextWithOptions(&mixedBatchEnv, spec.TextFormatMarkdown, MCPFetchFormatOptions{Section: "Intro"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(mixedBatchText, `continue with section=`) || !strings.Contains(mixedBatchText, "(next_offset=500)") {
+		t.Fatalf("expected multi-page batch with miss note to fall back to plain next_offset, got:\n%s", mixedBatchText)
+	}
+}

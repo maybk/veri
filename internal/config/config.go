@@ -25,19 +25,20 @@ type UIConfig struct {
 
 // SearchConfig 控制检索链、策略、超时与过滤行为。
 type SearchConfig struct {
-	Providers       []string `toml:"providers" json:"providers"`
-	ProvidersEN     []string `toml:"providers_en,omitempty" json:"providers_en,omitempty"`
-	FusionProviders []string `toml:"fusion_providers,omitempty" json:"fusion_providers,omitempty"`
-	Strategy        string   `toml:"strategy" json:"strategy"`
-	Count           int      `toml:"count" json:"count"`
-	Detail          string   `toml:"detail" json:"detail"`
-	Timeout         Duration `toml:"timeout" json:"timeout"`
-	FallbackOnEmpty bool     `toml:"fallback_on_empty" json:"fallback_on_empty"`
-	StrictFilters   bool     `toml:"strict_filters" json:"strict_filters"`
-	FusionK         int      `toml:"fusion_k" json:"fusion_k"`
-	SummaryMaxRunes int      `toml:"summary_max_runes" json:"summary_max_runes"`
-	ContentMaxRunes int      `toml:"content_max_runes" json:"content_max_runes"`
-	MaxChars        int      `toml:"max_chars" json:"max_chars"`
+	Providers             []string `toml:"providers" json:"providers"`
+	ProvidersGlobal       []string `toml:"providers_global,omitempty" json:"providers_global,omitempty"`
+	FusionProviders       []string `toml:"fusion_providers,omitempty" json:"fusion_providers,omitempty"`
+	FusionProvidersGlobal []string `toml:"fusion_providers_global,omitempty" json:"fusion_providers_global,omitempty"`
+	Strategy              string   `toml:"strategy" json:"strategy"`
+	Count                 int      `toml:"count" json:"count"`
+	Detail                string   `toml:"detail" json:"detail"`
+	Timeout               Duration `toml:"timeout" json:"timeout"`
+	FallbackOnEmpty       bool     `toml:"fallback_on_empty" json:"fallback_on_empty"`
+	StrictFilters         bool     `toml:"strict_filters" json:"strict_filters"`
+	FusionK               int      `toml:"fusion_k" json:"fusion_k"`
+	SummaryMaxChars       int      `toml:"summary_max_chars" json:"summary_max_chars"`
+	ContentMaxChars       int      `toml:"content_max_chars" json:"content_max_chars"`
+	MaxChars              int      `toml:"max_chars" json:"max_chars"`
 }
 
 // FetchConfig 控制网页正文提取链、质量闸门与体积上限。
@@ -47,7 +48,7 @@ type FetchConfig struct {
 	ProvidersGlobal []string `toml:"providers_global,omitempty" json:"providers_global,omitempty"`
 	Timeout         Duration `toml:"timeout" json:"timeout"`
 	MaxBytes        ByteSize `toml:"max_bytes" json:"max_bytes"`
-	MinContentRunes int      `toml:"min_content_runes" json:"min_content_runes"`
+	MinContentChars int      `toml:"min_content_chars" json:"min_content_chars"`
 	RespectRobots   bool     `toml:"respect_robots" json:"respect_robots"`
 	UserAgent       string   `toml:"user_agent" json:"user_agent"`
 	MaxChars        int      `toml:"max_chars" json:"max_chars"`
@@ -58,7 +59,7 @@ type MCPConfig struct {
 	TextFormat      string   `toml:"text_format" json:"text_format"`
 	SearchMaxChars  int      `toml:"search_max_chars" json:"search_max_chars"`
 	FetchMaxChars   int      `toml:"fetch_max_chars" json:"fetch_max_chars"`
-	ContentMaxRunes int      `toml:"content_max_runes" json:"content_max_runes"`
+	ContentMaxChars int      `toml:"content_max_chars" json:"content_max_chars"`
 	MaxCount        int      `toml:"max_count" json:"max_count"`
 	CacheTTL        Duration `toml:"cache_ttl" json:"cache_ttl"`
 	CacheSize       int      `toml:"cache_size" json:"cache_size"`
@@ -97,8 +98,7 @@ type DeepSeekConfig struct {
 	FetchTimeout Duration `toml:"fetch_timeout" json:"fetch_timeout"`
 	Concurrency  int      `toml:"concurrency" json:"concurrency"`
 	Weight       float64  `toml:"weight" json:"weight"`
-	SearchQPS    float64  `toml:"search_qps" json:"search_qps"`
-	FetchQPS     float64  `toml:"fetch_qps" json:"fetch_qps"`
+	QPS          float64  `toml:"qps" json:"qps"`
 	PriceSearch  string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
 	PriceFetch   string   `toml:"price_fetch,omitempty" json:"price_fetch,omitempty"`
 }
@@ -127,8 +127,7 @@ type TinyFishConfig struct {
 	FetchTimeout Duration `toml:"fetch_timeout" json:"fetch_timeout"`
 	Concurrency  int      `toml:"concurrency" json:"concurrency"`
 	Weight       float64  `toml:"weight" json:"weight"`
-	SearchQPS    float64  `toml:"search_qps" json:"search_qps"`
-	FetchQPS     float64  `toml:"fetch_qps" json:"fetch_qps"`
+	QPS          float64  `toml:"qps" json:"qps"`
 	PriceSearch  string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
 	PriceFetch   string   `toml:"price_fetch,omitempty" json:"price_fetch,omitempty"`
 }

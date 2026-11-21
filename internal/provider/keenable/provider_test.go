@@ -147,7 +147,7 @@ func TestKeenableSearchFetchContractsAndUsageCost(t *testing.T) {
 		t.Fatalf("Fetch: %v", err)
 	}
 	providertest.AssertFetchOutcomeInvariants(t, ProviderName, fOut)
-	if !strings.Contains(gotFetchQuery, "live=true") || !strings.Contains(gotFetchQuery, "max_chars=50000") {
+	if !strings.Contains(gotFetchQuery, "live=true") || !strings.Contains(gotFetchQuery, "max_chars=500000") {
 		t.Fatalf("unexpected fetch query: %q", gotFetchQuery)
 	}
 	if fOut.Page.FinalURL != "https://go.dev/doc/effective_go" || fOut.Page.Author != "The Go Authors" || fOut.Page.Published == nil {

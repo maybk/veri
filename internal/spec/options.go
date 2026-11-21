@@ -119,11 +119,49 @@ func ParseBoolOption(raw string) (val, ok bool) {
 	}
 }
 
-// IsFreshFetchOption 判断按次扩展参数是否显式要求绕过缓存实时抓取（fresh=true/1/yes/on）。
-func IsFreshFetchOption(opts map[string]string) bool {
-	if len(opts) == 0 {
-		return false
+// NormalizeOptions 返回键已小写去空白、值已去空白的扩展参数副本（无有效项时返回 nil）。
+func NormalizeOptions(raw map[string]string) map[string]string {
+	if len(raw) == 0 {
+		return nil
 	}
-	v, ok := ParseBoolOption(opts[OptFetchFresh])
+	var out map[string]string
+	for k, v := range raw {
+		nk := strings.ToLower(strings.TrimSpace(k))
+		if nk == "" {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, len(raw))
+		}
+		out[nk] = strings.TrimSpace(v)
+	}
+	return out
+}
+
+// LookupOption 按大小写与前后空白不敏感方式查找首个非空扩展参数值（常规小写键走 O(1) 零分配快路径）。
+func LookupOption(opts map[string]string, keys ...string) string {
+	if len(opts) == 0 || len(keys) == 0 {
+		return ""
+	}
+	for _, want := range keys {
+		if v := strings.TrimSpace(opts[want]); v != "" {
+			return v
+		}
+	}
+	for _, want := range keys {
+		for k, v := range opts {
+			if strings.EqualFold(strings.TrimSpace(k), want) {
+				if tv := strings.TrimSpace(v); tv != "" {
+					return tv
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// IsFreshFetchOption 判断按次扩展参数是否显式要求绕过缓存实时抓取（fresh=true/1/yes/on，键大小写与空白不敏感）。
+func IsFreshFetchOption(opts map[string]string) bool {
+	v, ok := ParseBoolOption(LookupOption(opts, OptFetchFresh))
 	return ok && v
 }

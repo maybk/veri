@@ -34,8 +34,7 @@ func buildDeepSeek(loaded *config.Loaded, deps Deps) (core.Provider, ProviderSta
 		Timeout:      cfg.Timeout.Duration,
 		FetchTimeout: cfg.FetchTimeout.Duration,
 		Concurrency:  cfg.Concurrency,
-		SearchQPS:    cfg.SearchQPS,
-		FetchQPS:     cfg.FetchQPS,
+		QPS:          cfg.QPS,
 		PriceSearch:  cfg.PriceSearch,
 		PriceFetch:   cfg.PriceFetch,
 	}, deps.APIClient)
@@ -137,8 +136,7 @@ func buildTinyFish(loaded *config.Loaded, deps Deps) (core.Provider, ProviderSta
 		Timeout:      cfg.Timeout.Duration,
 		FetchTimeout: cfg.FetchTimeout.Duration,
 		Concurrency:  cfg.Concurrency,
-		SearchQPS:    cfg.SearchQPS,
-		FetchQPS:     cfg.FetchQPS,
+		QPS:          cfg.QPS,
 		PriceSearch:  cfg.PriceSearch,
 		PriceFetch:   cfg.PriceFetch,
 	}, deps.APIClient)
@@ -354,7 +352,7 @@ func buildLocal(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus
 		Timeout:         cfg.Timeout.Duration,
 		Concurrency:     cfg.Concurrency,
 		MaxBytes:        int64(fCfg.MaxBytes),
-		MinContentRunes: fCfg.MinContentRunes,
+		MinContentChars: fCfg.MinContentChars,
 		RespectRobots:   fCfg.RespectRobots,
 		UserAgent:       fCfg.UserAgent,
 		Version:         deps.Version,
@@ -364,6 +362,6 @@ func buildLocal(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus
 	}
 	maxBytesText, _ := fCfg.MaxBytes.MarshalText()
 	timeout := formatProviderTimeout(cfg.Timeout.Duration, 0)
-	details := fmt.Sprintf("min_runes=%d, max_bytes=%s", fCfg.MinContentRunes, string(maxBytesText))
+	details := fmt.Sprintf("min_chars=%d, max_bytes=%s", fCfg.MinContentChars, string(maxBytesText))
 	return p, statusEntry(spec.ProviderLocal, enabled, "-", "-", timeout, details), nil
 }

@@ -18,7 +18,7 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 		return nil, err
 	}
 
-	resp, err := p.client.DoJSON(ctx, p.pool, p.fetchGate, httpx.RequestSpec{
+	resp, err := p.client.DoJSON(ctx, p.pool, p.gate, httpx.RequestSpec{
 		ProviderName: ProviderName,
 		Method:       http.MethodPost,
 		URL:          p.baseURL + "/v1/tools/fetch",

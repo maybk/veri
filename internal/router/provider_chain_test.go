@@ -50,7 +50,7 @@ func TestNewProvidersFetchGlobalChainPDFPriorityAndEscalation(t *testing.T) {
 		}
 	}
 
-	// 1. 海外 PDF：稳定排序保证 exa -> linkup -> parallel 均排在按页计费的 firecrawl 之前，且数据留存源 keenable 位于主流源之后
+	// 1. 海外 PDF：稳定排序保证 exa -> parallel -> linkup 均排在按页计费的 firecrawl 之前，且未声明 PDF 的 keenable 不抢 PDF 优先权
 	rPDF := New(Options{FetchStrategy: core.FetchAPIFirst}, []core.Provider{
 		mk(spec.ProviderDeepSeek, false, false, false),
 		mk(spec.ProviderKeenable, false, false, false),
@@ -59,7 +59,7 @@ func TestNewProvidersFetchGlobalChainPDFPriorityAndEscalation(t *testing.T) {
 		mk(spec.ProviderParallel, true, true, false),
 		mk(spec.ProviderFirecrawl, true, true, false),
 	})
-	if got := rPDF.ActiveFetchChainGlobal(); !slices.Equal(got, []string{spec.ProviderExa, spec.ProviderLinkup, spec.ProviderParallel, spec.ProviderKeenable, spec.ProviderFirecrawl, spec.ProviderDeepSeek}) {
+	if got := rPDF.ActiveFetchChainGlobal(); !slices.Equal(got, []string{spec.ProviderExa, spec.ProviderParallel, spec.ProviderKeenable, spec.ProviderLinkup, spec.ProviderFirecrawl, spec.ProviderDeepSeek}) {
 		t.Fatalf("ActiveFetchChainGlobal = %v", got)
 	}
 	order = nil

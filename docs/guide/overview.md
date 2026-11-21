@@ -53,11 +53,16 @@ veri/
 │   ├── config/                # TOML 配置校验与凭据合并
 │   ├── provider/              # 检索与正文提取源适配器
 │   │   ├── deepseek/          # DeepSeek Search & Fetch 适配器
+│   │   ├── keenable/          # Keenable Search & Fetch 适配器
+│   │   ├── zhihu/             # 知乎开放平台全网与站内搜索适配器
 │   │   ├── exa/               # Exa Search & Contents 适配器
 │   │   ├── tinyfish/          # TinySearch & TinyFetch 适配器
 │   │   ├── tencentwsa/        # 腾讯云联网搜索 SearchPro 适配器
 │   │   ├── tavily/            # Tavily Search & Extract 适配器
 │   │   ├── brave/             # Brave Web Search & LLM Context 适配器
+│   │   ├── linkup/            # Linkup Search & Fetch 适配器
+│   │   ├── parallel/          # Parallel REST v1 Search & Extract 适配器
+│   │   ├── firecrawl/         # Firecrawl v2 Scrape & Search 适配器
 │   │   ├── github/            # GitHub REST API 结构化读取适配器
 │   │   ├── local/             # 本地纯 Go 网页提取与正文质量闸门
 │   │   └── providertest/      # 离线契约断言与手动联调测试套件

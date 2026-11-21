@@ -191,22 +191,13 @@ func resolveFetchCLIURLs(args []string, stdin io.Reader) ([]string, error) {
 }
 
 func formatFetchContinueArgs(section, match string, notes []string, nextOffset int) string {
-	sectionMissed := false
-	matchMissed := false
-	for _, n := range notes {
-		if strings.Contains(n, "not found; showing page preview") {
-			sectionMissed = true
-		}
-		if strings.Contains(n, "had 0 hits") {
-			matchMissed = true
-		}
-	}
+	activeSec, activeMatch := render.ResolveFetchContinueScope(section, match, notes)
 	var parts []string
-	if section != "" && !sectionMissed {
-		parts = append(parts, "--section "+strconv.Quote(section))
+	if activeSec != "" {
+		parts = append(parts, "--section "+strconv.Quote(activeSec))
 	}
-	if match != "" && !matchMissed {
-		parts = append(parts, "--match "+strconv.Quote(match))
+	if activeMatch != "" {
+		parts = append(parts, "--match "+strconv.Quote(activeMatch))
 	}
 	parts = append(parts, "--offset "+strconv.Itoa(nextOffset))
 	return strings.Join(parts, " ")

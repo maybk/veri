@@ -4,11 +4,13 @@ import (
 	"context"
 	"math"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"veri/internal/core"
+	"veri/internal/spec"
 )
 
 type fakeSearcher struct {
@@ -89,9 +91,9 @@ func TestSearchAutoFallbackLanguageRoutingAndEmulation(t *testing.T) {
 	}
 
 	r := New(Options{
-		SearchProviders:   []string{"deepseek", "tencent_wsa", "exa"},
-		SearchProvidersEN: []string{"exa", "deepseek"},
-		FallbackOnEmpty:   true,
+		SearchProviders:       []string{"deepseek", "tencent_wsa", "exa"},
+		SearchProvidersGlobal: []string{"exa", "deepseek"},
+		FallbackOnEmpty:       true,
 	}, []core.Provider{ds, wsa, exa})
 
 	// 1. 中文查询走默认链：deepseek 402 失败 -> 自动回退 tencent_wsa；且 2 个站点在 SiteSingle 上触发本地模拟后过滤！
@@ -110,7 +112,7 @@ func TestSearchAutoFallbackLanguageRoutingAndEmulation(t *testing.T) {
 		t.Fatalf("expected discrete CountSteps upward rounding to 10, got %d", wsa.lastReq.Count)
 	}
 
-	// 2. 纯英文查询命中配置的 SearchProvidersEN（直接命中 exa，不触发 deepseek）
+	// 2. 纯英文查询命中配置的 SearchProvidersGlobal（直接命中 exa，不触发 deepseek）
 	enEnv, err := r.Search(context.Background(), &core.SearchRequest{Query: "golang context cancellation"})
 	if err != nil || len(enEnv.Meta.Providers) != 1 || enEnv.Meta.Providers[0].Name != "exa" {
 		t.Fatalf("expected English query to route to exa first, got %+v err=%v", enEnv, err)
@@ -363,5 +365,121 @@ func TestDynamicSearcherCapabilityNarrowingAndEmulation(t *testing.T) {
 		Filters:       core.Filters{Freshness: fresh},
 	}); core.AsError(err).Code != core.CodeInvalidArgument {
 		t.Fatalf("expected invalid_argument under strict mode, got %v", err)
+	}
+}
+
+func TestDefaultSearchChainLanguageSplitAndExplicitOverride(t *testing.T) {
+	mk := func(name string) core.Provider {
+		return &fakeSearcher{
+			name: name,
+			caps: core.Capabilities{MaxCount: 10},
+			outcome: &core.SearchOutcome{
+				Results: []core.Result{{Rank: 1, Title: "Hit " + name, URL: "https://example.com/" + name, Summary: "summary"}},
+			},
+		}
+	}
+
+	// 1. 默认 Options{} 自动启用非中文分链（DefaultSearchProvidersGlobal）：中文/中英混合走主链，英文/德文/日文/韩文及显式非中文 --lang 走非中文链
+	all := []core.Provider{
+		mk(spec.ProviderDeepSeek),
+		mk(spec.ProviderKeenable),
+		mk(spec.ProviderTencentWSA),
+		mk(spec.ProviderZhihu),
+		mk(spec.ProviderParallel),
+		mk(spec.ProviderExa),
+	}
+	rDefault := New(Options{}, all)
+	wantGlobal := []string{spec.ProviderKeenable, spec.ProviderParallel, spec.ProviderExa, spec.ProviderDeepSeek, spec.ProviderTencentWSA, spec.ProviderZhihu}
+	if got := rDefault.ActiveSearchChainGlobal(); !slices.Equal(got, wantGlobal) {
+		t.Fatalf("ActiveSearchChainGlobal() = %v, want %v", got, wantGlobal)
+	}
+	wantFusionCN := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}
+	wantFusionGlobal := []string{spec.ProviderKeenable, spec.ProviderParallel, spec.ProviderExa}
+	if got := rDefault.ActiveFusionChain(); !slices.Equal(got, wantFusionCN) {
+		t.Fatalf("ActiveFusionChain() = %v, want %v", got, wantFusionCN)
+	}
+	if got := rDefault.ActiveFusionChainGlobal(); !slices.Equal(got, wantFusionGlobal) {
+		t.Fatalf("ActiveFusionChainGlobal() = %v, want %v", got, wantFusionGlobal)
+	}
+	zhCases := []core.SearchRequest{
+		{Query: "Go 1.26 新特性"},
+		{Query: "golangci-lint v2 迁移报错"},
+		{Query: "Go 1.27 release notes", Filters: core.Filters{Lang: []string{"zh-CN"}}},
+		{Query: "深度学习", Filters: core.Filters{Lang: []string{"zh", "en"}}},
+	}
+	for _, tc := range zhCases {
+		env, err := rDefault.Search(context.Background(), &tc)
+		if err != nil || !env.OK || env.Meta.Providers[0].Name != spec.ProviderDeepSeek {
+			t.Fatalf("expected Chinese query %+v to hit deepseek first, got env=%+v err=%v", tc, env, err)
+		}
+	}
+	nonZHCases := []core.SearchRequest{
+		{Query: "Go 1.27 json v2 migration guide"},
+		{Query: "Deutschland 2026 Deutschlandticket Preis"},
+		{Query: "日本の 2026年 最低賃金"},
+		{Query: "Go言語の並行処理"},
+		{Query: "서울 날씨"},
+		{Query: "深度学习", Filters: core.Filters{Lang: []string{"en"}}},
+		{Query: "東京 天気", Filters: core.Filters{Lang: []string{"ja"}}},
+	}
+	for _, tc := range nonZHCases {
+		env, err := rDefault.Search(context.Background(), &tc)
+		if err != nil || !env.OK || env.Meta.Providers[0].Name != spec.ProviderKeenable {
+			t.Fatalf("expected non-Chinese query %+v to hit keenable first, got env=%+v err=%v", tc, env, err)
+		}
+	}
+
+	// 2. 单源或有效顺序与主链完全一致时，ActiveSearchChainGlobal 返回 nil 避免诊断冗余展示
+	rSingle := New(Options{}, []core.Provider{mk(spec.ProviderDeepSeek)})
+	if got := rSingle.ActiveSearchChainGlobal(); got != nil {
+		t.Fatalf("expected nil ActiveSearchChainGlobal for single provider, got %v", got)
+	}
+	rSameOrder := New(Options{}, []core.Provider{mk(spec.ProviderKeenable), mk(spec.ProviderExa)})
+	if got := rSameOrder.ActiveSearchChainGlobal(); got != nil {
+		t.Fatalf("expected nil ActiveSearchChainGlobal when enabled order matches primary, got %v", got)
+	}
+
+	// 3. 用户显式配置与默认同序的 SearchProviders（且未配 SearchProvidersGlobal）时，严格禁止静默切至默认非中文链
+	rExplicit := New(Options{
+		SearchProviders:         spec.DefaultSearchProviders(),
+		SearchProvidersExplicit: true,
+	}, all)
+	if got := rExplicit.ActiveSearchChainGlobal(); got != nil {
+		t.Fatalf("expected nil ActiveSearchChainGlobal under explicit single search chain, got %v", got)
+	}
+	enExp, err := rExplicit.Search(context.Background(), &core.SearchRequest{Query: "golang context"})
+	if err != nil || !enExp.OK || enExp.Meta.Providers[0].Name != spec.ProviderDeepSeek {
+		t.Fatalf("expected explicit search.providers order respected on English query, got env=%+v err=%v", enExp, err)
+	}
+
+	// 4. 自定义子集 SearchProvidersGlobal 不误附未列出源；显式固定 FusionProviders 时禁用非中文独立融合池
+	rSubset := New(Options{
+		SearchProviders:       []string{spec.ProviderDeepSeek, spec.ProviderExa},
+		SearchProvidersGlobal: []string{spec.ProviderExa, spec.ProviderParallel},
+	}, all)
+	if got := rSubset.ActiveSearchChainGlobal(); !slices.Equal(got, []string{spec.ProviderExa, spec.ProviderParallel}) {
+		t.Fatalf("expected subset ActiveSearchChainGlobal=[exa parallel], got %v", got)
+	}
+	if got := rSubset.ActiveFusionChainGlobal(); !slices.Equal(got, []string{spec.ProviderExa, spec.ProviderParallel}) {
+		t.Fatalf("expected subset ActiveFusionChainGlobal=[exa parallel], got %v", got)
+	}
+	rPinnedFusion := New(Options{
+		FusionProviders: []string{spec.ProviderDeepSeek, spec.ProviderExa},
+	}, all)
+	if got := rPinnedFusion.ActiveFusionChainGlobal(); got != nil {
+		t.Fatalf("expected nil ActiveFusionChainGlobal when FusionProviders is explicitly pinned, got %v", got)
+	}
+
+	// 5. SearchProvidersGlobal 仅含未启用源时，非中文查询平滑回退主链，与 ActiveSearchChainGlobal()==nil 严格一致
+	rFallbackGlobal := New(Options{
+		SearchProviders:       []string{spec.ProviderDeepSeek, spec.ProviderExa},
+		SearchProvidersGlobal: []string{spec.ProviderExa, spec.ProviderParallel},
+	}, []core.Provider{mk(spec.ProviderDeepSeek)})
+	if got := rFallbackGlobal.ActiveSearchChainGlobal(); got != nil {
+		t.Fatalf("expected nil ActiveSearchChainGlobal when global providers are all disabled, got %v", got)
+	}
+	fbEnv, err := rFallbackGlobal.Search(context.Background(), &core.SearchRequest{Query: "golang context"})
+	if err != nil || !fbEnv.OK || fbEnv.Meta.Providers[0].Name != spec.ProviderDeepSeek {
+		t.Fatalf("expected non-Chinese query to fall back to enabled primary chain, got env=%+v err=%v", fbEnv, err)
 	}
 }

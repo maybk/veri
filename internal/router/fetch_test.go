@@ -105,32 +105,35 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 			}, nil
 		},
 	}
-	ds := &spyFetcher{
-		name: spec.ProviderDeepSeek,
+	kn := &spyFetcher{
+		name: spec.ProviderKeenable,
 		fn: func(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
-			order = append(order, "deepseek")
+			order = append(order, "keenable")
 			// 模拟静态云端源在目标站抓回 HTTP 200 的 Cloudflare 盾页
 			return &core.FetchOutcome{
 				Page: &core.Page{
 					URL:      req.URL,
 					Title:    "Just a moment...",
 					Content:  "Performing security verification. Enable JavaScript and cookies to continue.",
-					Provider: spec.ProviderDeepSeek,
+					Provider: spec.ProviderKeenable,
 				},
 			}, nil
 		},
 	}
-	tv := &spyFetcher{
-		name:    spec.ProviderTavily,
+	ex := &spyFetcher{
+		name:    spec.ProviderExa,
 		profile: core.FetchProfile{DynamicRender: true},
 		fn: func(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
-			order = append(order, "tavily")
+			order = append(order, "exa")
+			if req.URL == "https://juejin.cn/post/cf" {
+				return nil, core.NewError(core.CodeUpstreamUnavailable, "busy").WithProvider(spec.ProviderExa)
+			}
 			return &core.FetchOutcome{
 				Page: &core.Page{
 					URL:      req.URL,
 					Title:    "Real Guide",
 					Content:  "# Real Guide\n\nFull rendered dynamic content without challenge wall.",
-					Provider: spec.ProviderTavily,
+					Provider: spec.ProviderExa,
 				},
 			}, nil
 		},
@@ -140,9 +143,6 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 		profile: core.FetchProfile{PDF: true, DynamicRender: true},
 		fn: func(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
 			order = append(order, "tinyfish")
-			if req.URL == "https://juejin.cn/post/cf" {
-				return nil, core.NewError(core.CodeUpstreamUnavailable, "busy").WithProvider(spec.ProviderTinyFish)
-			}
 			return &core.FetchOutcome{
 				Page: &core.Page{
 					URL:      req.URL,
@@ -154,15 +154,15 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 		},
 	}
 
-	r := New(Options{FetchStrategy: core.FetchSmartLocal}, []core.Provider{loc, ds, tv, tf})
+	r := New(Options{FetchStrategy: core.FetchSmartLocal}, []core.Provider{loc, kn, ex, tf})
 
-	// 1. 中文域名常规短页升档：优先走国内低延迟 deepseek；当 deepseek 返回盾页时，不能假成功，应拦截盾页并继续回退至 tinyfish -> tavily（同时置 DynamicRenderHint=true）
+	// 1. 中文域名常规短页升档：默认中文链 keenable -> exa -> tinyfish；当 keenable 返回盾页时不得假成功，应拦截盾页并继续回退至 exa -> tinyfish（同时置 DynamicRenderHint=true）
 	order = nil
 	cnEnv, err := r.Fetch(context.Background(), &core.FetchRequest{URL: "https://juejin.cn/post/cf"})
-	if err != nil || !cnEnv.OK || cnEnv.Page.Provider != spec.ProviderTavily {
-		t.Fatalf("expected cloud wall on deepseek to fall through to tavily, got env=%+v err=%v", cnEnv, err)
+	if err != nil || !cnEnv.OK || cnEnv.Page.Provider != spec.ProviderTinyFish {
+		t.Fatalf("expected cloud wall on keenable to fall through to tinyfish, got env=%+v err=%v", cnEnv, err)
 	}
-	wantCNOrder := []string{"local", "deepseek", "tinyfish", "tavily"}
+	wantCNOrder := []string{"local", "keenable", "exa", "tinyfish"}
 	if len(order) != len(wantCNOrder) {
 		t.Fatalf("expected call order %v, got %v", wantCNOrder, order)
 	}
@@ -171,18 +171,18 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 			t.Fatalf("call[%d] = %s, want %s (full=%v)", i, order[i], wantCNOrder[i], order)
 		}
 	}
-	if tv.lastReq == nil || !tv.lastReq.DynamicRenderHint {
-		t.Fatal("expected DynamicRenderHint=true propagated to Tavily after wall detection")
+	if tf.lastReq == nil || !tf.lastReq.DynamicRenderHint {
+		t.Fatal("expected DynamicRenderHint=true propagated to TinyFish after wall detection")
 	}
 
-	// 2. 海外站点默认全球链为 exa -> tavily -> tinyfish -> deepseek；未启用 exa 时优先命中 tavily（跳过静态 deepseek 首跳）
+	// 2. 海外站点默认全球链为 exa -> keenable -> tinyfish；优先命中 exa（跳过静态 keenable 首跳）
 	order = nil
 	ovEnv, err := r.Fetch(context.Background(), &core.FetchRequest{URL: "https://docs.example.org/spa"})
-	if err != nil || ovEnv.Page.Provider != spec.ProviderTavily {
-		t.Fatalf("expected overseas escalation to hit tavily first when exa absent, got env=%+v err=%v", ovEnv, err)
+	if err != nil || ovEnv.Page.Provider != spec.ProviderExa {
+		t.Fatalf("expected overseas escalation to hit exa first, got env=%+v err=%v", ovEnv, err)
 	}
-	if len(order) != 2 || order[0] != "local" || order[1] != "tavily" {
-		t.Fatalf("expected [local tavily] on overseas site, got %v", order)
+	if len(order) != 2 || order[0] != "local" || order[1] != "exa" {
+		t.Fatalf("expected [local exa] on overseas site, got %v", order)
 	}
 
 	// 3. 明确 PDF URL（如 arxiv /pdf/）直接跳过 local 直连 PDF 提取源（本夹具仅 tinyfish 声明 PDF=true）
@@ -195,7 +195,7 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 		t.Fatalf("expected PDF URL to skip local and call [tinyfish], got %v", order)
 	}
 
-	// 4. 中文域名无后缀下载链接在运行时由 local 0 字节识别出 application/pdf 后，动态提权 tinyfish 跳过不支持 PDF 的 deepseek
+	// 4. 中文域名无后缀下载链接在运行时由 local 0 字节识别出 application/pdf 后，动态提权 tinyfish 跳过不支持 PDF 的 keenable
 	order = nil
 	dynPDFEnv, err := r.Fetch(context.Background(), &core.FetchRequest{URL: "https://portal.cn/download?id=1"})
 	if err != nil || dynPDFEnv.Page.Provider != spec.ProviderTinyFish {
@@ -253,8 +253,8 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 		t.Fatalf("expected nil ActiveFetchChainGlobal when user explicitly configured single fetch chain, got %v", got)
 	}
 	expEnv, err := rExplicit.Fetch(context.Background(), &core.FetchRequest{URL: "https://go.dev/doc/effective_go"})
-	if err != nil || expEnv.Page.Provider != spec.ProviderDeepSeek {
-		t.Fatalf("expected explicit fetch.providers order respected (deepseek first), got env=%+v err=%v", expEnv, err)
+	if err != nil || expEnv.Page.Provider != spec.ProviderTavily {
+		t.Fatalf("expected explicit fetch.providers order respected (tavily first), got env=%+v err=%v", expEnv, err)
 	}
 
 	// 2b. 自定义子集 FetchProvidersGlobal 与 SearchProviders 时，ActiveFetchChainGlobal / ActiveFusionChain 仅包含实际执行源，不误附未列出源

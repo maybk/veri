@@ -35,7 +35,7 @@ func (p *Provider) extractPlainText(reqCtx context.Context, targetURL *url.URL, 
 	if looksLikeMarkdownDocument(text) {
 		return p.buildMarkdownOutcome(reqCtx, targetURL, payload, text)
 	}
-	qr := textnorm.EvaluatePageQuality("", text, p.minContentRunes)
+	qr := textnorm.EvaluatePageQuality("", text, p.minContentChars)
 	return &core.FetchOutcome{
 		Page: &core.Page{
 			URL:        targetURL.String(),
@@ -55,7 +55,7 @@ func (p *Provider) buildMarkdownOutcome(reqCtx context.Context, targetURL *url.U
 	if bodyText == "" {
 		bodyText = cleaned
 	}
-	qr := textnorm.EvaluatePageQuality(mdMeta.title, bodyText, p.minContentRunes)
+	qr := textnorm.EvaluatePageQuality(mdMeta.title, bodyText, p.minContentChars)
 	mdOut := &core.FetchOutcome{
 		Page: &core.Page{
 			URL:        targetURL.String(),

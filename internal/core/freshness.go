@@ -224,7 +224,7 @@ func parseUTCDate(s string) (time.Time, error) {
 
 func invalidFreshnessErr(raw, detail string) error {
 	return NewError(CodeInvalidArgument, fmt.Sprintf("invalid freshness %q: %s", raw, detail)).
-		WithHint(`Use day | week | month | year, 7d | 2w | 3m | 1y, or date ranges like 2026-08-01..2026-08-31.`).
+		WithHint(`Use day | week | month | year, 7d | 2w | 3m | 1y, or date ranges like 2026-08-01.. or 2026-08-01..2026-08-31.`).
 		WithI18n("err.invalid_freshness", "hint.invalid_freshness").
 		WithParam("field", "freshness").
 		WithParam("value", raw)

@@ -408,4 +408,65 @@ func TestConfigValidatesProviderBaseURLsAndRedactsCredentials(t *testing.T) {
 	if loaded, err := LoadWithEnv(okParallel, noEnv); err != nil || loaded.Config.Providers.Parallel.Mode != spec.ParallelModeTurbo {
 		t.Fatalf("expected valid parallel config loaded, got cfg=%+v err=%v", loaded, err)
 	}
+
+	// 5. 验证内置默认 search.providers_global / fusion_providers_global 与显式覆盖边界（与 fetch.providers_global 完全对称）
+	emptyLoaded, err := LoadWithEnv(filepath.Join(dir, "nonexistent.toml"), noEnv)
+	if err != nil {
+		t.Fatalf("LoadWithEnv default: %v", err)
+	}
+	if !slices.Equal(emptyLoaded.Config.Search.ProvidersGlobal, spec.DefaultSearchProvidersGlobal()) || emptyLoaded.SearchProvidersExplicit || emptyLoaded.FusionProvidersGlobalExplicit {
+		t.Fatalf("unexpected default search.providers_global: explicit=%v fgExplicit=%v global=%v",
+			emptyLoaded.SearchProvidersExplicit, emptyLoaded.FusionProvidersGlobalExplicit, emptyLoaded.Config.Search.ProvidersGlobal)
+	}
+
+	explicitSearch := filepath.Join(dir, "explicit_search.toml")
+	if err := os.WriteFile(explicitSearch, []byte("[search]\nproviders = [\"deepseek\", \"exa\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadedExplicitSearch, err := LoadWithEnv(explicitSearch, noEnv)
+	if err != nil || !loadedExplicitSearch.SearchProvidersExplicit || len(loadedExplicitSearch.Config.Search.ProvidersGlobal) != 0 {
+		t.Fatalf("explicit search.providers without providers_global must disable default global chain: explicit=%v global=%v err=%v",
+			loadedExplicitSearch.SearchProvidersExplicit, loadedExplicitSearch.Config.Search.ProvidersGlobal, err)
+	}
+
+	envSearchLoaded, err := LoadWithEnv(filepath.Join(dir, "nonexistent2.toml"), func(k string) string {
+		if k == spec.EnvProviders {
+			return "tavily, brave"
+		}
+		return ""
+	})
+	if err != nil || !envSearchLoaded.SearchProvidersExplicit || !slices.Equal(envSearchLoaded.Config.Search.Providers, []string{"tavily", "brave"}) || len(envSearchLoaded.Config.Search.ProvidersGlobal) != 0 {
+		t.Fatalf("VERI_PROVIDERS without file providers_global must disable default global chain: explicit=%v p=%v global=%v err=%v",
+			envSearchLoaded.SearchProvidersExplicit, envSearchLoaded.Config.Search.Providers, envSearchLoaded.Config.Search.ProvidersGlobal, err)
+	}
+
+	disableGlobal := filepath.Join(dir, "disable_global.toml")
+	if err := os.WriteFile(disableGlobal, []byte("[search]\nproviders_global = []\nfusion_providers_global = []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadedDisableGlobal, err := LoadWithEnv(disableGlobal, noEnv)
+	if err != nil || len(loadedDisableGlobal.Config.Search.ProvidersGlobal) != 0 || !loadedDisableGlobal.FusionProvidersGlobalExplicit || !slices.Equal(loadedDisableGlobal.Config.Search.Providers, spec.DefaultSearchProviders()) {
+		t.Fatalf("providers_global/fusion_providers_global = [] failed: p=%v g=%v fgExp=%v err=%v",
+			loadedDisableGlobal.Config.Search.Providers, loadedDisableGlobal.Config.Search.ProvidersGlobal, loadedDisableGlobal.FusionProvidersGlobalExplicit, err)
+	}
+
+	customGlobal := filepath.Join(dir, "custom_global.toml")
+	if err := os.WriteFile(customGlobal, []byte("[search]\nproviders_global = [\"exa\", \"parallel\"]\nfusion_providers_global = [\"exa\", \"brave\"]\nsummary_max_chars = 600\n[fetch]\nmin_content_chars = 200\n[providers.deepseek]\nqps = 3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadedCustomGlobal, err := LoadWithEnv(customGlobal, func(k string) string {
+		if k == spec.EnvProviders {
+			return "deepseek, zhihu"
+		}
+		return ""
+	})
+	if err != nil || !slices.Equal(loadedCustomGlobal.Config.Search.Providers, []string{"deepseek", "zhihu"}) ||
+		!slices.Equal(loadedCustomGlobal.Config.Search.ProvidersGlobal, []string{"exa", "parallel"}) ||
+		!slices.Equal(loadedCustomGlobal.Config.Search.FusionProvidersGlobal, []string{"exa", "brave"}) ||
+		!loadedCustomGlobal.FusionProvidersGlobalExplicit ||
+		loadedCustomGlobal.Config.Search.SummaryMaxChars != 600 ||
+		loadedCustomGlobal.Config.Fetch.MinContentChars != 200 ||
+		loadedCustomGlobal.Config.Providers.DeepSeek.QPS != 3 {
+		t.Fatalf("explicit global/chars/qps config failed: cfg=%+v err=%v", loadedCustomGlobal, err)
+	}
 }

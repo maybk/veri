@@ -20,19 +20,21 @@ import (
 
 // Loaded 携带合并校验后的完整配置、来源元数据与安全审计警告。
 type Loaded struct {
-	Config                 Config
-	Path                   string
-	Dir                    string
-	FileExists             bool
-	FileMode               os.FileMode
-	FetchProvidersExplicit bool // 用户在 config.toml 或 VERI_FETCH_PROVIDERS 中显式配置了 fetch.providers
-	PermWarning            bool // 配置文件含明文密钥且权限宽于 0600
-	VaultPermWarning       bool // secrets.json 或 secret.key 权限宽于 0600
-	LogLevel               string
-	LogFormat              string
-	Credentials            map[string]Credential
-	VaultProviders         map[string]bool
-	AllSecrets             []string
+	Config                        Config
+	Path                          string
+	Dir                           string
+	FileExists                    bool
+	FileMode                      os.FileMode
+	SearchProvidersExplicit       bool // 用户在 config.toml 或 VERI_PROVIDERS 中显式配置了 search.providers
+	FusionProvidersGlobalExplicit bool // 用户在 config.toml 中显式配置了 search.fusion_providers_global（含设 [] 关闭分池）
+	FetchProvidersExplicit        bool // 用户在 config.toml 或 VERI_FETCH_PROVIDERS 中显式配置了 fetch.providers
+	PermWarning                   bool // 配置文件含明文密钥且权限宽于 0600
+	VaultPermWarning              bool // secrets.json 或 secret.key 权限宽于 0600
+	LogLevel                      string
+	LogFormat                     string
+	Credentials                   map[string]Credential
+	VaultProviders                map[string]bool
+	AllSecrets                    []string
 }
 
 // PeekUILang 仅从配置文件轻量读取 [ui] lang 字段，不校验完整配置树，也绝不访问或解密 secrets.json / secret.key。
@@ -101,6 +103,7 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		Credentials:    make(map[string]Credential, len(credProviders)),
 		VaultProviders: make(map[string]bool, len(credProviders)),
 	}
+	searchGlobalDefined := false
 	fetchGlobalDefined := false
 
 	if info, statErr := os.Stat(cfgPath); statErr == nil {
@@ -129,6 +132,15 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 				WithParam("path", cfgPath).
 				WithParam("detail", safeDetail)
 		}
+		if meta.IsDefined("search", "providers") {
+			out.SearchProvidersExplicit = true
+		}
+		if meta.IsDefined("search", "providers_global") {
+			searchGlobalDefined = true
+		}
+		if meta.IsDefined("search", "fusion_providers_global") {
+			out.FusionProvidersGlobalExplicit = true
+		}
 		if meta.IsDefined("fetch", "providers") {
 			out.FetchProvidersExplicit = true
 		}
@@ -155,6 +167,11 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 
 	if err := applyBehaviorEnv(&cfg, out, getenv); err != nil {
 		return nil, err
+	}
+	// 用户显式指定了 search.providers（文件或环境变量）而未显式指定 search.providers_global 时，
+	// 关闭内置默认非中文分链，严格尊重用户指定的统一顺序。
+	if out.SearchProvidersExplicit && !searchGlobalDefined {
+		cfg.Search.ProvidersGlobal = nil
 	}
 	// 用户显式指定了 fetch.providers（文件或环境变量）而未显式指定 fetch.providers_global 时，
 	// 关闭内置默认全球分链，严格尊重用户指定的统一顺序。
@@ -261,6 +278,9 @@ func applyBehaviorEnv(cfg *Config, loaded *Loaded, getenv func(string) string) e
 	}
 	if list := splitEnvList(getenv(spec.EnvProviders)); len(list) > 0 {
 		cfg.Search.Providers = list
+		if loaded != nil {
+			loaded.SearchProvidersExplicit = true
+		}
 	}
 	if list := splitEnvList(getenv(spec.EnvFetchProviders)); len(list) > 0 {
 		cfg.Fetch.Providers = list

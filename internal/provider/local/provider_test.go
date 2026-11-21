@@ -40,7 +40,7 @@ func TestLocalExtractAndQualityGate(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, enabled, err := New(Options{MinContentRunes: 300, MaxBytes: 4096}, providertest.NewTestFetchClient(t))
+	p, enabled, err := New(Options{MinContentChars: 300, MaxBytes: 4096}, providertest.NewTestFetchClient(t))
 	if err != nil || !enabled {
 		t.Fatalf("New: enabled=%v err=%v", enabled, err)
 	}
@@ -100,7 +100,7 @@ func TestLocalExtractModernDocsTablesCodeAndMath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, _, err := New(Options{MinContentRunes: 120}, providertest.NewTestFetchClient(t))
+	p, _, err := New(Options{MinContentChars: 120}, providertest.NewTestFetchClient(t))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestLocalJSONLDNoscriptMarkdownNegotiationAndAntiBotHeader(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, _, err := New(Options{MinContentRunes: 80}, providertest.NewTestFetchClient(t))
+	p, _, err := New(Options{MinContentChars: 80}, providertest.NewTestFetchClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestLocalWikipediaMathThroughReadabilityAndPlainTextMarkdownSniff(t *testin
 	}))
 	defer srv.Close()
 
-	p, _, err := New(Options{MinContentRunes: 40}, providertest.NewTestFetchClient(t))
+	p, _, err := New(Options{MinContentChars: 40}, providertest.NewTestFetchClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -41,6 +41,7 @@ func NewGate(concurrency int, qps float64) *Gate {
 }
 
 // Acquire 等待获取并发槽位与速率令牌，排队时间计入 ctx 截止时间。
+// 若调用方截止时间早于可发车时刻，则立即失败且不推进后续正常请求的速率窗口；排队途中被取消的尾部预留会自动回滚。
 func (g *Gate) Acquire(ctx context.Context) (func(), error) {
 	if g == nil {
 		return func() {}, nil
@@ -54,17 +55,27 @@ func (g *Gate) Acquire(ctx context.Context) (func(), error) {
 	if g.minInterval > 0 {
 		g.mu.Lock()
 		now := time.Now()
-		var wait time.Duration
+		target := now
 		if now.Before(g.nextAllowed) {
-			wait = g.nextAllowed.Sub(now)
-			g.nextAllowed = g.nextAllowed.Add(g.minInterval)
-		} else {
-			g.nextAllowed = now.Add(g.minInterval)
+			target = g.nextAllowed
 		}
+		wait := target.Sub(now)
+		if dl, hasDL := ctx.Deadline(); hasDL && target.After(dl) {
+			g.mu.Unlock()
+			<-g.sem
+			return nil, core.WrapError(core.CodeUpstreamTimeout, "context deadline exceeded before provider QPS slot", context.DeadlineExceeded)
+		}
+		reservedNext := target.Add(g.minInterval)
+		g.nextAllowed = reservedNext
 		g.mu.Unlock()
 
 		if wait > 0 {
 			if err := SleepContext(ctx, wait); err != nil {
+				g.mu.Lock()
+				if g.nextAllowed.Equal(reservedNext) {
+					g.nextAllowed = target
+				}
+				g.mu.Unlock()
 				<-g.sem
 				return nil, core.WrapError(core.CodeUpstreamTimeout, "timed out waiting for provider QPS limiter", err)
 			}

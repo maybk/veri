@@ -296,7 +296,7 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 	if code, cfgJSON, _ := run(nil, "config", "show", "--json"); code != 0 || strings.Contains(cfgJSON, "supersecret") || !strings.Contains(cfgJSON, `"sk-…9876"`) {
 		t.Fatalf("config show --json failed or leaked secret: code=%d out=%s", code, cfgJSON)
 	}
-	if code, klJSON, _ := run(nil, "key", "list", "--json"); code != 0 || !strings.Contains(klJSON, `"provider"`) {
+	if code, klJSON, _ := run(nil, "key", "list", "--json"); code != 0 || !strings.Contains(klJSON, `"keys"`) || !strings.Contains(klJSON, `"provider"`) {
 		t.Fatalf("key list --json failed: code=%d out=%s", code, klJSON)
 	}
 	if code, mcpCfg, _ := run(nil, "mcp", "config"); code != 0 || !strings.Contains(mcpCfg, `"mcpServers"`) {

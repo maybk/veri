@@ -12,7 +12,7 @@ type Options struct {
 	Timeout         time.Duration
 	Concurrency     int
 	MaxBytes        int64
-	MinContentRunes int
+	MinContentChars int
 	RespectRobots   bool
 	UserAgent       string // "browser" | "veri" | 自定义字符串
 	Version         string
@@ -22,7 +22,7 @@ type Options struct {
 type Provider struct {
 	timeout         time.Duration
 	maxBytes        int64
-	minContentRunes int
+	minContentChars int
 	respectRobots   bool
 	userAgent       string
 	client          *httpx.Client
@@ -39,9 +39,9 @@ func New(opts Options, safeClient *httpx.Client) (*Provider, bool, error) {
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxBytes
 	}
-	minRunes := opts.MinContentRunes
-	if minRunes < 0 {
-		minRunes = DefaultMinContentRunes
+	minChars := opts.MinContentChars
+	if minChars < 0 {
+		minChars = DefaultMinContentChars
 	}
 	conc := opts.Concurrency
 	if conc <= 0 {
@@ -51,7 +51,7 @@ func New(opts Options, safeClient *httpx.Client) (*Provider, bool, error) {
 	return &Provider{
 		timeout:         timeout,
 		maxBytes:        maxBytes,
-		minContentRunes: minRunes,
+		minContentChars: minChars,
 		respectRobots:   opts.RespectRobots,
 		userAgent:       resolveUserAgent(opts.UserAgent, opts.Version),
 		client:          safeClient,

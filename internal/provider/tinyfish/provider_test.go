@@ -46,8 +46,7 @@ func TestTinyFishSearchParamsAndFetchDualArrays(t *testing.T) {
 		Keys:      []string{"tf-key"},
 		SearchURL: searchSrv.URL,
 		FetchURL:  fetchSrv.URL,
-		SearchQPS: 100,
-		FetchQPS:  100,
+		QPS:       100,
 	}, providertest.NewTestAPIClient(t))
 	if err != nil || !enabled {
 		t.Fatalf("New: enabled=%v err=%v", enabled, err)

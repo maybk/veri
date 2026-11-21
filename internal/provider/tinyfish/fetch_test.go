@@ -43,8 +43,7 @@ func TestTinyFishPaperModeFetchSuccessAndErrorEnums(t *testing.T) {
 		Keys:      []string{"tf-k"},
 		SearchURL: searchSrv.URL,
 		FetchURL:  fetchSrv.URL,
-		SearchQPS: 100,
-		FetchQPS:  100,
+		QPS:       100,
 	}, providertest.NewTestAPIClient(t))
 
 	now := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)

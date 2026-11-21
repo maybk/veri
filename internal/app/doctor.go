@@ -27,34 +27,35 @@ type LiveCheckResult struct {
 
 // DoctorReport 汇总 veri doctor 的全部结构化检查结果。
 type DoctorReport struct {
-	Version          string            `json:"version"`
-	GoVersion        string            `json:"go_version"`
-	OS               string            `json:"os"`
-	Arch             string            `json:"arch"`
-	UILocale         string            `json:"ui_locale"`
-	UILocaleSource   string            `json:"ui_locale_source"`
-	ConfigPath       string            `json:"config_path"`
-	ConfigExists     bool              `json:"config_exists"`
-	ConfigMode       string            `json:"config_mode,omitempty"`
-	PermWarning      bool              `json:"perm_warning"`
-	VaultPermWarning bool              `json:"vault_perm_warning,omitzero"`
-	AllowPrivate     bool              `json:"allow_private"`
-	ProbeHost        string            `json:"probe_host"`
-	ProbeIP          string            `json:"probe_ip,omitempty"`
-	FakeIPDetected   bool              `json:"fake_ip_detected"`
-	DNSError         string            `json:"dns_error,omitempty"`
-	EnabledSearcher  int               `json:"enabled_searchers"`
-	EnabledFetcher   int               `json:"enabled_fetchers"`
-	SearchStrategy   string            `json:"search_strategy,omitempty"`
-	SearchChain      []string          `json:"search_chain"`
-	SearchChainEN    []string          `json:"search_chain_en,omitempty"`
-	FusionChain      []string          `json:"fusion_chain,omitempty"`
-	FetchStrategy    string            `json:"fetch_strategy,omitempty"`
-	FetchChain       []string          `json:"fetch_chain"`
-	FetchChainGlobal []string          `json:"fetch_chain_global,omitempty"`
-	Providers        []ProviderStatus  `json:"providers"`
-	LiveChecks       []LiveCheckResult `json:"live_checks,omitempty"`
-	Issues           int               `json:"issues"`
+	Version           string            `json:"version"`
+	GoVersion         string            `json:"go_version"`
+	OS                string            `json:"os"`
+	Arch              string            `json:"arch"`
+	UILocale          string            `json:"ui_locale"`
+	UILocaleSource    string            `json:"ui_locale_source"`
+	ConfigPath        string            `json:"config_path"`
+	ConfigExists      bool              `json:"config_exists"`
+	ConfigMode        string            `json:"config_mode,omitempty"`
+	PermWarning       bool              `json:"perm_warning"`
+	VaultPermWarning  bool              `json:"vault_perm_warning"`
+	AllowPrivate      bool              `json:"allow_private"`
+	ProbeHost         string            `json:"probe_host"`
+	ProbeIP           string            `json:"probe_ip,omitempty"`
+	FakeIPDetected    bool              `json:"fake_ip_detected"`
+	DNSError          string            `json:"dns_error,omitempty"`
+	EnabledSearcher   int               `json:"enabled_searchers"`
+	EnabledFetcher    int               `json:"enabled_fetchers"`
+	SearchStrategy    string            `json:"search_strategy,omitempty"`
+	SearchChain       []string          `json:"search_chain"`
+	SearchChainGlobal []string          `json:"search_chain_global,omitempty"`
+	FusionChain       []string          `json:"fusion_chain,omitempty"`
+	FusionChainGlobal []string          `json:"fusion_chain_global,omitempty"`
+	FetchStrategy     string            `json:"fetch_strategy,omitempty"`
+	FetchChain        []string          `json:"fetch_chain"`
+	FetchChainGlobal  []string          `json:"fetch_chain_global,omitempty"`
+	Providers         []ProviderStatus  `json:"providers"`
+	LiveChecks        []LiveCheckResult `json:"live_checks,omitempty"`
+	Issues            int               `json:"issues"`
 }
 
 // RunDoctor 执行配置、权限、Fake-IP DNS 环境及可选并发真实请求联调检查。
@@ -69,28 +70,29 @@ func (a *App) RunDoctor(ctx context.Context, uiLocale, uiSource string, live boo
 		enabledFetchers = []string{}
 	}
 	rep := DoctorReport{
-		Version:          a.version,
-		GoVersion:        runtime.Version(),
-		OS:               runtime.GOOS,
-		Arch:             runtime.GOARCH,
-		UILocale:         uiLocale,
-		UILocaleSource:   uiSource,
-		ConfigPath:       a.loaded.Path,
-		ConfigExists:     a.loaded.FileExists,
-		PermWarning:      a.loaded.PermWarning,
-		VaultPermWarning: a.loaded.VaultPermWarning,
-		AllowPrivate:     a.loaded.Config.Network.AllowPrivate,
-		ProbeHost:        selectProbeHost(statuses),
-		EnabledSearcher:  len(enabledSearchers),
-		EnabledFetcher:   len(enabledFetchers),
-		SearchStrategy:   string(a.cliRouter.DefaultSearchStrategy()),
-		SearchChain:      enabledSearchers,
-		SearchChainEN:    a.cliRouter.ActiveSearchChainEN(),
-		FusionChain:      a.cliRouter.ActiveFusionChain(),
-		FetchStrategy:    string(a.cliRouter.FetchStrategy()),
-		FetchChain:       enabledFetchers,
-		FetchChainGlobal: a.cliRouter.ActiveFetchChainGlobal(),
-		Providers:        statuses,
+		Version:           a.version,
+		GoVersion:         runtime.Version(),
+		OS:                runtime.GOOS,
+		Arch:              runtime.GOARCH,
+		UILocale:          uiLocale,
+		UILocaleSource:    uiSource,
+		ConfigPath:        a.loaded.Path,
+		ConfigExists:      a.loaded.FileExists,
+		PermWarning:       a.loaded.PermWarning,
+		VaultPermWarning:  a.loaded.VaultPermWarning,
+		AllowPrivate:      a.loaded.Config.Network.AllowPrivate,
+		ProbeHost:         selectProbeHost(statuses),
+		EnabledSearcher:   len(enabledSearchers),
+		EnabledFetcher:    len(enabledFetchers),
+		SearchStrategy:    string(a.cliRouter.DefaultSearchStrategy()),
+		SearchChain:       enabledSearchers,
+		SearchChainGlobal: a.cliRouter.ActiveSearchChainGlobal(),
+		FusionChain:       a.cliRouter.ActiveFusionChain(),
+		FusionChainGlobal: a.cliRouter.ActiveFusionChainGlobal(),
+		FetchStrategy:     string(a.cliRouter.FetchStrategy()),
+		FetchChain:        enabledFetchers,
+		FetchChainGlobal:  a.cliRouter.ActiveFetchChainGlobal(),
+		Providers:         statuses,
 	}
 	if a.loaded.FileExists && runtime.GOOS != "windows" {
 		rep.ConfigMode = fmt.Sprintf("%04o", a.loaded.FileMode.Perm())

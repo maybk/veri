@@ -41,7 +41,7 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 		NeedContent: req.Detail == core.DetailContent,
 	}
 
-	resp, err := p.client.DoJSON(ctx, p.pool, p.searchGate, httpx.RequestSpec{
+	resp, err := p.client.DoJSON(ctx, p.pool, p.gate, httpx.RequestSpec{
 		ProviderName: ProviderName,
 		Method:       http.MethodPost,
 		URL:          p.baseURL + "/v1/tools/search",
