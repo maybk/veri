@@ -6,7 +6,8 @@ lang = "auto"                           # auto | zh | en
 
 [search]
 providers = ["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
-providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # 非中文查询检索链（设 [] 关闭分链）
+providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # 非中文检索链（设 [] 关闭）
+# --fusion 并发池（留空取前 3 启用源）
 # fusion_providers = ["deepseek", "keenable", "tencent_wsa"]
 # fusion_providers_global = ["keenable", "parallel", "exa"]
 strategy = "auto"                       # auto | fusion
@@ -21,8 +22,8 @@ summary_max_chars = 800
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
 providers = ["keenable", "tavily", "firecrawl", "parallel", "exa", "linkup", "deepseek", "tinyfish"]
-providers_global = ["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"] # 非中文站点提取链（设 [] 关闭分链）
-timeout = "45s"
+providers_global = ["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"] # 非中文站点提取链（设 [] 关闭）
+timeout = "45s"                         # 整次提取超时
 max_bytes = "5MB"                       # 本地抓取解压后响应体上限
 min_content_chars = 300                 # 本地提取正文质量闸门最少字符数
 respect_robots = false
@@ -32,6 +33,7 @@ user_agent = "browser"                  # browser | veri | 自定义字符串
 text_format = "markdown"                # markdown | json
 search_max_chars = 24000
 fetch_max_chars = 30000
+content_max_chars = 3000                # 单条结果正文上限
 max_count = 20
 cache_ttl = "5m"                        # 设为 "0s" 可禁用 MCP 进程内缓存
 cache_size = 256
@@ -41,22 +43,23 @@ proxy = ""                              # 为空时遵循 HTTPS_PROXY / HTTP_PRO
 fake_ip_cidrs = ["198.18.0.0/15"]       # TUN 模式 Fake-IP 网段
 allow_private = false                   # 本地抓取是否允许内网地址（默认关闭以防御 SSRF）
 
+# 各 Provider 均支持 enabled = false，以及 timeout / concurrency / qps / weight。
 [providers.deepseek]
 api_key = "env:DEEPSEEK_API_KEY"        # 支持直接填写明文密钥，多个 Key 用逗号分隔
 base_url = "https://api.deepseek.com"
 timeout = "10s"
 fetch_timeout = "10s"
 concurrency = 4
-weight = 1.0
+weight = 1.0                            # 融合排序权重
 # price_search = "CNY:0.005"            # 可选：配置参考单价以在响应中估算成本
 # price_fetch = "CNY:0.005"
 
 [providers.keenable]
-api_key = "env:KEENABLE_API_KEY"        # 默认数据策略会留存查询与结果，敏感查询可设 enabled = false
+api_key = "env:KEENABLE_API_KEY"        # 默认留存查询与结果，敏感场景可设 enabled = false
 mode = "pro"                            # pro | realtime
 
 [providers.zhihu]
-api_key = "env:ZHIHU_API_KEY"           # 兼容 ZHIHU_ACCESS_SECRET
+api_key = "env:ZHIHU_API_KEY"
 scope = "global"                        # global（全网）| zhihu（知乎站内）
 search_db = "all"                       # all | realtime | static（仅 global 生效）
 # price_search = "CNY:0.005"
@@ -65,7 +68,7 @@ search_db = "all"                       # all | realtime | static（仅 global �
 [providers.exa]
 api_key = "env:EXA_API_KEY"
 search_type = "auto"                    # lite | auto | fast | instant | deep-lite | deep | deep-reasoning
-allow_over_10 = false
+allow_over_10 = false                   # 允许单次超过 10 条（可能触发高价档）
 
 [providers.tinyfish]
 api_key = "env:TINYFISH_API_KEY"
@@ -94,14 +97,14 @@ fetch_mode = "standard"                 # standard | pro
 render_js = false                       # 遇反爬/JS 盾时自动按需升档
 
 [providers.parallel]
-api_key = "env:PARALLEL_API_KEY"        # 标准条款允许去标识化用于模型训练；合规企业可切 eu.parallel.ai（需 mode = "basic"）
+api_key = "env:PARALLEL_API_KEY"        # 标准条款允许去标识化训练；EU 端点需 mode = "basic"
 mode = "fast"                           # turbo | fast | basic | advanced
 # base_url = "https://api.parallel.ai"
-# price_search = "USD:0.001"            # 可选：参考单价以在响应中估算成本
-# price_fetch = "USD:0.001"             # 可选：Extract 参考单价
+# price_search = "USD:0.001"
+# price_fetch = "USD:0.001"
 
 [providers.firecrawl]
-api_key = "env:FIRECRAWL_API_KEY"       # 官方云端必填；指向自托管 base_url 时允许无密钥（仅回环可用 http://，非回环需 https://）
+api_key = "env:FIRECRAWL_API_KEY"       # 云端必填；自托管 base_url 可留空（远程需 https://）
 # base_url = "https://api.firecrawl.dev"
 proxy = "auto"                          # auto | basic | enhanced
 max_pdf_pages = 20                      # PDF 最大解析页数上限

@@ -8,8 +8,8 @@
 - `defaults.go`：路由层融合召回下限、慢源宽限期、软降权熔断与大纲/段落切片内部默认阈值。
 - `router.go`：路由器配置与实例装配。
 - `errors.go`：多源链式失败报告与确定性主错误码汇总。
-- `search.go`：单源指定、中英文链式自动回退（`auto`）、空结果回退短路、请求级超时控制与成本汇总。
-- `fusion.go`：多源并发检索调度与部分超时（`partial`）容错汇聚。
+- `search.go`：单源指定、语种分链自动回退（`auto`）、空结果回退短路、请求级超时控制与成本汇总。
+- `fusion.go`：多源并发检索调度（含双融合池选路）与部分超时（`partial`）容错汇聚。
 - `rrf.go`：URL 规范化去重、多源字段择优合并与加权 Reciprocal Rank Fusion（`RRF`）排序。
 - `fetch.go`：网页提取主入口、请求单点规范化校验、本地/内网隔离与信封构建。
 - `fetch_plan.go`：`api_first`（默认）、`smart_local`、`local_only`、`api_only` 提取序列编排与 PDF / 动态渲染重排。

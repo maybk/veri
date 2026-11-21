@@ -6,7 +6,8 @@ lang = "auto"                           # auto | zh | en
 
 [search]
 providers = ["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
-providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # non-Chinese search chain (set [] to disable)
+providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # non-Chinese chain (set [] to disable)
+# --fusion pools (empty uses top 3 enabled)
 # fusion_providers = ["deepseek", "keenable", "tencent_wsa"]
 # fusion_providers_global = ["keenable", "parallel", "exa"]
 strategy = "auto"                       # auto | fusion
@@ -21,8 +22,8 @@ summary_max_chars = 800
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
 providers = ["keenable", "tavily", "firecrawl", "parallel", "exa", "linkup", "deepseek", "tinyfish"]
-providers_global = ["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"] # non-CN fetch chain (set [] to disable)
-timeout = "45s"
+providers_global = ["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"] # global sites chain (set [] to disable)
+timeout = "45s"                         # overall fetch timeout
 max_bytes = "5MB"                       # max decompressed response size for local fetch
 min_content_chars = 300                 # minimum chars required to pass local quality gate
 respect_robots = false
@@ -32,6 +33,7 @@ user_agent = "browser"                  # browser | veri | custom string
 text_format = "markdown"                # markdown | json
 search_max_chars = 24000
 fetch_max_chars = 30000
+content_max_chars = 3000                # per-result content cap
 max_count = 20
 cache_ttl = "5m"                        # set "0s" to disable in-process MCP cache
 cache_size = 256
@@ -41,22 +43,23 @@ proxy = ""                              # empty respects HTTPS_PROXY / HTTP_PROX
 fake_ip_cidrs = ["198.18.0.0/15"]       # TUN Fake-IP CIDR allowlist
 allow_private = false                   # allow private/loopback IPs in local fetch (keep false for SSRF guard)
 
+# Every provider supports enabled = false, plus timeout, concurrency, qps, and weight.
 [providers.deepseek]
 api_key = "env:DEEPSEEK_API_KEY"        # supports plaintext keys (comma-separated for rotation)
 base_url = "https://api.deepseek.com"
 timeout = "10s"
 fetch_timeout = "10s"
 concurrency = 4
-weight = 1.0
+weight = 1.0                            # fusion ranking weight
 # price_search = "CNY:0.005"            # optional reference unit price for cost estimation
 # price_fetch = "CNY:0.005"
 
 [providers.keenable]
-api_key = "env:KEENABLE_API_KEY"        # default data policy retains queries/results; set enabled = false for sensitive queries
+api_key = "env:KEENABLE_API_KEY"        # retains queries/results by default; set enabled = false if sensitive
 mode = "pro"                            # pro | realtime
 
 [providers.zhihu]
-api_key = "env:ZHIHU_API_KEY"           # also accepts ZHIHU_ACCESS_SECRET
+api_key = "env:ZHIHU_API_KEY"
 scope = "global"                        # global (web) | zhihu (Zhihu community)
 search_db = "all"                       # all | realtime | static (global scope only)
 # price_search = "CNY:0.005"
@@ -65,7 +68,7 @@ search_db = "all"                       # all | realtime | static (global scope 
 [providers.exa]
 api_key = "env:EXA_API_KEY"
 search_type = "auto"                    # lite | auto | fast | instant | deep-lite | deep | deep-reasoning
-allow_over_10 = false
+allow_over_10 = false                   # allow >10 results per query (may trigger higher pricing tier)
 
 [providers.tinyfish]
 api_key = "env:TINYFISH_API_KEY"
@@ -94,14 +97,14 @@ fetch_mode = "standard"                 # standard | pro
 render_js = false                       # auto-escalates when an anti-bot/JS wall is detected
 
 [providers.parallel]
-api_key = "env:PARALLEL_API_KEY"        # standard terms allow de-identified training; EU ZDR endpoint (eu.parallel.ai) requires mode = "basic"
+api_key = "env:PARALLEL_API_KEY"        # standard terms allow de-identified training; EU endpoint needs mode = "basic"
 mode = "fast"                           # turbo | fast | basic | advanced
 # base_url = "https://api.parallel.ai"
-# price_search = "USD:0.001"            # optional unit price estimate
-# price_fetch = "USD:0.001"             # optional Extract unit price estimate
+# price_search = "USD:0.001"
+# price_fetch = "USD:0.001"
 
 [providers.firecrawl]
-api_key = "env:FIRECRAWL_API_KEY"       # required for Firecrawl Cloud; optional for self-hosted base_url (http:// allowed for loopback only; remote hosts require https://)
+api_key = "env:FIRECRAWL_API_KEY"       # required on cloud; optional for self-hosted base_url (remote needs https://)
 # base_url = "https://api.firecrawl.dev"
 proxy = "auto"                          # auto | basic | enhanced
 max_pdf_pages = 20                      # max PDF pages parsed per fetch

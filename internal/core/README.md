@@ -10,7 +10,7 @@
 - `provider.go`：`Searcher`、`DynamicSearcher`、`Fetcher`、`SpecialistFetcher`、`FetchProfiler`、`Answerer` 接口与能力声明 `Capabilities`。
 - `cost.go`：整数微单位成本 `Cost` 核算、可选单价解析与多币种饱和汇总。
 - `freshness.go`：相对时间窗与绝对日期区间的日历解析及月底钳制。
-- `errors.go`：12 个稳定机器错误码、结构化错误 `Error`、回退判定与进程退出码映射。
+- `errors.go`：13 个稳定机器错误码、结构化错误 `Error`、回退判定与进程退出码映射。
 
 ## 开发规范
 

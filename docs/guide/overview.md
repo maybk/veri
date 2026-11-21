@@ -14,8 +14,8 @@ main.go -> internal/cli | internal/mcpserver -> internal/app -> internal/router 
 | [`internal/mcpserver`](../../internal/mcpserver/README.md) | 基于官方 MCP Go SDK 的 stdio 服务端（`web_search` / `web_fetch`） | 工具描述与结构化输出固定使用英文 |
 | [`internal/app`](../../internal/app/README.md) | 显式 Provider 注册装配、进程内缓存、并发请求合并与 `doctor` 诊断 | 禁用包级 `init()` 隐式注册 |
 | [`internal/update`](../../internal/update/README.md) | 官方 Release 版本检查、摘要校验、安装形态识别与跨平台原子自更新 | 网络经 `httpx`，元数据与摘要仅信任官方源 |
-| [`internal/router`](../../internal/router/README.md) | 链式自动回退、并发 RRF 融合、网页提取选路与 404/空结果短路、质量闸门、过滤模拟与预算截断 | 仅导入 `core` / `mdscan` / `spec` / `textnorm` / `urlnorm` |
-| [`internal/provider`](../../internal/provider/README.md) | 各检索源与本地/GitHub 网页提取适配器 | 互不导入，不感知外层路由与缓存 |
+| [`internal/router`](../../internal/router/README.md) | 链式自动回退、并发 RRF 融合、网页提取选路与 404/空结果短路、质量闸门、过滤模拟与预算截断 | 仅导入内部包 `core` / `mdscan` / `spec` / `textnorm` / `urlnorm` |
+| [`internal/provider`](../../internal/provider/README.md) | 各云端检索/提取源与本地/GitHub 网页提取适配器 | 互不导入，不感知外层路由与缓存 |
 | [`internal/httpx`](../../internal/httpx/README.md) | 安全 HTTP 客户端、SSRF 拨号拦截、TUN Fake-IP 放行、并发闸门与计费安全重试 | 严禁使用 `http.DefaultClient` |
 | [`internal/htmlmd`](../../internal/htmlmd/README.md) | HTML DOM 预处理（代码块、公式/MathML、隐藏节点清洗）与紧凑 GFM Markdown 渲染 | 仅依赖标准库、`golang.org/x/net/html` 与 `mdscan` |
 | [`internal/keypool`](../../internal/keypool/README.md) | 同厂商多密钥轮询、按状态退避冷却与失效隔离 | 仅依赖 Go 标准库 |

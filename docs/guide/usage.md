@@ -225,6 +225,6 @@ mise upgrade npm:@maybk/veri        # mise（或 mise upgrade github:maybk/veri�
 
 ## 进一步阅读
 
-- [配置说明](./configuration.md)：自定义检索/提取路由链、中英文分链、代理、TOML 全量字段与安全机制。
+- [配置说明](./configuration.md)：自定义检索/提取路由链、语种分链与双融合池、代理、TOML 全量字段与安全机制。
 - [检索与提取源说明](./providers.md)：适配器技术能力矩阵、4 种提取策略与 `-o key=value` 厂商扩展参数。
 - [项目概览与目录结构](./overview.md)：整体架构与模块边界说明。
