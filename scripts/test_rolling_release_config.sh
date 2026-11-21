@@ -23,6 +23,7 @@ grep -Fq "extract_pending_version.sh" "$rolling_workflow"
 grep -Fq 'draft_tag="${rolling_tag}-stage-${SHORT_SHA}"' "$rolling_workflow"
 grep -Fq 'trap cleanup_draft EXIT' "$rolling_workflow"
 grep -Fq 'if [ "$actual_names" != "$expected_names" ]; then' "$rolling_workflow"
+grep -Fq 'sha256sum -c SHA256SUMS.txt' "$rolling_workflow"
 grep -Fq -- "--draft=false --prerelease" "$rolling_workflow"
 grep -Fq -- "--draft=false --latest" "$release_workflow"
 

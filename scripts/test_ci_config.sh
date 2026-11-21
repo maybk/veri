@@ -95,7 +95,7 @@ for required_runner in \
   fi
 done
 
-# 5. 校验 release.yml 复用 CI 与构建流水线、先 Draft 验证资产与包管理器清单后再公开
+# 5. 校验 release.yml 复用 CI 与构建流水线、实测校验和并先 Draft 验证资产后再公开
 release_ci_job="$(awk '/^  ci:/,/^  build:/' "$release_workflow")"
 grep -Fq 'uses: ./.github/workflows/ci.yml' <<<"$release_ci_job"
 
@@ -118,12 +118,12 @@ for expected_asset in \
     exit 1
   fi
 done
+grep -Fq 'test "$(wc -l < SHA256SUMS.txt' <<<"$publish_job"
+grep -Fq 'sha256sum -c SHA256SUMS.txt' <<<"$publish_job"
 grep -Fq 'all(.state == "uploaded")' <<<"$publish_job"
-grep -Fq 'render_package_manifests.sh' <<<"$publish_job"
 grep -Fq 'chmod 600 "$sig_key_file"' <<<"$publish_job"
-grep -Fq 'Psych.safe_load_file' <<<"$publish_job"
 
-# 6. 校验 .golangci.yml 为合法 v2 结构，且 build/config.yml 与根级 main.go 版本注入一致
+# 6. 校验 .golangci.yml 为合法 v2 结构，且 build/config.yml 元信息与根级 main.go 版本注入一致
 test -s "$repo_root/.golangci.yml"
 grep -Eq '^version:[[:space:]]*"2"' "$repo_root/.golangci.yml"
 if grep -Eq '^linters-settings:' "$repo_root/.golangci.yml"; then
@@ -131,11 +131,43 @@ if grep -Eq '^linters-settings:' "$repo_root/.golangci.yml"; then
   exit 1
 fi
 
-config_ver="$(awk '/^[^[:space:]#]/{in_info=($1=="info:")} in_info && /^[[:space:]]+version:/{sub(/.*version:[[:space:]]*"/,""); sub(/".*/,""); print; exit}' "$repo_root/build/config.yml")"
+read_info_quoted_field() {
+  local field="$1"
+  local raw_line re
+  raw_line="$(awk -v field="$field" '
+    { sub(/\015$/, "") }
+    /^[^[:space:]#]/ { in_info = ($1 == "info:") }
+    in_info && $0 ~ ("^[[:space:]]+" field ":[[:space:]]*") { print; exit }
+  ' "$repo_root/build/config.yml")"
+  re="^[[:space:]]+${field}:[[:space:]]+\"(.*)\"[[:space:]]*$"
+  if [[ ! "$raw_line" =~ $re ]]; then
+    echo "info.${field} in build/config.yml must be a double-quoted scalar: ${raw_line:-<missing>}" >&2
+    return 1
+  fi
+  printf '%s' "${BASH_REMATCH[1]}"
+}
+
+config_ver="$(read_info_quoted_field version)"
 if [[ ! "$config_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid info.version in build/config.yml: ${config_ver:-<missing>}" >&2
   exit 1
 fi
+config_product="$(read_info_quoted_field productName)"
+if [ "$config_product" != "veri" ]; then
+  echo "Invalid info.productName in build/config.yml: ${config_product:-<missing>}" >&2
+  exit 1
+fi
+config_desc="$(read_info_quoted_field description)"
+if [ -z "$config_desc" ] || [ "${#config_desc}" -gt 80 ]; then
+  echo "Invalid info.description length in build/config.yml (${#config_desc}): ${config_desc:-<missing>}" >&2
+  exit 1
+fi
+case "$config_desc" in
+  " "*|*" "|*.|*\"*|*\\*|*": "*|*" #"*)
+    echo "info.description in build/config.yml must be a plain scalar without leading/trailing space, trailing period, or unsafe chars: $config_desc" >&2
+    exit 1
+    ;;
+esac
 test -s "$repo_root/main.go"
 grep -Fq "build/config.yml" "$repo_root/main.go"
 if grep -Fq "DefaultVersion" "$repo_root/internal/core/"*.go "$repo_root/internal/spec/"*.go; then
@@ -158,6 +190,18 @@ grep -Fq "golangci-lint run" "$repo_root/Taskfile.yml"
 grep -Fq "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@" "$repo_root/Taskfile.yml"
 grep -Fq "govulncheck ./..." "$repo_root/Taskfile.yml"
 grep -Fq "golang.org/x/vuln/cmd/govulncheck@" "$repo_root/Taskfile.yml"
+for test_script in "$repo_root"/scripts/test_*.sh; do
+  test -f "$test_script"
+  rel_script="${test_script#"$repo_root/"}"
+  if ! grep -Fq "bash $rel_script" "$ci_workflow"; then
+    echo "ci.yml is missing contract test: $rel_script" >&2
+    exit 1
+  fi
+  if ! grep -Fq "bash $rel_script" "$repo_root/Taskfile.yml"; then
+    echo "Taskfile.yml is missing contract test: $rel_script" >&2
+    exit 1
+  fi
+done
 test -s "$repo_root/build/Taskfile.yml"
 grep -Fq -- '--owner=0 --group=0 --numeric-owner' "$repo_root/build/Taskfile.yml"
 grep -Fq -- '--uname "" --gname ""' "$repo_root/build/Taskfile.yml"
@@ -165,3 +209,4 @@ test -s "$repo_root/build/darwin/Taskfile.yml"
 test -s "$repo_root/build/linux/Taskfile.yml"
 test -s "$repo_root/build/windows/Taskfile.yml"
 test ! -e "$repo_root/.goreleaser.yaml"
+test ! -e "$repo_root/scripts/render_package_manifests.sh"

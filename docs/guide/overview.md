@@ -79,7 +79,7 @@ veri/
 │   ├── darwin/                # macOS 独立构建与打包任务
 │   ├── linux/                 # Linux 独立构建与打包任务
 │   └── windows/               # Windows 独立构建与打包任务
-├── scripts/                   # 版本提取、发版准备、Release 说明与包清单脚本
+├── scripts/                   # 版本提取、发版准备、Release 说明与安装脚本
 ├── .github/                   # PR 模板、Dependabot 与 CI / Release / Rolling 工作流
 ├── docs/guide/                # 稳定项目指南
 ├── CHANGELOG.md               # 版本更新日志
