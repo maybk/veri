@@ -141,6 +141,16 @@ func Default() Config {
 				Concurrency:  spec.DefaultProviderConcurrency,
 				Weight:       1.0,
 			},
+			Parallel: ParallelConfig{
+				Enabled:      true,
+				APIKey:       spec.DefaultEnvRef(spec.ProviderParallel),
+				BaseURL:      spec.DefaultParallelBaseURL,
+				Mode:         spec.ParallelModeFast,
+				Timeout:      Duration{spec.DefaultProviderSearchTimeout},
+				FetchTimeout: Duration{spec.DefaultProviderFetchTimeout},
+				Concurrency:  spec.DefaultProviderConcurrency,
+				Weight:       1.0,
+			},
 			Firecrawl: FirecrawlConfig{
 				Enabled:      true,
 				APIKey:       spec.DefaultEnvRef(spec.ProviderFirecrawl),

@@ -5,8 +5,8 @@
 lang = "auto"                           # auto | zh | en
 
 [search]
-providers = ["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "keenable", "firecrawl"]
-# providers_en = ["exa", "linkup", "tavily", "brave", "tinyfish", "keenable", "deepseek"]
+providers = ["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "parallel", "keenable", "firecrawl"]
+# providers_en = ["exa", "parallel", "linkup", "tavily", "brave", "tinyfish", "keenable", "deepseek"]
 # fusion_providers = ["deepseek", "exa", "tavily"]
 strategy = "auto"                       # auto | fusion
 count = 8                               # 默认结果数（1～50）
@@ -19,8 +19,8 @@ summary_max_runes = 800
 
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
-providers = ["deepseek", "tinyfish", "tavily", "exa", "linkup", "keenable", "firecrawl"]
-providers_global = ["exa", "tavily", "linkup", "tinyfish", "keenable", "firecrawl", "deepseek"] # 非中文站点提取链（设 [] 关闭分链）
+providers = ["deepseek", "tinyfish", "tavily", "exa", "linkup", "parallel", "keenable", "firecrawl"]
+providers_global = ["exa", "tavily", "linkup", "parallel", "tinyfish", "keenable", "firecrawl", "deepseek"] # 非中文站点提取链（设 [] 关闭分链）
 timeout = "45s"
 max_bytes = "5MB"                       # 本地抓取解压后响应体上限
 min_content_runes = 300                 # 本地提取正文质量闸门最少字符数
@@ -91,6 +91,13 @@ api_key = "env:LINKUP_API_KEY"
 depth = "fast"                          # flash | fast | standard | deep
 fetch_mode = "standard"                 # standard | pro
 render_js = false                       # 遇反爬/JS 盾时自动按需升档
+
+[providers.parallel]
+api_key = "env:PARALLEL_API_KEY"        # 标准条款允许去标识化用于模型训练；合规企业可切 eu.parallel.ai（需 mode = "basic"）
+mode = "fast"                           # turbo | fast | basic | advanced
+# base_url = "https://api.parallel.ai"
+# price_search = "USD:0.001"            # 可选：参考单价以在响应中估算成本
+# price_fetch = "USD:0.001"             # 可选：Extract 参考单价
 
 [providers.firecrawl]
 api_key = "env:FIRECRAWL_API_KEY"       # 官方云端必填；指向自托管 base_url 时允许无密钥（仅回环可用 http://，非回环需 https://）

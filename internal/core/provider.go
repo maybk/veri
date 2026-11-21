@@ -27,6 +27,8 @@ const (
 	TimeRelative TimeSupport = "relative"
 	// TimeAbsolute 仅支持绝对日期区间。
 	TimeAbsolute TimeSupport = "absolute"
+	// TimeAfterOnly 仅支持起始日期下界（after_date，无截止日期上界）。
+	TimeAfterOnly TimeSupport = "after_only"
 	// TimeBoth 同时支持相对时间窗与绝对日期区间。
 	TimeBoth TimeSupport = "both"
 )

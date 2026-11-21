@@ -1,0 +1,35 @@
+{
+  "search_id": "search_019a0000000000000000000001",
+  "session_id": "session_019a0000000000000000000001",
+  "results": [
+    {
+      "url": "https://docs.python.org/3/library/asyncio.html",
+      "title": "asyncio — Asynchronous I/O",
+      "publish_date": "2026-08-15",
+      "excerpts": [
+        "asyncio is a library to write concurrent code using the async/await syntax.",
+        "Use asyncio.run() to run the top-level entry point."
+      ]
+    },
+    {
+      "url": "https://example.org/notes",
+      "title": null,
+      "publish_date": null,
+      "excerpts": [
+        "Compact excerpt without publish date."
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "type": "input_validation_warning",
+      "message": "max_results capped to 20"
+    }
+  ],
+  "usage": [
+    {
+      "name": "sku_search",
+      "count": 1
+    }
+  ]
+}

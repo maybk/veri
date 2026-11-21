@@ -49,7 +49,7 @@ veri config show                               # 输出合并并脱敏后的生�
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ui.lang` | `"auto"` | 终端界面语言：`auto`（跟随系统，非中文环境回退英文）、`zh`、`en`（兼容 `zh_CN.UTF-8` 等标准 Locale） |
-| `search.providers` | `["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "keenable", "firecrawl"]` | 默认检索优先级链（仅已配置密钥的源参与路由） |
+| `search.providers` | `["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "parallel", "keenable", "firecrawl"]` | 默认检索优先级链（仅已配置密钥的源参与路由） |
 | `search.providers_en` | `[]` | 可选；查询词不含中日韩字符时优先使用的英文检索链 |
 | `search.fusion_providers` | `[]` | 可选；`--fusion` 模式默认并发检索源集合（如 `["deepseek", "exa", "tavily"]`；为空时取前 3 个已启用源） |
 | `search.strategy` | `"auto"` | `auto`（链式回退）或 `fusion`（多源并发 RRF 融合） |
@@ -63,8 +63,8 @@ veri config show                               # 输出合并并脱敏后的生�
 | `search.content_max_runes` | `0` | 单条结果 `content` 最大字符数（`0` 表示不限制） |
 | `search.max_chars` | `0` | CLI 检索整包字符预算上限（`0` 表示不限制） |
 | `fetch.strategy` | `"api_first"` | 提取路由策略：`api_first`（云端优先、本地回退）、`smart_local`、`local_only`、`api_only` |
-| `fetch.providers` | `["deepseek", "tinyfish", "tavily", "exa", "linkup", "keenable", "firecrawl"]` | 默认云端网页提取链（中文站点优先使用；显式配置且未配置 `providers_global` 时统一按此顺序执行） |
-| `fetch.providers_global` | `["exa", "tavily", "linkup", "tinyfish", "keenable", "firecrawl", "deepseek"]` | 非中文站点优先使用的云端提取链（设为空数组 `[]` 可关闭分链） |
+| `fetch.providers` | `["deepseek", "tinyfish", "tavily", "exa", "linkup", "parallel", "keenable", "firecrawl"]` | 默认云端网页提取链（中文站点优先使用；显式配置且未配置 `providers_global` 时统一按此顺序执行） |
+| `fetch.providers_global` | `["exa", "tavily", "linkup", "parallel", "tinyfish", "keenable", "firecrawl", "deepseek"]` | 非中文站点优先使用的云端提取链（设为空数组 `[]` 可关闭分链） |
 | `fetch.timeout` | `"45s"` | 单次网页提取总超时（作为外层上限覆盖各源 `fetch_timeout`） |
 | `fetch.max_bytes` | `"5MB"` | 本地抓取解压后响应体上限 |
 | `fetch.min_content_runes` | `300` | 本地提取正文质量闸门最少字符阈值 |
@@ -106,6 +106,7 @@ veri config show                               # 输出合并并脱敏后的生�
 | `TAVILY_API_KEY` | — | Tavily Search / Extract API 密钥 |
 | `BRAVE_API_KEY` | `BRAVE_SEARCH_API_KEY` | Brave Search API 密钥 |
 | `LINKUP_API_KEY` | — | Linkup Search / Fetch API 密钥 |
+| `PARALLEL_API_KEY` | — | Parallel Search / Extract REST API 密钥 |
 | `FIRECRAWL_API_KEY` | — | Firecrawl v2 Scrape / Search API 密钥（非官方自托管 `base_url` 可省略） |
 | `GITHUB_TOKEN` | `GH_TOKEN` | GitHub REST API 访问令牌（可选，用于提高匿名配额） |
 | `VERI_CONFIG` | — | 覆盖配置文件路径 |

@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "error": {
+    "ref_id": "err_019a0000000000000000000422",
+    "message": "Request validation error: advanced_settings.source_policy conflict"
+  }
+}

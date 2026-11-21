@@ -17,6 +17,7 @@ import (
 	"veri/internal/provider/firecrawl"
 	"veri/internal/provider/keenable"
 	"veri/internal/provider/linkup"
+	"veri/internal/provider/parallel"
 	"veri/internal/provider/tavily"
 	"veri/internal/provider/tencentwsa"
 	"veri/internal/provider/tinyfish"
@@ -187,6 +188,21 @@ func TestLiveProviders(t *testing.T) {
 		}
 	})
 
+	t.Run("Parallel", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderParallel)
+		if k == "" {
+			t.Skip("PARALLEL_API_KEY not set")
+		}
+		p, _, err := parallel.New(parallel.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := p.Search(ctx, req)
+		if err != nil || len(out.Results) == 0 {
+			t.Fatalf("live search failed: out=%+v err=%v", out, err)
+		}
+	})
+
 	t.Run("Firecrawl", func(t *testing.T) {
 		k := firstCredentialEnv(spec.ProviderFirecrawl)
 		if k == "" {
@@ -294,6 +310,19 @@ func TestLiveFetchNotFoundContracts(t *testing.T) {
 			t.Skip("LINKUP_API_KEY not set")
 		}
 		p, _, err := linkup.New(linkup.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.Fetch(ctx, req)
+		assertNotFound(t, err)
+	})
+
+	t.Run("Parallel", func(t *testing.T) {
+		k := firstCredentialEnv(spec.ProviderParallel)
+		if k == "" {
+			t.Skip("PARALLEL_API_KEY not set")
+		}
+		p, _, err := parallel.New(parallel.Options{Keys: []string{k}}, cli)
 		if err != nil {
 			t.Fatal(err)
 		}

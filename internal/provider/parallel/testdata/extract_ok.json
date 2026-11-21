@@ -1,0 +1,23 @@
+{
+  "extract_id": "extract_019a0000000000000000000002",
+  "session_id": "session_019a0000000000000000000002",
+  "results": [
+    {
+      "url": "https://go.dev/doc/effective_go",
+      "title": "Effective Go",
+      "publish_date": "2026-05-01",
+      "excerpts": [
+        "Go is a new language."
+      ],
+      "full_content": "# Effective Go\n\nGo is a new language. Although it borrows ideas from existing languages, it has unusual properties."
+    }
+  ],
+  "errors": [],
+  "warnings": null,
+  "usage": [
+    {
+      "name": "sku_extract_excerpts",
+      "count": 1
+    }
+  ]
+}

@@ -13,6 +13,7 @@ import (
 	"veri/internal/provider/keenable"
 	"veri/internal/provider/linkup"
 	"veri/internal/provider/local"
+	"veri/internal/provider/parallel"
 	"veri/internal/provider/tavily"
 	"veri/internal/provider/tencentwsa"
 	"veri/internal/provider/tinyfish"
@@ -245,6 +246,31 @@ func buildLinkup(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatu
 	timeout := formatProviderTimeout(cfg.Timeout.Duration, cfg.FetchTimeout.Duration)
 	details := fmt.Sprintf("depth=%s, fetch=%s", textnorm.FirstNonEmpty(cfg.Depth, spec.LinkupDepthFast), textnorm.FirstNonEmpty(cfg.FetchMode, spec.LinkupFetchModeStandard))
 	return p, statusEntry(spec.ProviderLinkup, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
+}
+
+func buildParallel(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
+	cfg := loaded.Config.Providers.Parallel
+	cred := loaded.Credentials[spec.ProviderParallel]
+	if !cfg.Enabled {
+		return nil, disabledByConfigEntry(spec.ProviderParallel, cred.Source, hostFromURL(cfg.BaseURL)), nil
+	}
+	p, enabled, err := parallel.New(parallel.Options{
+		Keys:         cred.Keys,
+		BaseURL:      cfg.BaseURL,
+		Mode:         cfg.Mode,
+		Timeout:      cfg.Timeout.Duration,
+		FetchTimeout: cfg.FetchTimeout.Duration,
+		Concurrency:  cfg.Concurrency,
+		QPS:          cfg.QPS,
+		PriceSearch:  cfg.PriceSearch,
+		PriceFetch:   cfg.PriceFetch,
+	}, deps.APIClient)
+	if err != nil {
+		return nil, ProviderStatus{}, err
+	}
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, cfg.FetchTimeout.Duration)
+	details := fmt.Sprintf("mode=%s", textnorm.FirstNonEmpty(cfg.Mode, spec.ParallelModeFast))
+	return p, statusEntry(spec.ProviderParallel, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
 }
 
 func buildFirecrawl(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {

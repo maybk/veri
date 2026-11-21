@@ -16,6 +16,7 @@ const (
 	ProviderTavily     = "tavily"
 	ProviderBrave      = "brave"
 	ProviderLinkup     = "linkup"
+	ProviderParallel   = "parallel"
 	ProviderFirecrawl  = "firecrawl"
 	ProviderGitHub     = "github"
 	ProviderLocal      = "local"
@@ -42,6 +43,7 @@ const (
 	DefaultTavilyBaseURL     = "https://api.tavily.com"
 	DefaultBraveBaseURL      = "https://api.search.brave.com"
 	DefaultLinkupBaseURL     = "https://api.linkup.so"
+	DefaultParallelBaseURL   = "https://api.parallel.ai"
 	DefaultFirecrawlBaseURL  = "https://api.firecrawl.dev"
 	DefaultGitHubAPIBaseURL  = "https://api.github.com"
 	DefaultGitHubRawBaseURL  = "https://raw.githubusercontent.com"
@@ -72,6 +74,7 @@ const (
 	EnvBraveAPIKey         = "BRAVE_API_KEY"
 	EnvBraveSearchAliasKey = "BRAVE_SEARCH_API_KEY"
 	EnvLinkupAPIKey        = "LINKUP_API_KEY"
+	EnvParallelAPIKey      = "PARALLEL_API_KEY"
 	EnvFirecrawlAPIKey     = "FIRECRAWL_API_KEY"
 	EnvGitHubToken         = "GITHUB_TOKEN"
 	EnvGHTokenAlias        = "GH_TOKEN"
@@ -125,6 +128,7 @@ func Providers() []ProviderInfo {
 		{Name: ProviderTavily, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvTavilyAPIKey}},
 		{Name: ProviderBrave, Roles: RoleSearch, EnvVars: []string{EnvBraveAPIKey, EnvBraveSearchAliasKey}},
 		{Name: ProviderLinkup, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvLinkupAPIKey}},
+		{Name: ProviderParallel, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvParallelAPIKey}},
 		{Name: ProviderFirecrawl, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvFirecrawlAPIKey}},
 		{Name: ProviderGitHub, Roles: RoleFetch, EnvVars: []string{EnvGitHubToken, EnvGHTokenAlias}},
 		{Name: ProviderLocal, Roles: RoleFetch},
@@ -213,6 +217,7 @@ func DefaultSearchProviders() []string {
 		ProviderTavily,
 		ProviderBrave,
 		ProviderLinkup,
+		ProviderParallel,
 		ProviderKeenable,
 		ProviderFirecrawl,
 	}
@@ -226,6 +231,7 @@ func DefaultFetchProviders() []string {
 		ProviderTavily,
 		ProviderExa,
 		ProviderLinkup,
+		ProviderParallel,
 		ProviderKeenable,
 		ProviderFirecrawl,
 	}
@@ -237,6 +243,7 @@ func DefaultFetchProvidersGlobal() []string {
 		ProviderExa,
 		ProviderTavily,
 		ProviderLinkup,
+		ProviderParallel,
 		ProviderTinyFish,
 		ProviderKeenable,
 		ProviderFirecrawl,

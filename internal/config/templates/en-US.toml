@@ -5,8 +5,8 @@
 lang = "auto"                           # auto | zh | en
 
 [search]
-providers = ["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "keenable", "firecrawl"]
-# providers_en = ["exa", "linkup", "tavily", "brave", "tinyfish", "keenable", "deepseek"]
+providers = ["deepseek", "exa", "zhihu", "tinyfish", "tencent_wsa", "tavily", "brave", "linkup", "parallel", "keenable", "firecrawl"]
+# providers_en = ["exa", "parallel", "linkup", "tavily", "brave", "tinyfish", "keenable", "deepseek"]
 # fusion_providers = ["deepseek", "exa", "tavily"]
 strategy = "auto"                       # auto | fusion
 count = 8                               # default result count (1-50)
@@ -19,8 +19,8 @@ summary_max_runes = 800
 
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
-providers = ["deepseek", "tinyfish", "tavily", "exa", "linkup", "keenable", "firecrawl"]
-providers_global = ["exa", "tavily", "linkup", "tinyfish", "keenable", "firecrawl", "deepseek"] # non-CN fetch chain (set [] to disable)
+providers = ["deepseek", "tinyfish", "tavily", "exa", "linkup", "parallel", "keenable", "firecrawl"]
+providers_global = ["exa", "tavily", "linkup", "parallel", "tinyfish", "keenable", "firecrawl", "deepseek"] # non-CN fetch chain (set [] to disable)
 timeout = "45s"
 max_bytes = "5MB"                       # max decompressed response size for local fetch
 min_content_runes = 300                 # minimum runes required to pass local quality gate
@@ -91,6 +91,13 @@ api_key = "env:LINKUP_API_KEY"
 depth = "fast"                          # flash | fast | standard | deep
 fetch_mode = "standard"                 # standard | pro
 render_js = false                       # auto-escalates when an anti-bot/JS wall is detected
+
+[providers.parallel]
+api_key = "env:PARALLEL_API_KEY"        # standard terms allow de-identified training; EU ZDR endpoint (eu.parallel.ai) requires mode = "basic"
+mode = "fast"                           # turbo | fast | basic | advanced
+# base_url = "https://api.parallel.ai"
+# price_search = "USD:0.001"            # optional unit price estimate
+# price_fetch = "USD:0.001"             # optional Extract unit price estimate
 
 [providers.firecrawl]
 api_key = "env:FIRECRAWL_API_KEY"       # required for Firecrawl Cloud; optional for self-hosted base_url (http:// allowed for loopback only; remote hosts require https://)

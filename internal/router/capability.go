@@ -166,6 +166,22 @@ func matchCapabilities(caps core.Capabilities, req *core.SearchRequest, strict b
 	if req.Filters.Freshness != nil {
 		switch caps.Freshness {
 		case core.TimeBoth, core.TimeAbsolute:
+		case core.TimeAfterOnly:
+			if !req.Filters.Freshness.Before.IsZero() {
+				if strict {
+					plan.unsupportedReason = "freshness"
+					return plan
+				}
+				if req.Filters.Freshness.After.IsZero() {
+					plan.adapted.Filters.Freshness = nil
+				} else {
+					afterOnly := *req.Filters.Freshness
+					afterOnly.Before = time.Time{}
+					plan.adapted.Filters.Freshness = &afterOnly
+				}
+				plan.emulateFreshness = req.Filters.Freshness
+				plan.degraded = append(plan.degraded, "freshness:emulated")
+			}
 		case core.TimeRelative:
 			if !req.Filters.Freshness.IsRelative() {
 				if strict {

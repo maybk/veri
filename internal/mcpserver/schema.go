@@ -276,6 +276,8 @@ func searchOptionsDescription(effZhihuScope string) string {
 		fmt.Sprintf("%q [%s|%s|%s, %s only]", spec.OptZhihuSearchDB, spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic, spec.ZhihuScopeGlobal),
 		fmt.Sprintf("%q [%s only, e.g. VoteUpCount:desc]", spec.OptZhihuSort, spec.ZhihuScopeZhihu),
 		fmt.Sprintf("%q [%s|%s|%s|%s]", spec.OptLinkupDepth, spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep),
+		fmt.Sprintf("%q [%s|%s|%s|%s]", spec.OptParallelMode, spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced),
+		fmt.Sprintf("%q [2-letter country code, e.g. us, gb, jp]", spec.OptParallelLocation),
 		fmt.Sprintf("%q [research|pdf|developer|gov]", spec.OptFirecrawlCategory),
 	}
 	return "Optional provider options (e.g. " + strings.Join(parts, ", ") + ")."

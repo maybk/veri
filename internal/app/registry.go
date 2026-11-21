@@ -43,6 +43,7 @@ var factories = []Factory{
 	buildTavily,
 	buildBrave,
 	buildLinkup,
+	buildParallel,
 	buildFirecrawl,
 	buildGitHub,
 	buildLocal,

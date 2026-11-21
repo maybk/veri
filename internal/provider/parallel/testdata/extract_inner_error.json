@@ -1,0 +1,15 @@
+{
+  "extract_id": "extract_019a0000000000000000000003",
+  "session_id": "session_019a0000000000000000000003",
+  "results": [],
+  "errors": [
+    {
+      "url": "https://example.com/missing",
+      "error_type": "http_client_error",
+      "http_status_code": 404,
+      "content": "Page not found"
+    }
+  ],
+  "warnings": null,
+  "usage": []
+}

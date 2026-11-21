@@ -82,6 +82,7 @@ type ProvidersConfig struct {
 	Tavily     TavilyConfig     `toml:"tavily" json:"tavily"`
 	Brave      BraveConfig      `toml:"brave" json:"brave"`
 	Linkup     LinkupConfig     `toml:"linkup" json:"linkup"`
+	Parallel   ParallelConfig   `toml:"parallel" json:"parallel"`
 	Firecrawl  FirecrawlConfig  `toml:"firecrawl" json:"firecrawl"`
 	GitHub     GitHubConfig     `toml:"github" json:"github"`
 	Local      LocalConfig      `toml:"local" json:"local"`
@@ -219,6 +220,21 @@ type LinkupConfig struct {
 	PriceFetch   string   `toml:"price_fetch,omitempty" json:"price_fetch,omitempty"`
 }
 
+// ParallelConfig 配置 Parallel Search & Extract REST v1 API。
+type ParallelConfig struct {
+	Enabled      bool     `toml:"enabled" json:"enabled"`
+	APIKey       string   `toml:"api_key" json:"api_key"`
+	BaseURL      string   `toml:"base_url" json:"base_url"`
+	Mode         string   `toml:"mode" json:"mode"` // turbo | fast | basic | advanced
+	Timeout      Duration `toml:"timeout" json:"timeout"`
+	FetchTimeout Duration `toml:"fetch_timeout" json:"fetch_timeout"`
+	Concurrency  int      `toml:"concurrency" json:"concurrency"`
+	Weight       float64  `toml:"weight" json:"weight"`
+	QPS          float64  `toml:"qps" json:"qps"`
+	PriceSearch  string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
+	PriceFetch   string   `toml:"price_fetch,omitempty" json:"price_fetch,omitempty"`
+}
+
 // FirecrawlConfig 配置 Firecrawl v2 Scrape & Search API（支持官方云端与开源自托管）。
 type FirecrawlConfig struct {
 	Enabled      bool     `toml:"enabled" json:"enabled"`
@@ -270,7 +286,7 @@ func (p ProvidersConfig) CredentialSpec(provider string) string {
 
 // CredentialSpecs 一次遍历按 toml 标签收集全部 Provider 的凭据配置字符串映射。
 func (p ProvidersConfig) CredentialSpecs() map[string]string {
-	out := make(map[string]string, 12)
+	out := make(map[string]string, reflect.ValueOf(p).NumField())
 	_ = walkProviderFields(&p, func(provName, fieldTag string, val reflect.Value) error {
 		if isSecretTOMLTag(fieldTag) && val.Kind() == reflect.String {
 			out[provName] = val.String()

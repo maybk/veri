@@ -6,11 +6,11 @@
 
 ### 新增
 
-- 新增 Keenable、知乎（全网与站内搜索）、Linkup 与 Firecrawl（支持云端与自托管）4 个检索与提取源。
+- 新增 Keenable、知乎（全网与站内搜索）、Linkup、Parallel 与 Firecrawl（支持云端与自托管）5 个检索与提取源。
 
 ### 变更
 
-- 优化非中文站点默认云端提取顺序，支持 Tavily、Linkup 与 Firecrawl 的 PDF 及动态渲染提取。
+- 优化非中文站点默认云端提取顺序，支持 Tavily、Linkup、Parallel 与 Firecrawl 的 PDF 及动态渲染提取。
 - 自动清理网页提取标题中多余的锚点符号（如 `[¶]`、`[#]`），提升正文与大纲可读性。
 - `veri doctor` 与默认配置模板展示当前生效策略与链路。
 - 默认检索输出精简站点图标以节省上下文，启用 `--extra` 时返回图标与扩展元数据。

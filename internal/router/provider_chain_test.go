@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"veri/internal/core"
 	"veri/internal/spec"
@@ -49,15 +50,16 @@ func TestNewProvidersFetchGlobalChainPDFPriorityAndEscalation(t *testing.T) {
 		}
 	}
 
-	// 1. 海外 PDF：稳定排序保证 exa -> linkup 均排在按页计费的 firecrawl 之前，且数据留存源 keenable 位于主流源之后
+	// 1. 海外 PDF：稳定排序保证 exa -> linkup -> parallel 均排在按页计费的 firecrawl 之前，且数据留存源 keenable 位于主流源之后
 	rPDF := New(Options{FetchStrategy: core.FetchAPIFirst}, []core.Provider{
 		mk(spec.ProviderDeepSeek, false, false, false),
 		mk(spec.ProviderKeenable, false, false, false),
 		mk(spec.ProviderExa, true, false, false),
 		mk(spec.ProviderLinkup, true, true, false),
+		mk(spec.ProviderParallel, true, true, false),
 		mk(spec.ProviderFirecrawl, true, true, false),
 	})
-	if got := rPDF.ActiveFetchChainGlobal(); !slices.Equal(got, []string{spec.ProviderExa, spec.ProviderLinkup, spec.ProviderKeenable, spec.ProviderFirecrawl, spec.ProviderDeepSeek}) {
+	if got := rPDF.ActiveFetchChainGlobal(); !slices.Equal(got, []string{spec.ProviderExa, spec.ProviderLinkup, spec.ProviderParallel, spec.ProviderKeenable, spec.ProviderFirecrawl, spec.ProviderDeepSeek}) {
 		t.Fatalf("ActiveFetchChainGlobal = %v", got)
 	}
 	order = nil
@@ -306,5 +308,111 @@ func TestRouterNormalizesGenericHeadingAnchorsAndPreservesCodeAndGitHub(t *testi
 	})
 	if err != nil || !ghEnv.OK || ghEnv.Page.Content != doc {
 		t.Fatalf("SourceGitHubFile content must remain untouched, got err=%v content=%q", err, ghEnv.Page.Content)
+	}
+}
+
+type afterOnlyFakeSearcher struct {
+	name          string
+	lastFreshness *core.Freshness
+	results       []core.Result
+}
+
+func (s *afterOnlyFakeSearcher) Name() string { return s.name }
+func (s *afterOnlyFakeSearcher) Capabilities() core.Capabilities {
+	return core.Capabilities{
+		MaxCount:  20,
+		Sites:     core.SiteMulti,
+		MaxSites:  100,
+		Freshness: core.TimeAfterOnly,
+		Content:   core.ContentFree,
+	}
+}
+
+func (s *afterOnlyFakeSearcher) Search(_ context.Context, req *core.SearchRequest) (*core.SearchOutcome, error) {
+	s.lastFreshness = req.Filters.Freshness
+	return &core.SearchOutcome{Results: slices.Clone(s.results)}, nil
+}
+
+func TestRouterTimeAfterOnlyFreshnessMatching(t *testing.T) {
+	inRange := time.Date(2025, 4, 15, 0, 0, 0, 0, time.UTC)
+	tooNew := time.Date(2025, 9, 1, 0, 0, 0, 0, time.UTC)
+	s := &afterOnlyFakeSearcher{
+		name: spec.ProviderParallel,
+		results: []core.Result{
+			{Title: "InRange", URL: "https://example.com/in", Published: &inRange},
+			{Title: "TooNew", URL: "https://example.com/new", Published: &tooNew},
+		},
+	}
+	r := New(Options{SearchProviders: []string{spec.ProviderParallel}}, []core.Provider{s})
+
+	now := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)
+
+	// 1. 相对时间窗与单下界绝对区间均 100% 原生支持，strict 模式直接通过且不降级
+	for _, expr := range []string{"7d", "2025-01-01.."} {
+		f, err := core.ParseFreshness(expr, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env, err := r.Search(context.Background(), &core.SearchRequest{
+			Query:         "golang",
+			Count:         5,
+			Providers:     []string{spec.ProviderParallel},
+			StrictFilters: true,
+			Filters:       core.Filters{Freshness: f},
+		})
+		if err != nil || !env.OK {
+			t.Fatalf("strict TimeAfterOnly(%q) failed: env=%+v err=%v", expr, env, err)
+		}
+		if s.lastFreshness == nil || s.lastFreshness.After.IsZero() || !s.lastFreshness.Before.IsZero() {
+			t.Fatalf("expected native after-only freshness forwarded for %q, got %+v", expr, s.lastFreshness)
+		}
+	}
+
+	// 2. 双界区间（2025-01-01..2025-06-30）：非严格模式向下游发仅含 After 的下界收窄召回，并在本地精滤掉超过 Before 的结果
+	fBoth, err := core.ParseFreshness("2025-01-01..2025-06-30", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envBoth, err := r.Search(context.Background(), &core.SearchRequest{
+		Query:     "golang",
+		Count:     5,
+		Providers: []string{spec.ProviderParallel},
+		Filters:   core.Filters{Freshness: fBoth},
+	})
+	if err != nil || !envBoth.OK {
+		t.Fatalf("non-strict bounded range failed: env=%+v err=%v", envBoth, err)
+	}
+	if s.lastFreshness == nil || s.lastFreshness.After.Format("2006-01-02") != "2025-01-01" || !s.lastFreshness.Before.IsZero() {
+		t.Fatalf("expected upstream freshness narrowed to after-only 2025-01-01, got %+v", s.lastFreshness)
+	}
+	if len(envBoth.Results) != 1 || envBoth.Results[0].URL != "https://example.com/in" {
+		t.Fatalf("expected local emulation to filter out tooNew result, got %+v", envBoth.Results)
+	}
+
+	// 3. 含 Before 上界的区间在 strict 模式下必须拒绝/跳过；纯上界非严格模式不向上游发 Freshness
+	for _, expr := range []string{"2025-01-01..2025-06-30", "..2025-06-30"} {
+		f, err := core.ParseFreshness(expr, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.Search(context.Background(), &core.SearchRequest{
+			Query:         "golang",
+			Count:         5,
+			Providers:     []string{spec.ProviderParallel},
+			StrictFilters: true,
+			Filters:       core.Filters{Freshness: f},
+		}); core.AsError(err).Code != core.CodeInvalidArgument {
+			t.Fatalf("strict bounded/upper freshness %q on TimeAfterOnly must fail, got %v", expr, err)
+		}
+	}
+	fUpper, _ := core.ParseFreshness("..2025-06-30", now)
+	envUpper, err := r.Search(context.Background(), &core.SearchRequest{
+		Query:     "golang",
+		Count:     5,
+		Providers: []string{spec.ProviderParallel},
+		Filters:   core.Filters{Freshness: fUpper},
+	})
+	if err != nil || !envUpper.OK || s.lastFreshness != nil || len(envUpper.Results) != 1 {
+		t.Fatalf("upper-only non-strict failed: lastFreshness=%+v env=%+v err=%v", s.lastFreshness, envUpper, err)
 	}
 }

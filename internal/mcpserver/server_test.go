@@ -178,6 +178,8 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 		spec.OptZhihuSort,
 		spec.OptKeenableMode,
 		spec.OptLinkupDepth,
+		spec.OptParallelMode,
+		spec.OptParallelLocation,
 		spec.OptFirecrawlCategory,
 	} {
 		if !strings.Contains(sOptDesc, want) {

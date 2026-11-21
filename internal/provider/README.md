@@ -13,6 +13,7 @@
 - `tavily/`：Tavily Search & Extract 适配器。
 - `brave/`：Brave Web Search & LLM Context 适配器。
 - `linkup/`：Linkup Search & Fetch 双能力适配器。
+- `parallel/`：Parallel REST v1 Search & Extract 双能力适配器。
 - `firecrawl/`：Firecrawl v2 Scrape & Search 适配器（支持官方云端与开源自托管）。
 - `github/`：GitHub 仓库、源码文件、Issue、PR、Discussion、Commit 与 Release 结构化提取器。
 - `local/`：纯 Go 本地网页抓取、字符集转码、Readability 正文提取与质量闸门。

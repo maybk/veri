@@ -191,6 +191,12 @@ func validateProviders(p *ProvidersConfig) error {
 		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.linkup.fetch_mode %q: must be standard or pro", p.Linkup.FetchMode))
 	}
 
+	switch strings.ToLower(strings.TrimSpace(p.Parallel.Mode)) {
+	case spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced:
+	default:
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.parallel.mode %q: must be turbo, fast, basic, or advanced", p.Parallel.Mode))
+	}
+
 	switch strings.ToLower(strings.TrimSpace(p.Firecrawl.Proxy)) {
 	case spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced:
 	default:

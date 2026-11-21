@@ -41,6 +41,11 @@ const (
 	LinkupFetchModeStandard = "standard"
 	LinkupFetchModePro      = "pro"
 
+	ParallelModeTurbo    = "turbo"
+	ParallelModeFast     = "fast"
+	ParallelModeBasic    = "basic"
+	ParallelModeAdvanced = "advanced"
+
 	FirecrawlProxyAuto     = "auto"
 	FirecrawlProxyBasic    = "basic"
 	FirecrawlProxyEnhanced = "enhanced"
@@ -78,6 +83,10 @@ const (
 	OptZhihuSortAlias         = "zhihu_sort"
 	OptLinkupDepth            = "linkup.depth"
 	OptLinkupDepthAlias       = "linkup_depth"
+	OptParallelMode           = "parallel.mode"
+	OptParallelModeAlias      = "parallel_mode"
+	OptParallelLocation       = "parallel.location"
+	OptParallelLocationAlias  = "parallel_location"
 	OptFirecrawlCategory      = "firecrawl.category"
 	OptFirecrawlCategoryAlias = "firecrawl_category"
 

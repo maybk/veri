@@ -392,4 +392,20 @@ func TestConfigValidatesProviderBaseURLsAndRedactsCredentials(t *testing.T) {
 			t.Fatalf("expected valid base_url %q to pass config validation, got %v", raw, err)
 		}
 	}
+
+	// 4. 校验 providers.parallel.mode 枚举边界
+	badParallel := filepath.Join(dir, "bad_parallel_mode.toml")
+	if err := os.WriteFile(badParallel, []byte("[providers.parallel]\nmode = \"ultra\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithEnv(badParallel, noEnv); core.AsError(err).Code != core.CodeInvalidArgument {
+		t.Fatalf("expected invalid providers.parallel.mode rejected, got %v", err)
+	}
+	okParallel := filepath.Join(dir, "ok_parallel_mode.toml")
+	if err := os.WriteFile(okParallel, []byte("[providers.parallel]\nmode = \"turbo\"\nbase_url = \"https://eu.parallel.ai\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := LoadWithEnv(okParallel, noEnv); err != nil || loaded.Config.Providers.Parallel.Mode != spec.ParallelModeTurbo {
+		t.Fatalf("expected valid parallel config loaded, got cfg=%+v err=%v", loaded, err)
+	}
 }

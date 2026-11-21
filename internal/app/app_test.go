@@ -72,6 +72,7 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 		"TAVILY_API_KEY":      "tvly-test-key-1234",
 		"BRAVE_API_KEY":       "BSA-test-brave-1234567890",
 		"LINKUP_API_KEY":      "lk-test-linkup-1234",
+		"PARALLEL_API_KEY":    "par-test-parallel-1234",
 		"FIRECRAWL_API_KEY":   "fc-test-firecrawl-1234",
 	}
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string { return env[k] })
@@ -93,6 +94,7 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 		spec.ProviderTavily:     "10s/25s",
 		spec.ProviderBrave:      "10s",
 		spec.ProviderLinkup:     "10s/25s",
+		spec.ProviderParallel:   "10s/25s",
 		spec.ProviderFirecrawl:  "10s/45s",
 		spec.ProviderGitHub:     "10s",
 		spec.ProviderLocal:      "10s",
@@ -107,6 +109,7 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 		spec.ProviderTavily:     "depth=basic/basic",
 		spec.ProviderBrave:      "mode=auto",
 		spec.ProviderLinkup:     "depth=fast, fetch=standard",
+		spec.ProviderParallel:   "mode=fast",
 		spec.ProviderFirecrawl:  "proxy=auto, max_pdf=20",
 		spec.ProviderGitHub:     "concurrency=4",
 		spec.ProviderLocal:      "min_runes=300, max_bytes=5MB",

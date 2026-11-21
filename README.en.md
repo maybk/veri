@@ -166,7 +166,7 @@ veri skill print     # Print the embedded SKILL.md
 
 ### 🎯 Core Capabilities
 
-- **Multi-Provider Search & Fallback** - Built-in support for DeepSeek, Keenable, Zhihu, Exa, TinyFish, Tencent WSA, Tavily, Brave, Linkup, and Firecrawl, enabled automatically from configured keys; supports automatic failover, language-aware routing, and concurrent fusion deduplication
+- **Multi-Provider Search & Fallback** - Built-in support for DeepSeek, Keenable, Zhihu, Exa, TinyFish, Tencent WSA, Tavily, Brave, Linkup, Parallel, and Firecrawl, enabled automatically from configured keys; supports automatic failover, language-aware routing, and concurrent fusion deduplication
 - **Clean Web & GitHub Extraction** - Built-in structured GitHub reader and pure-Go local extractor turn pages and repos / issues / PRs / commits into clean Markdown with zero keys; configured cloud extractors add dynamic rendering and PDF support, plus batch fetching, section slicing, and keyword matching
 - **Unified Filter Syntax** - One consistent set of flags for time windows, site allow/block lists, and language filters across providers, with strict native enforcement when needed
 - **CLI / MCP / Skill in One Binary** - One static executable delivers an interactive/scriptable CLI, a standard stdio MCP server, and Agent Skill integration for AI agents
