@@ -279,10 +279,10 @@ func DefaultFetchProviders() []string {
 // DefaultFetchProvidersGlobal 返回非中文站点使用的默认云端提取顺序（仅在用户未显式配置 fetch.providers 与 fetch.providers_global 时生效）。
 func DefaultFetchProvidersGlobal() []string {
 	return []string{
-		ProviderExa,
+		ProviderKeenable,
 		ProviderParallel,
 		ProviderTavily,
-		ProviderKeenable,
+		ProviderExa,
 		ProviderLinkup,
 		ProviderFirecrawl,
 		ProviderTinyFish,

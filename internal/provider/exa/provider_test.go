@@ -49,6 +49,20 @@ func TestExaLiteWhitelistCostAndContentsTags(t *testing.T) {
 				}`))
 				return
 			}
+			if len(req.URLs) > 0 && req.URLs[0] == "https://exa.ai/redirect" {
+				_, _ = w.Write([]byte(`{
+					"requestId": "exa-c-redir",
+					"results": [{"title": "Final Page", "url": "https://exa.ai/final", "author": "Bob", "text": "Redirected body"}]
+				}`))
+				return
+			}
+			if len(req.URLs) > 0 && req.URLs[0] == "https://exa.ai/unsafe" {
+				_, _ = w.Write([]byte(`{
+					"requestId": "exa-c-unsafe",
+					"results": [{"title": "Unsafe", "url": "javascript:alert(1)", "author": "Mallory", "text": "Body"}]
+				}`))
+				return
+			}
 			_, _ = w.Write(contentsOKPayload)
 		}
 	}))
@@ -125,6 +139,17 @@ func TestExaLiteWhitelistCostAndContentsTags(t *testing.T) {
 	fOut, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://exa.ai/doc"})
 	if err != nil || fOut.Cost.Micros != 1000 || fOut.Cost.Estimated {
 		t.Fatalf("unexpected Fetch outcome: %+v err=%v", fOut, err)
+	}
+	if fOut.Page.Author != "Alice" || fOut.Page.FinalURL != "" {
+		t.Fatalf("expected Author=Alice and empty same-URL FinalURL, got author=%q final_url=%q", fOut.Page.Author, fOut.Page.FinalURL)
+	}
+	redirOut, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://exa.ai/redirect"})
+	if err != nil || redirOut.Page.Author != "Bob" || redirOut.Page.FinalURL != "https://exa.ai/final" {
+		t.Fatalf("expected redirected FinalURL and Author, got %+v err=%v", redirOut, err)
+	}
+	unsafeOut, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://exa.ai/unsafe"})
+	if err != nil || unsafeOut.Page.FinalURL != "" {
+		t.Fatalf("expected unsafe javascript: FinalURL dropped, got %+v err=%v", unsafeOut, err)
 	}
 
 	// 验证内联 category:research_paper -> publication 归一化与 Question -> highlights.query 透传

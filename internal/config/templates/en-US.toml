@@ -22,7 +22,7 @@ summary_max_chars = 800
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
 providers = ["keenable", "tavily", "firecrawl", "parallel", "exa", "linkup", "deepseek", "tinyfish"]
-providers_global = ["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"] # global sites chain (set [] to disable)
+providers_global = ["keenable", "parallel", "tavily", "exa", "linkup", "firecrawl", "tinyfish", "deepseek"] # global sites chain (set [] to disable)
 timeout = "45s"                         # overall fetch timeout
 max_bytes = "5MB"                       # max decompressed response size for local fetch
 min_content_chars = 300                 # minimum chars required to pass local quality gate

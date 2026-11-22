@@ -65,7 +65,7 @@ veri config show                               # 输出合并并脱敏后的生�
 | `search.max_chars` | `0` | CLI 检索整包字符预算上限（`0` 表示不限制） |
 | `fetch.strategy` | `"api_first"` | 提取路由策略：`api_first`（云端优先、本地回退）、`smart_local`、`local_only`、`api_only` |
 | `fetch.providers` | `["keenable", "tavily", "firecrawl", "parallel", "exa", "linkup", "deepseek", "tinyfish"]` | 默认云端提取链（中文站优先；显式配置且未设 `providers_global` 时所有站点统一走此链） |
-| `fetch.providers_global` | `["exa", "parallel", "tavily", "keenable", "linkup", "firecrawl", "tinyfish", "deepseek"]` | 非中文站云端提取链（设 `[]` 关闭分链） |
+| `fetch.providers_global` | `["keenable", "parallel", "tavily", "exa", "linkup", "firecrawl", "tinyfish", "deepseek"]` | 非中文站云端提取链（设 `[]` 关闭分链） |
 | `fetch.timeout` | `"45s"` | 单次网页提取总超时（作为外层上限覆盖各源 `fetch_timeout`） |
 | `fetch.max_bytes` | `"5MB"` | 本地抓取解压后响应体上限 |
 | `fetch.min_content_chars` | `300` | 本地提取正文质量闸门最少字符阈值 |

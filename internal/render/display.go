@@ -45,6 +45,30 @@ func activeProvidersLabel(reports []core.ProviderReport) string {
 	return strings.Join(names, "+")
 }
 
+// resultProvidersLabel 在融合检索或多源共识命中时返回保序去重的来源引擎拼接标签（如 "parallel+exa"），单源常规检索返回空。
+func resultProvidersLabel(strategy string, providers []string) string {
+	if len(providers) == 0 || (strategy != string(core.StrategyFusion) && len(providers) <= 1) {
+		return ""
+	}
+	seen := make(map[string]struct{}, len(providers))
+	names := make([]string, 0, len(providers))
+	for _, raw := range providers {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	if strategy != string(core.StrategyFusion) && len(names) <= 1 {
+		return ""
+	}
+	return strings.Join(names, "+")
+}
+
 // FormatOutlinePreview 将页面大纲的前 limit 条标题格式化为紧凑单行预览，供 CLI 截断提示与 MCP 续读指引共用。
 func FormatOutlinePreview(outline []core.PageSection, limit int) string {
 	if len(outline) == 0 {

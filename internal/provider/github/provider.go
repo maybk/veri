@@ -89,7 +89,7 @@ func (p *Provider) HasToken() bool {
 	return p.pool != nil && p.pool.Size() > 0
 }
 
-// Match 判断目标 URL 是否命中受支持的 5 类结构化 GitHub 资源。
+// Match 判断目标 URL 是否命中受支持的结构化 GitHub 资源。
 func (p *Provider) Match(u *url.URL) bool {
 	return parseGitHubURL(u).kind != routeNone
 }

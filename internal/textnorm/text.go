@@ -61,11 +61,14 @@ func CleanText(raw string) string {
 
 // CleanInline 对单行文本（标题、站点名、短摘要）执行 HTML 实体解码、控制字符清洗并折叠连续空白。
 func CleanInline(raw string) string {
-	cleaned := CleanText(raw)
-	if cleaned == "" {
+	return collapseFields(CleanText(raw))
+}
+
+func collapseFields(s string) string {
+	if s == "" {
 		return ""
 	}
-	return strings.Join(strings.Fields(cleaned), " ")
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // RuneCount 返回字符串的 Unicode 码点数量。

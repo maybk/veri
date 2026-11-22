@@ -173,6 +173,9 @@ func formatSearchMarkdown(env *core.Envelope, pal Palette) string {
 		if r.Published != nil {
 			metaParts = append(metaParts, r.Published.Format("2006-01-02"))
 		}
+		if provs := resultProvidersLabel(env.Meta.Strategy, r.Providers); provs != "" {
+			metaParts = append(metaParts, provs)
+		}
 		if len(metaParts) > 0 {
 			titleLine += " " + pal.Dim("— "+strings.Join(metaParts, " · "))
 		}

@@ -59,6 +59,9 @@ func FormatMCPSearchText(env *core.Envelope, textFormat string) (string, error) 
 		if r.Published != nil {
 			meta = append(meta, "Published: "+r.Published.Format("2006-01-02"))
 		}
+		if provs := resultProvidersLabel(env.Meta.Strategy, r.Providers); provs != "" {
+			meta = append(meta, "Sources: "+provs)
+		}
 		if len(meta) > 0 {
 			inner.WriteString(strings.Join(meta, " | ") + "\n")
 		}

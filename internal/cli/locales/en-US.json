@@ -83,7 +83,7 @@
     "search.example": "  veri search \"golang sync.Map\" -n 5\n  veri search \"mcp protocol\" -s github.com -t 3m --json\n  veri search \"llm benchmarks\" -F -p exa,parallel,brave\n  veri search \"go concurrency\" -p exa -o exa.category=news",
     "search.flag.count": "Maximum results to return, 1-50",
     "search.flag.provider": "Target search provider(s), comma-separated (single provider disables fallback)",
-    "search.flag.fusion": "Query multiple providers concurrently via RRF (for research & cross-verification)",
+    "search.flag.fusion": "Query multiple providers concurrently via RRF (for breaking news, research & cross-verification)",
     "search.flag.site": "Restrict results to domain(s) (repeatable)",
     "search.flag.exclude_site": "Exclude domain(s) (repeatable)",
     "search.flag.freshness": "Time range: day | week | month | year, 7d | 3m | 1y, 2026-08-01.., or 2026-08-01..2026-08-31",

@@ -28,8 +28,11 @@ func TestMCPSchemaDynamicOptionsFiltering(t *testing.T) {
 		t.Fatalf("expected search options description to state omit by default, got %q", fullSearchOpt)
 	}
 	fusionDesc := fullSearchSchema["properties"].(map[string]any)["fusion"].(map[string]any)["description"].(string)
-	if !strings.Contains(fusionDesc, "open research") {
+	if !strings.Contains(fusionDesc, "breaking news") || !strings.Contains(fusionDesc, "open research") {
 		t.Fatalf("expected fusion description to give clear usage guidance, got %q", fusionDesc)
+	}
+	if !strings.Contains(serverInstructions, "multi-source") || !strings.Contains(webSearchDescription, "breaking news") {
+		t.Fatalf("expected MCP prompts to highlight multi-source RRF fusion and breaking news")
 	}
 	for _, want := range []string{
 		spec.OptExaSearchType,

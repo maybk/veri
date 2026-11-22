@@ -189,7 +189,10 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 		return buildSearchErrorEnvelope(req.Query, string(core.StrategyFusion), reports, false, costs, start, lastErr), lastErr
 	}
 
-	fused := fuseRRF(branches, r.opts.FusionK, r.weightFor, req.Count)
+	fused, deduped := fuseRRF(branches, r.opts.FusionK, r.weightFor, req.Count)
+	if deduped > 0 {
+		allNotes = append(allNotes, formatContentDedupNote(deduped))
+	}
 	finalResults, truncated, budgetNotes := applyFieldCapsAndBudget(fused, r.opts.SummaryMaxChars, r.opts.ContentMaxChars, req.MaxChars)
 	if finalResults == nil {
 		finalResults = []core.Result{}

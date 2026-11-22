@@ -18,6 +18,7 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 	notes := slices.Clone(policy.initialNotes)
 	var lastErr *core.Error
 	var lowQualityFallback *core.Page
+	var lowQualityFallbackProvider string
 	var lowQualityReason string
 	var lastWallProvider string
 	var lastWallReason string
@@ -151,29 +152,24 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 				}
 			} else if out.Page != nil && out.Page.Content != "" && lowQualityFallback == nil {
 				lowQualityFallback = out.Page.Clone()
+				lowQualityFallbackProvider = f.Name()
 				lowQualityReason = out.QualityMsg
 			}
 
 			if idx < len(seq)-1 {
-				if f.Name() == spec.ProviderLocal {
+				switch {
+				case f.Name() == spec.ProviderLocal:
 					notes = append(notes, fmt.Sprintf("local extraction marked low_quality (%s), escalating to API extractor", out.QualityMsg))
-				} else {
+				case isWallQualityReason(out.QualityMsg):
 					notes = append(notes, fmt.Sprintf("%s returned challenge/shell page (%s), falling back to next extractor", f.Name(), out.QualityMsg))
+				default:
+					notes = append(notes, fmt.Sprintf("%s extraction marked low_quality (%s), falling back to next extractor", f.Name(), out.QualityMsg))
 				}
 				continue
 			}
 
 			if lowQualityFallback != nil {
-				var note string
-				switch {
-				case idx > 0:
-					note = fmt.Sprintf("all API extractors failed; returned best-effort local content (%s)", lowQualityReason)
-				case policy.strategyLabel == string(core.FetchLocalOnly):
-					note = fmt.Sprintf("returned best-effort local content (%s) under local_only strategy", lowQualityReason)
-				default:
-					note = fmt.Sprintf("returned best-effort local content (%s); configure an API extractor for dynamic rendering", lowQualityReason)
-				}
-				notes = append(notes, note)
+				notes = append(notes, formatLowQualityFallbackNote(lowQualityFallbackProvider, lowQualityReason, policy.strategyLabel, idx > 0))
 				return buildFetchSuccessEnvelope(lowQualityFallback, &workReq, policy.strategyLabel, reports, idx > 0, notes, costs, start), nil
 			}
 			se := buildWallExhaustedError(lastWallProvider, lastWallReason, len(seq) > 1, policy.strategyLabel)
@@ -199,7 +195,7 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 	}
 
 	if lowQualityFallback != nil {
-		notes = append(notes, fmt.Sprintf("all API extractors failed; returned best-effort local content (%s)", lowQualityReason))
+		notes = append(notes, formatLowQualityFallbackNote(lowQualityFallbackProvider, lowQualityReason, policy.strategyLabel, true))
 		return buildFetchSuccessEnvelope(lowQualityFallback, &workReq, policy.strategyLabel, reports, true, notes, costs, start), nil
 	}
 
@@ -215,6 +211,23 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 
 func isWallQualityReason(reason string) bool {
 	return reason == textnorm.QualityReasonBotOrJSWall || reason == textnorm.QualityReasonSoft404
+}
+
+func formatLowQualityFallbackNote(provider, reason, strategyLabel string, triedMultiple bool) string {
+	if provider != "" && provider != spec.ProviderLocal {
+		if triedMultiple {
+			return fmt.Sprintf("other extractors failed; returned best-effort %s content (%s)", provider, reason)
+		}
+		return fmt.Sprintf("returned best-effort %s content (%s)", provider, reason)
+	}
+	switch {
+	case triedMultiple:
+		return fmt.Sprintf("all API extractors failed; returned best-effort local content (%s)", reason)
+	case strategyLabel == string(core.FetchLocalOnly):
+		return fmt.Sprintf("returned best-effort local content (%s) under local_only strategy", reason)
+	default:
+		return fmt.Sprintf("returned best-effort local content (%s); configure an API extractor for dynamic rendering", reason)
+	}
 }
 
 func buildWallExhaustedError(providerName, reason string, hadAPIChain bool, strategyLabel string) *core.Error {

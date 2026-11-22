@@ -5,7 +5,8 @@
 ## 目录结构
 
 - `doc.go`：包级说明与依赖边界。
-- `model.go`：检索与提取请求、结果与页面领域结构、深拷贝及目标 URL 与结果粒度对齐。
+- `model.go`：检索与提取请求、结果与页面领域结构、枚举解析及深拷贝。
+- `sanitize.go`：目标与终态 URL 安全校验、URL 兜底标题推导、结果详略粒度对齐与同源结果清洗。
 - `envelope.go`：顶层统一输出信封 `Envelope`、执行元数据 `Meta` 与 Provider 执行报告。
 - `provider.go`：`Searcher`、`DynamicSearcher`、`Fetcher`、`SpecialistFetcher`、`FetchProfiler`、`Answerer` 接口与能力声明 `Capabilities`。
 - `cost.go`：整数微单位成本 `Cost` 核算、可选单价解析与多币种饱和汇总。

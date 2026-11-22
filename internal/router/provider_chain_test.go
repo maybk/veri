@@ -50,7 +50,7 @@ func TestNewProvidersFetchGlobalChainPDFPriorityAndEscalation(t *testing.T) {
 		}
 	}
 
-	// 1. 海外 PDF：稳定排序保证 exa -> parallel -> linkup 均排在按页计费的 firecrawl 之前，且未声明 PDF 的 keenable 不抢 PDF 优先权
+	// 1. 海外 PDF：常规链以 keenable 居首，遇 .pdf 时稳定排序自动跳过未声明 PDF 的 keenable，按 parallel -> exa -> linkup -> firecrawl 顺序提取
 	rPDF := New(Options{FetchStrategy: core.FetchAPIFirst}, []core.Provider{
 		mk(spec.ProviderDeepSeek, false, false, false),
 		mk(spec.ProviderKeenable, false, false, false),
@@ -59,13 +59,13 @@ func TestNewProvidersFetchGlobalChainPDFPriorityAndEscalation(t *testing.T) {
 		mk(spec.ProviderParallel, true, true, false),
 		mk(spec.ProviderFirecrawl, true, true, false),
 	})
-	if got := rPDF.ActiveFetchChainGlobal(); !slices.Equal(got, []string{spec.ProviderExa, spec.ProviderParallel, spec.ProviderKeenable, spec.ProviderLinkup, spec.ProviderFirecrawl, spec.ProviderDeepSeek}) {
+	if got := rPDF.ActiveFetchChainGlobal(); !slices.Equal(got, []string{spec.ProviderKeenable, spec.ProviderParallel, spec.ProviderExa, spec.ProviderLinkup, spec.ProviderFirecrawl, spec.ProviderDeepSeek}) {
 		t.Fatalf("ActiveFetchChainGlobal = %v", got)
 	}
 	order = nil
 	envPDF, err := rPDF.Fetch(context.Background(), &core.FetchRequest{URL: "https://arxiv.org/pdf/2601.00001.pdf"})
-	if err != nil || !envPDF.OK || envPDF.Page.Provider != spec.ProviderExa {
-		t.Fatalf("expected overseas PDF to hit exa before firecrawl, got env=%+v err=%v order=%v", envPDF, err, order)
+	if err != nil || !envPDF.OK || envPDF.Page.Provider != spec.ProviderParallel {
+		t.Fatalf("expected overseas PDF to skip keenable and hit parallel before firecrawl, got env=%+v err=%v order=%v", envPDF, err, order)
 	}
 
 	// 2. 反爬盾升档：首源 exa 遇到无 HTTP 状态码（Status=0）的挑战盾后，路由器置 DynamicRenderHint=true 并升档 linkup（跳过纯静态 keenable），且日志不输出 "(HTTP 0)"

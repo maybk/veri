@@ -13,7 +13,8 @@
 - `convert.go`：`ConvertString`、`ConvertBytes`、`RenderNode` 入口与有界深度渲染状态机。
 - `block.go`：块级结构渲染（ATX 标题、段落、嵌套引用块与 GitHub Alert、有序/无序/任务列表、动态反引号围栏代码块、定义列表与折叠块）。
 - `table.go`：面向 LLM Token 效率的紧凑 GFM 表格渲染（含 `colspan` 展开、列对齐、单元格管道符转义及单列/代码块布局伪表格自动解包）。
-- `inline.go`：行内元素与上下文感知最小转义（CJK 标点友好的强调边界保护、动态反引号代码片段、相对链接解析、`srcset`/懒加载图片提取与行内公式）。
+- `inline.go`：行内强调、数学公式、动态反引号代码片段与上下文感知最小文本转义。
+- `inline_media.go`：相对链接解析、标题页内锚点剥离及图片/`<picture>`/`srcset` 懒加载提取。
 
 ## 开发规范
 

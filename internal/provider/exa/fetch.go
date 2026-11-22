@@ -67,10 +67,13 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 				}
 			}
 			reqID := textnorm.FirstNonEmpty(wireResp.RequestID, resp.RequestID)
+			finalURL := core.ValidatedFinalURL(first.URL, u.String(), ProviderName, maxFetchURLLen)
 			return &core.FetchOutcome{
 				Page: &core.Page{
 					URL:        u.String(),
+					FinalURL:   finalURL,
 					Title:      textnorm.CleanInline(first.Title),
+					Author:     textnorm.CleanInline(first.Author),
 					Published:  textnorm.ParseFlexibleTime(first.PublishedDate, time.UTC),
 					Content:    content,
 					TotalChars: textnorm.RuneCount(content),

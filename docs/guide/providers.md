@@ -26,7 +26,7 @@
 
 1. **链式自动回退（`auto`，默认）**：中文查询按 `search.providers` 顺序执行，非中文查询（英文、日韩等或指定非中文 `--lang`）默认走 `search.providers_global`（设 `[]` 或仅显式配置 `search.providers` 时统一走主链）。遇鉴权、配额、限流、超时等可回退错误自动切下一源；开启 `fallback_on_empty` 时空结果也继续回退。
 2. **显式单源（`-p <name>`）**：仅调用指定检索源，失败时直接返回该源的结构化错误，不隐式切换其他源。
-3. **多源并发融合（`--fusion` / `-F`）**：并发调用多路检索源（可用 `-p a,b` 或 `search.fusion_providers` / `search.fusion_providers_global` 指定；未指定时按当前查询分链取前 3 个已启用源），去重后以加权 RRF 重排合并；任一路成功即返回结果，失败支路记入 `meta.providers`。
+3. **多源并发融合（`--fusion` / `-F`）**：并发调用多路检索源（可用 `-p a,b` 或 `search.fusion_providers` / `search.fusion_providers_global` 指定；未指定时按当前查询分链取前 3 个已启用源），经规范化 URL 与内容指纹去重后以加权 RRF 合并排序，并在结果中标注单条命中的多源共识；任一路成功即返回结果，失败支路记入 `meta.providers`。
 4. **过滤能力降级与严格模式**：当所选检索源不原生支持某项过滤条件（如排除多个站点或精确日期范围）时，路由器默认在拉取结果后执行本地后过滤，并在 `meta.notes` 中标注降级说明；传入 `--strict`（或 `strict: true`）则跳过不具备对应原生过滤能力的检索源。
 
 ## 网页提取策略

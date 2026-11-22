@@ -137,7 +137,7 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		},
 		"fusion": map[string]any{
 			"type":        "boolean",
-			"description": fmt.Sprintf("Set true for concurrent RRF fusion — recommended for open research, comparisons, and cross-verification (uses language-aware config fusion pools or top 3 enabled when providers is omitted; combines with providers[] to fuse explicit sources) — or false for sequential fallback (default strategy from config: %s).", effStrategy),
+			"description": fmt.Sprintf("Set true for concurrent RRF fusion with multi-source consensus — recommended for breaking news, open research, comparisons, and cross-verification (uses language-aware config fusion pools or top 3 enabled when providers is omitted; combines with providers[] to fuse explicit sources) — or false for sequential fallback (default strategy from config: %s).", effStrategy),
 		},
 		"strict": map[string]any{
 			"type":        "boolean",

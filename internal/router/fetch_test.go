@@ -175,14 +175,14 @@ func TestFetchCloudWallRejectionPDFFastPathAndSmartOrdering(t *testing.T) {
 		t.Fatal("expected DynamicRenderHint=true propagated to TinyFish after wall detection")
 	}
 
-	// 2. 海外站点默认全球链为 exa -> keenable -> tinyfish；优先命中 exa（跳过静态 keenable 首跳）
+	// 2. 海外站点默认全球链为 keenable -> exa -> tinyfish；keenable 遇盾页自动拦截并升档至 exa
 	order = nil
 	ovEnv, err := r.Fetch(context.Background(), &core.FetchRequest{URL: "https://docs.example.org/spa"})
 	if err != nil || ovEnv.Page.Provider != spec.ProviderExa {
-		t.Fatalf("expected overseas escalation to hit exa first, got env=%+v err=%v", ovEnv, err)
+		t.Fatalf("expected overseas wall escalation to succeed on exa, got env=%+v err=%v", ovEnv, err)
 	}
-	if len(order) != 2 || order[0] != "local" || order[1] != "exa" {
-		t.Fatalf("expected [local exa] on overseas site, got %v", order)
+	if len(order) != 3 || order[0] != "local" || order[1] != "keenable" || order[2] != "exa" {
+		t.Fatalf("expected [local keenable exa] on overseas site, got %v", order)
 	}
 
 	// 3. 明确 PDF URL（如 arxiv /pdf/）直接跳过 local 直连 PDF 提取源（本夹具仅 tinyfish 声明 PDF=true）
@@ -219,26 +219,27 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 		}
 	}
 
-	// 1. 默认配置下海外站点与海外 PDF 优先命中 exa（新全球链 exa -> tavily -> tinyfish -> deepseek）
+	// 1. 默认配置下海外站点与海外 PDF 优先命中 parallel（全球链 parallel -> tavily -> exa -> tinyfish -> deepseek）
 	rDefault := New(Options{FetchStrategy: core.FetchAPIFirst}, []core.Provider{
 		mkFetcher(spec.ProviderDeepSeek, false),
 		mkFetcher(spec.ProviderTinyFish, true),
 		mkFetcher(spec.ProviderTavily, true),
+		mkFetcher(spec.ProviderParallel, true),
 		mkFetcher(spec.ProviderExa, true),
 	})
-	if got := rDefault.ActiveFetchChainGlobal(); strings.Join(got, ",") != "exa,tavily,tinyfish,deepseek" {
+	if got := rDefault.ActiveFetchChainGlobal(); strings.Join(got, ",") != "parallel,tavily,exa,tinyfish,deepseek" {
 		t.Fatalf("unexpected ActiveFetchChainGlobal: %v", got)
 	}
 	ovEnv, err := rDefault.Fetch(context.Background(), &core.FetchRequest{URL: "https://go.dev/doc/effective_go"})
-	if err != nil || ovEnv.Page.Provider != spec.ProviderExa {
-		t.Fatalf("expected exa first on global URL, got env=%+v err=%v", ovEnv, err)
+	if err != nil || ovEnv.Page.Provider != spec.ProviderParallel {
+		t.Fatalf("expected parallel first on global URL, got env=%+v err=%v", ovEnv, err)
 	}
 	pdfEnv, err := rDefault.Fetch(context.Background(), &core.FetchRequest{URL: "https://arxiv.org/pdf/2210.03629"})
-	if err != nil || pdfEnv.Page.Provider != spec.ProviderExa {
-		t.Fatalf("expected exa first on global PDF URL, got env=%+v err=%v", pdfEnv, err)
+	if err != nil || pdfEnv.Page.Provider != spec.ProviderParallel {
+		t.Fatalf("expected parallel first on global PDF URL, got env=%+v err=%v", pdfEnv, err)
 	}
 
-	// 2. 用户显式配置与默认同序的 FetchProviders（未配 ProvidersGlobal）时，不得静默重排
+	// 2. 用户显式配置与默认同序的 FetchProviders（未配 ProvidersGlobal）时，不得静默重排（保持中文链 tavily 在 parallel 之前）
 	rExplicit := New(Options{
 		FetchStrategy:          core.FetchAPIFirst,
 		FetchProviders:         spec.DefaultFetchProviders(),
@@ -247,6 +248,7 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 		mkFetcher(spec.ProviderDeepSeek, false),
 		mkFetcher(spec.ProviderTinyFish, true),
 		mkFetcher(spec.ProviderTavily, true),
+		mkFetcher(spec.ProviderParallel, true),
 		mkFetcher(spec.ProviderExa, true),
 	})
 	if got := rExplicit.ActiveFetchChainGlobal(); got != nil {

@@ -239,6 +239,40 @@ func TestLocalOnlyNotesAndWallHintAccuracy(t *testing.T) {
 	if se.Code != core.CodeContentUnavailable || se.HintKey != "hint.local_only_js_wall" {
 		t.Fatalf("expected hint.local_only_js_wall under local_only, got %+v", se)
 	}
+
+	// 非 local 云端源返回非盾 LowQuality 且后续提取源失败时，保底 note 必须准确归因该云端源而非误报 local content
+	cloudLow := &spyFetcher{
+		name: spec.ProviderExa,
+		fn: func(_ context.Context, _ *core.FetchRequest) (*core.FetchOutcome, error) {
+			return &core.FetchOutcome{
+				Page:       &core.Page{URL: "https://news.example/story", Title: "Story", Content: "Excerpt text.", Provider: spec.ProviderExa},
+				LowQuality: true,
+				QualityMsg: "too_short",
+			}, nil
+		},
+	}
+	cloudFail := &spyFetcher{
+		name: spec.ProviderTavily,
+		fn: func(_ context.Context, _ *core.FetchRequest) (*core.FetchOutcome, error) {
+			return nil, core.NewError(core.CodeUpstreamTimeout, "timeout").WithProvider(spec.ProviderTavily)
+		},
+	}
+	rCloudFallback := New(Options{
+		FetchStrategy:        core.FetchAPIOnly,
+		FetchProviders:       []string{spec.ProviderExa, spec.ProviderTavily},
+		FetchProvidersGlobal: []string{spec.ProviderExa, spec.ProviderTavily},
+	}, []core.Provider{cloudLow, cloudFail})
+	fbEnv, fbErr := rCloudFallback.Fetch(context.Background(), &core.FetchRequest{URL: "https://news.example/story"})
+	if fbErr != nil || !fbEnv.OK || fbEnv.Page.Provider != spec.ProviderExa {
+		t.Fatalf("expected cloud low-quality fallback success, got env=%+v err=%v", fbEnv, fbErr)
+	}
+	joinedNotes := strings.Join(fbEnv.Meta.Notes, "\n")
+	if strings.Contains(joinedNotes, "local content") || strings.Contains(joinedNotes, "challenge/shell") {
+		t.Fatalf("cloud non-wall fallback note misattributed to local/wall: %v", fbEnv.Meta.Notes)
+	}
+	if !strings.Contains(joinedNotes, "exa extraction marked low_quality (too_short)") || !strings.Contains(joinedNotes, "best-effort exa content (too_short)") {
+		t.Fatalf("expected accurate cloud fallback notes, got %v", fbEnv.Meta.Notes)
+	}
 }
 
 func TestApplyPageViewOffsetExceededNote(t *testing.T) {

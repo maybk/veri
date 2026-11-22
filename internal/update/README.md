@@ -9,6 +9,7 @@
 - `version.go`：官方 URL 白名单、镜像前缀校验、版本号比较与摘要解析。
 - `install_method.go`：表驱动安装来源识别（Standalone / mise / npm / Homebrew / Scoop / WinGet / System / Dev）。
 - `options.go`：更新器可选依赖注入项。
+- `errors.go`：自更新结构化错误构造与代理凭据脱敏包装器。
 - `checker.go`：官方 Release 检查（API 优先，限流或故障时降级 302 重定向）与 `SHA256SUMS.txt` 拉取。
 - `archive.go`：归档根目录单文件解压、目录可写预检、同目录原子替换回滚与旧备份清理。
 - `updater.go`：自更新主流程编排、安装来源守卫、流式下载校验与进度回调。

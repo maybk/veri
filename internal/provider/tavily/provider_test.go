@@ -65,8 +65,12 @@ func TestTavilyCustomStatusCodesAndExtractHeadingFallback(t *testing.T) {
 	emptyMode = false
 
 	fOut, err := priced.Fetch(context.Background(), &core.FetchRequest{URL: "https://docs.tavily.com/a"})
-	if err != nil || fOut.Page.Title != "Extracted Heading" || fOut.Cost == nil || fOut.Cost.Micros != 1600 {
+	if err != nil || fOut.Page.Title != "Extracted Heading" || fOut.Cost == nil || fOut.Cost.Micros != 1600 || fOut.Page.FinalURL != "" {
 		t.Fatalf("unexpected extract out=%+v err=%v", fOut, err)
+	}
+	fRedir, err := priced.Fetch(context.Background(), &core.FetchRequest{URL: "https://docs.tavily.com/old"})
+	if err != nil || fRedir.Page.FinalURL != "https://docs.tavily.com/a" {
+		t.Fatalf("expected redirected FinalURL from extract item url, got %+v err=%v", fRedir, err)
 	}
 
 	for _, code := range []int{432, 433} {

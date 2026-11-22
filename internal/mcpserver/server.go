@@ -276,8 +276,11 @@ func handleWebFetch(ctx context.Context, application *app.App, textFormat string
 func buildErrorEnvelope(application *app.App, kind, query string, se *core.Error) *core.Envelope {
 	safeErr := application.ScrubCoreError(se)
 	meta := core.Meta{Providers: []core.ProviderReport{}, Cost: []core.Cost{}}
-	if kind == spec.KindSearch {
+	switch kind {
+	case spec.KindSearch:
 		meta.Strategy = string(core.StrategyAuto)
+	case spec.KindFetch:
+		meta.Strategy = string(core.DefaultFetchStrategy)
 	}
 	return &core.Envelope{
 		Schema: spec.SchemaVersion,

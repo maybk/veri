@@ -194,8 +194,11 @@ func newErrorEnvelope(kind, query string, se *core.Error) *core.Envelope {
 		Providers: []core.ProviderReport{},
 		Cost:      []core.Cost{},
 	}
-	if kind == spec.KindSearch {
+	switch kind {
+	case spec.KindSearch:
 		meta.Strategy = string(core.StrategyAuto)
+	case spec.KindFetch:
+		meta.Strategy = string(core.DefaultFetchStrategy)
 	}
 	return &core.Envelope{
 		Schema: spec.SchemaVersion,

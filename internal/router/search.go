@@ -237,6 +237,13 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 			costs = append(costs, &c)
 		}
 		results, emuNotes := applyEmulation(plan, out.Results)
+		if strategy == core.StrategyAuto && len(results) > 1 {
+			var deduped int
+			results, deduped = dedupResultsByContent(results)
+			if deduped > 0 {
+				notes = append(notes, formatContentDedupNote(deduped))
+			}
+		}
 		notes = append(notes, plan.warnings...)
 		notes = append(notes, out.Warnings...)
 		notes = append(notes, emuNotes...)

@@ -4,116 +4,96 @@ import (
 	"cmp"
 	"math"
 	"slices"
-	"strings"
 
 	"veri/internal/core"
 	"veri/internal/textnorm"
 	"veri/internal/urlnorm"
 )
 
-type fusedCandidate struct {
-	key           string
+type fusedCluster struct {
 	score         float64
-	bestRank      int
-	bestChainIdx  int
 	firstChainIdx int
+	providers     []string
+	seenBranches  map[int]struct{}
+	members       []clusterMember
+	anchorCK      resultContentKey
 	merged        core.Result
-	providerOrder []int
 }
 
-func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limit int) []core.Result {
-	byKey := make(map[string]*fusedCandidate)
-	var keys []string
+func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limit int) ([]core.Result, int) {
+	byURLKey := make(map[string]*fusedCluster)
+	var clusters []*fusedCluster
+	contentDeduped := 0
 
+	// 阶段 1：精确 URL + 内容指纹双阶段聚簇与同分支单票 RRF 计分
 	for _, br := range branches {
 		w := weightFn(br.name)
 		for idx, item := range br.results {
 			rank := idx + 1
 			rrfTerm := w / float64(k+rank)
 			uKey := urlnorm.Key(item.URL)
+			ck := buildResultContentKey(item)
 
-			cand, exists := byKey[uKey]
-			if !exists {
-				cp := item.Clone()
-				cp.Providers = []string{br.name}
-				cand = &fusedCandidate{
-					key:           uKey,
-					score:         rrfTerm,
-					bestRank:      rank,
-					bestChainIdx:  br.chainIdx,
-					firstChainIdx: br.chainIdx,
-					merged:        cp,
-					providerOrder: []int{br.chainIdx},
-				}
-				byKey[uKey] = cand
-				keys = append(keys, uKey)
-				continue
+			var (
+				cl       *fusedCluster
+				knownURL bool
+			)
+			if uKey != "" {
+				cl, knownURL = byURLKey[uKey]
 			}
-
-			cand.score += rrfTerm
-			cand.merged.Providers = append(cand.merged.Providers, br.name)
-			cand.providerOrder = append(cand.providerOrder, br.chainIdx)
-
-			betterRank := rank < cand.bestRank || (rank == cand.bestRank && br.chainIdx < cand.bestChainIdx)
-			if (betterRank && item.Title != "") || cand.merged.Title == "" {
-				if item.Title != "" {
-					cand.merged.Title = item.Title
-				}
-			}
-			if (betterRank && item.Snippet != "") || cand.merged.Snippet == "" {
-				if item.Snippet != "" {
-					cand.merged.Snippet = item.Snippet
-				}
-			}
-			if betterRank {
-				cand.bestRank = rank
-				cand.bestChainIdx = br.chainIdx
-			}
-			if textnorm.RuneCount(item.Summary) > textnorm.RuneCount(cand.merged.Summary) {
-				cand.merged.Summary = item.Summary
-			}
-			if textnorm.RuneCount(item.Content) > textnorm.RuneCount(cand.merged.Content) {
-				cand.merged.Content = item.Content
-			}
-			if item.Site != "" && cand.merged.Site == "" {
-				cand.merged.Site = item.Site
-			}
-			if len(item.Authors) > 0 {
-				cand.merged.Authors = mergeAuthors(cand.merged.Authors, item.Authors)
-			}
-			if item.Icon != "" && cand.merged.Icon == "" {
-				cand.merged.Icon = item.Icon
-			}
-			if item.Published != nil {
-				if cand.merged.Published == nil || item.Published.Before(*cand.merged.Published) {
-					cand.merged.Published = new(item.Published.UTC())
-				}
-			}
-			if item.Relevance != nil && (cand.merged.Relevance == nil || *item.Relevance > *cand.merged.Relevance) {
-				cand.merged.Relevance = new(*item.Relevance)
-			}
-			if item.Authority != nil && (cand.merged.Authority == nil || *item.Authority > *cand.merged.Authority) {
-				cand.merged.Authority = new(*item.Authority)
-			}
-			if len(item.Extra) > 0 {
-				if cand.merged.Extra == nil {
-					cand.merged.Extra = make(map[string]any, len(item.Extra))
-				}
-				for ek, ev := range item.Extra {
-					if _, exists := cand.merged.Extra[ek]; !exists {
-						cand.merged.Extra[ek] = ev
+			if !knownURL && ck.bodyFP.Matchable() {
+				for _, existing := range clusters {
+					if textnorm.FingerprintsNearDuplicate(existing.anchorCK.titleTokens, existing.anchorCK.bodyFP, ck.titleTokens, ck.bodyFP) {
+						cl = existing
+						if uKey != "" {
+							byURLKey[uKey] = cl
+						}
+						contentDeduped++
+						break
 					}
 				}
 			}
+
+			member := clusterMember{
+				result:   item.Clone(),
+				urlKey:   uKey,
+				branchID: br.chainIdx,
+				rank:     rank,
+			}
+
+			if cl == nil {
+				cl = &fusedCluster{
+					score:         rrfTerm,
+					firstChainIdx: br.chainIdx,
+					providers:     []string{br.name},
+					seenBranches:  map[int]struct{}{br.chainIdx: {}},
+					members:       []clusterMember{member},
+					anchorCK:      ck,
+				}
+				if uKey != "" {
+					byURLKey[uKey] = cl
+				}
+				clusters = append(clusters, cl)
+				continue
+			}
+
+			// 同一检索分支在同一内容聚类中最多贡献一次 RRF 计分，防止同分支多条转载放大权重并污染 providers[]。
+			if _, scored := cl.seenBranches[br.chainIdx]; !scored {
+				cl.seenBranches[br.chainIdx] = struct{}{}
+				cl.score += rrfTerm
+				cl.providers = append(cl.providers, br.name)
+			}
+			cl.members = append(cl.members, member)
+			upgradeAnchorKey(&cl.anchorCK, ck)
 		}
 	}
 
-	cands := make([]*fusedCandidate, 0, len(keys))
-	for _, uk := range keys {
-		cands = append(cands, byKey[uk])
+	// 阶段 2：基于整簇成员信息统一选出规范代表页并合并富字段（消除分支顺序敏感性）
+	for _, cl := range clusters {
+		cl.merged = resolveClusterResult(cl.members, cl.providers, false)
 	}
 
-	slices.SortStableFunc(cands, func(a, b *fusedCandidate) int {
+	slices.SortStableFunc(clusters, func(a, b *fusedCluster) int {
 		if math.Abs(a.score-b.score) > rrfScoreEpsilon {
 			return cmp.Compare(b.score, a.score)
 		}
@@ -131,40 +111,14 @@ func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limi
 		)
 	})
 
-	if limit > 0 && len(cands) > limit {
-		cands = cands[:limit]
+	if limit > 0 && len(clusters) > limit {
+		clusters = clusters[:limit]
 	}
-	out := make([]core.Result, len(cands))
-	for i, c := range cands {
-		res := c.merged
+	out := make([]core.Result, len(clusters))
+	for i, cl := range clusters {
+		res := cl.merged
 		res.Rank = i + 1
 		out[i] = res
 	}
-	return out
-}
-
-func mergeAuthors(existing, incoming []string) []string {
-	seen := make(map[string]struct{}, len(existing)+len(incoming))
-	out := make([]string, 0, len(existing)+len(incoming))
-	for _, a := range existing {
-		k := strings.ToLower(strings.TrimSpace(a))
-		if k == "" {
-			continue
-		}
-		if _, dup := seen[k]; !dup {
-			seen[k] = struct{}{}
-			out = append(out, a)
-		}
-	}
-	for _, a := range incoming {
-		k := strings.ToLower(strings.TrimSpace(a))
-		if k == "" {
-			continue
-		}
-		if _, dup := seen[k]; !dup {
-			seen[k] = struct{}{}
-			out = append(out, a)
-		}
-	}
-	return out
+	return out, contentDeduped
 }

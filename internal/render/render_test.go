@@ -56,9 +56,10 @@ func TestFormatsAndMCPPaginationPrompt(t *testing.T) {
 		Kind:   "search",
 		Query:  "go",
 		Results: []core.Result{
-			{Rank: 1, Title: "Go Dev", URL: "https://go.dev", Summary: "Official Go site"},
+			{Rank: 1, Title: "Go Dev", URL: "https://go.dev", Summary: "Official Go site", Providers: []string{"deepseek"}},
 		},
 		Meta: core.Meta{
+			Strategy:  string(core.StrategyAuto),
 			Providers: []core.ProviderReport{{Name: "deepseek", Status: "ok", Results: 1}},
 			Cost:      []core.Cost{{Currency: "CNY", Micros: 5000, Estimated: true}},
 		},
@@ -70,6 +71,40 @@ func TestFormatsAndMCPPaginationPrompt(t *testing.T) {
 	mdOut, err := FormatSearch(sEnv, "md", Palette{})
 	if err != nil || !strings.Contains(mdOut, "¥0.005") {
 		t.Fatalf("unexpected md format: %s err=%v", mdOut, err)
+	}
+	if !strings.Contains(mdOut, "1. Go Dev\n") || strings.Contains(mdOut, "— deepseek") {
+		t.Fatalf("single-provider auto search should not emit per-result provider noise:\n%s", mdOut)
+	}
+	mcpAutoOut, err := FormatMCPSearchText(sEnv, spec.TextFormatMarkdown)
+	if err != nil || strings.Contains(mcpAutoOut, "Sources:") {
+		t.Fatalf("single-provider auto MCP search should not emit Sources line:\n%s err=%v", mcpAutoOut, err)
+	}
+	if got := resultProvidersLabel(string(core.StrategyAuto), []string{"deepseek", "deepseek"}); got != "" {
+		t.Fatalf("duplicate single provider under auto strategy must stay empty, got %q", got)
+	}
+
+	// 融合模式下 CLI 与 MCP Markdown 均应露出单条跨源共识标签（并自动去重），非融合单源则保持静默
+	fusionEnv := &core.Envelope{
+		Schema: spec.SchemaVersion,
+		OK:     true,
+		Kind:   spec.KindSearch,
+		Query:  "anthropic ipo",
+		Results: []core.Result{
+			{Rank: 1, Title: "SEC Form 424B4", URL: "https://www.sec.gov/424b4", Site: "sec.gov", Summary: "Final prospectus.", Providers: []string{"parallel", "exa", "exa"}},
+			{Rank: 2, Title: "Market Recap", URL: "https://news.example/recap", Summary: "Single source item.", Providers: []string{"keenable"}},
+		},
+		Meta: core.Meta{
+			Strategy:  string(core.StrategyFusion),
+			Providers: []core.ProviderReport{{Name: "keenable", Status: core.ProviderStatusOK}, {Name: "parallel", Status: core.ProviderStatusOK}, {Name: "exa", Status: core.ProviderStatusOK}},
+		},
+	}
+	fusionCLI, err := FormatSearch(fusionEnv, spec.FormatMarkdown, Palette{})
+	if err != nil || !strings.Contains(fusionCLI, "— sec.gov · parallel+exa") || !strings.Contains(fusionCLI, "— keenable") {
+		t.Fatalf("expected per-result provider consensus in CLI fusion markdown, got:\n%s err=%v", fusionCLI, err)
+	}
+	fusionMCP, err := FormatMCPSearchText(fusionEnv, spec.TextFormatMarkdown)
+	if err != nil || !strings.Contains(fusionMCP, "Site: sec.gov | Sources: parallel+exa") || !strings.Contains(fusionMCP, "\nSources: keenable\n") {
+		t.Fatalf("expected per-result Sources consensus in MCP fusion text, got:\n%s err=%v", fusionMCP, err)
 	}
 }
 

@@ -442,11 +442,16 @@ func TestProviderFlagValidationAndRoleSeparation(t *testing.T) {
 		}
 	}
 
-	// --json 模式下拼错 provider 名输出标准 invalid_argument 错误信封与 rc=2
+	// --json 模式下拼错 provider 名输出标准 invalid_argument 错误信封与 rc=2，且 search/fetch 均保持对称的默认 strategy
 	code, jsonOut, _ := run("search", "-p", "no_such_prov", "--json", "go")
 	var env core.Envelope
-	if code != clikit.ExitUsage || json.Unmarshal([]byte(jsonOut), &env) != nil || env.OK || env.Error == nil || env.Error.Code != core.CodeInvalidArgument {
-		t.Fatalf("expected JSON invalid_argument envelope on exit 2, got code=%d out=%s", code, jsonOut)
+	if code != clikit.ExitUsage || json.Unmarshal([]byte(jsonOut), &env) != nil || env.OK || env.Error == nil || env.Error.Code != core.CodeInvalidArgument || env.Meta.Strategy != string(core.StrategyAuto) {
+		t.Fatalf("expected JSON invalid_argument search envelope on exit 2, got code=%d out=%s", code, jsonOut)
+	}
+	fCode, fJSONOut, _ := run("fetch", "-p", "no_such_prov", "--json", "https://example.com")
+	var fEnv core.Envelope
+	if fCode != clikit.ExitUsage || json.Unmarshal([]byte(fJSONOut), &fEnv) != nil || fEnv.OK || fEnv.Error == nil || fEnv.Error.Code != core.CodeInvalidArgument || fEnv.Meta.Strategy != string(core.DefaultFetchStrategy) {
+		t.Fatalf("expected JSON invalid_argument fetch envelope with default strategy on exit 2, got code=%d out=%s", fCode, fJSONOut)
 	}
 
 	// 合法内置名与官方别名在未配密钥时通过参数校验，交由路由返回 rc=3 (no_provider)

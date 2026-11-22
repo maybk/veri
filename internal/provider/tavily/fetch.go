@@ -73,9 +73,11 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 			}
 			cost := p.costFromUsage(wireResp.Usage, fallbackMicros)
 			reqID := textnorm.FirstNonEmpty(wireResp.RequestID, resp.RequestID)
+			finalURL := core.ValidatedFinalURL(first.URL, u.String(), ProviderName, maxFetchURLLength)
 			return &core.FetchOutcome{
 				Page: &core.Page{
 					URL:        u.String(),
+					FinalURL:   finalURL,
 					Title:      title,
 					Published:  textnorm.ParseFlexibleTime(first.PublishedDate, time.UTC),
 					Content:    content,

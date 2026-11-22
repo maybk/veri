@@ -20,7 +20,7 @@ main.go -> internal/cli | internal/mcpserver -> internal/app -> internal/router 
 | [`internal/htmlmd`](../../internal/htmlmd/README.md) | HTML DOM 预处理（代码块、公式/MathML、隐藏节点清洗）与紧凑 GFM Markdown 渲染 | 仅依赖标准库、`golang.org/x/net/html` 与 `mdscan` |
 | [`internal/keypool`](../../internal/keypool/README.md) | 同厂商多密钥轮询、按状态退避冷却与失效隔离 | 仅依赖 Go 标准库 |
 | [`internal/urlnorm`](../../internal/urlnorm/README.md) | URL 规范化、追踪参数剥离与融合去重键生成 | 仅依赖 Go 标准库 |
-| [`internal/textnorm`](../../internal/textnorm/README.md) | 文本归一化、隐形注入剥离、宽容时间解析与正文质量闸门 | 仅依赖标准库与 `mdscan` |
+| [`internal/textnorm`](../../internal/textnorm/README.md) | 文本归一化、隐形注入剥离、宽容时间解析、正文质量闸门与内容指纹 | 仅依赖标准库与 `mdscan` |
 | [`internal/mdscan`](../../internal/mdscan/README.md) | Markdown 围栏代码块状态机与 ATX 标题扫描 | 仅依赖 Go 标准库 |
 | [`internal/config`](../../internal/config/README.md) | `~/.config/veri/` 配置加载、TOML 严格校验与三级凭据合并 | 全仓仅在此包导入 `BurntSushi/toml` |
 | [`internal/render`](../../internal/render/README.md) | Markdown / JSON / JSONL / URL 列表格式化渲染与不可信内容包裹 | 不依赖界面本地化词表 |
