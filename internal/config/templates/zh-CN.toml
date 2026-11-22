@@ -7,7 +7,7 @@ lang = "auto"                           # auto | zh | en
 [search]
 providers = ["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
 providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # 非中文检索链（设 [] 关闭）
-# --fusion 并发池（留空取前 3 启用源）
+# --fusion 并发池（留空取前 3 个已启用源）
 # fusion_providers = ["deepseek", "keenable", "tencent_wsa"]
 # fusion_providers_global = ["keenable", "parallel", "exa"]
 strategy = "auto"                       # auto | fusion
@@ -94,7 +94,7 @@ mode = "auto"                           # auto | context | web
 api_key = "env:LINKUP_API_KEY"
 depth = "fast"                          # flash | fast | standard | deep
 fetch_mode = "standard"                 # standard | pro
-render_js = false                       # 遇反爬/JS 盾时自动按需升档
+render_js = false                       # 遇反爬或 JS 拦截页时自动按需升档
 
 [providers.parallel]
 api_key = "env:PARALLEL_API_KEY"        # 标准条款允许去标识化训练；EU 端点需 mode = "basic"

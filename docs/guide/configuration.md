@@ -51,8 +51,8 @@ veri config show                               # 输出合并并脱敏后的生�
 | `ui.lang` | `"auto"` | 终端界面语言：`auto`（跟随系统，非中文环境回退英文）、`zh`、`en`（兼容 `zh_CN.UTF-8` 等标准 Locale） |
 | `search.providers` | `["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]` | 默认检索链（中文查询优先；显式配置且未设 `providers_global` 时所有语言统一走此链） |
 | `search.providers_global` | `["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"]` | 非中文查询检索链（英文、日韩等或指定非中文 `--lang` 时启用；设 `[]` 关闭） |
-| `search.fusion_providers` | `[]` | `--fusion` 并发源列表（中文优先；为空取 `search.providers` 前 3 启用源；仅配此项时所有语言统一使用） |
-| `search.fusion_providers_global` | `[]` | `--fusion` 非中文并发源列表（为空取 `search.providers_global` 前 3 启用源；设 `[]` 关闭分池） |
+| `search.fusion_providers` | `[]` | `--fusion` 并发源列表（中文优先；为空取 `search.providers` 前 3 个已启用源；仅配此项时所有语言统一使用） |
+| `search.fusion_providers_global` | `[]` | `--fusion` 非中文并发源列表（为空取 `search.providers_global` 前 3 个已启用源；设 `[]` 关闭分池） |
 | `search.strategy` | `"auto"` | `auto`（链式回退）或 `fusion`（多源并发 RRF 融合） |
 | `search.count` | `8` | 默认返回条数，范围 `1`–`50` |
 | `search.detail` | `"summary"` | 结果详略级别：`snippet`、`summary`、`content` |

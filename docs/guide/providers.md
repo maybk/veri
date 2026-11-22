@@ -6,7 +6,7 @@
 
 ## 内置适配器矩阵
 
-| 标识 (`name`) | 角色 | 默认端点 | 凭证环境变量 | 主要技术特性 |
+| 标识 (`name`) | 角色 | 默认端点 | 凭据环境变量 | 主要技术特性 |
 | --- | --- | --- | --- | --- |
 | `deepseek` | `search`, `fetch` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` | 提供 `/v1/tools/search` 与 `/v1/tools/fetch`；检索支持 `site:`、`-site:`、`after:`、`before:` 操作符拼装，查询总长上限 128 个 Unicode 字符；提取默认超时 `10s` |
 | `keenable` | `search`, `fetch` | `https://api.keenable.ai` | `KEENABLE_API_KEY` | 提供 `/v1/search`（默认关闭合成卡片）与 `GET /v1/fetch`（支持 `--fresh`）；支持域名过滤与发布时间窗；默认数据策略会留存查询与结果 |
@@ -20,7 +20,7 @@
 | `parallel` | `search`, `fetch` | `https://api.parallel.ai` | `PARALLEL_API_KEY` | 提供 `/v1/search`（默认 `fast` 模式，支持域名/路径前缀与起始日期过滤）与 `/v1/extract`（支持 JS 渲染与 PDF，`--fresh` 实时抓取）；标准条款允许去标识化用于模型训练（EU 端点 `eu.parallel.ai` 需配 `mode="basic"`） |
 | `firecrawl` | `search`, `fetch` | `https://api.firecrawl.dev` | `FIRECRAWL_API_KEY` | 提供 v2 `/v2/scrape`（默认 `proxy=auto` 抗反爬、PDF 页数上限保护与内层状态校验）与 `/v2/search`；云端强制配 Key，自托管 `base_url` 支持无 Key 运行（仅本机回环放行 `http://`，局域网/远程实例需经 `https://`） |
 | `github` | `fetch` | `https://api.github.com` | `GITHUB_TOKEN` / `GH_TOKEN`（可选） | 识别 `github.com` 仓库主页、`blob` 源码文件（含 `#L10-L20` 行范围）、Issue、PR（含行级审查评论）、仓库级 Discussion、Commit 与 Release（含 `latest` 及含斜杠 Tag），输出结构化 Markdown；组织级 `/orgs/<org>/discussions/<n>` 自动交由通用提取链处理 |
-| `local` | `fetch` | 本地直连抓取 | 无需密钥 | 纯 Go 本地抓取 HTML、Markdown（含 Frontmatter 解析与弱内容自动降级 HTML）、纯文本与 JSON，内置流式 SSR 还原、Readability 正文抽取与反爬盾页检测 |
+| `local` | `fetch` | 本地直连抓取 | 无需密钥 | 纯 Go 本地抓取 HTML、Markdown（含 Frontmatter 解析与弱内容自动降级 HTML）、纯文本与 JSON，内置流式 SSR 还原、Readability 正文提取与反爬拦截页检测 |
 
 ## 检索选路模式
 
@@ -65,11 +65,11 @@
 | `parallel.location` | `parallel_location` | `parallel`（检索） | 2 位 ISO 国家码（如 `us`、`gb`、`jp`、`cn`） |
 | `firecrawl.category` | `firecrawl_category` | `firecrawl`（检索） | `research`、`pdf`、`developer`、`gov`（`developer` 与 `gov` 均不可与其他类别混用） |
 | `fresh` | CLI `--fresh` | `tinyfish` / `exa` / `keenable` / `parallel` / `firecrawl` / MCP 缓存（提取） | `true` / `1`：绕过 MCP 本地缓存并要求支持该能力的上游强制实时抓取 |
-| `tavily.extract_depth` | `tavily_extract_depth` | `tavily`（提取） | `basic`、`advanced`（未显式指定且因反爬/JS 盾升档时自动切换 `advanced`） |
+| `tavily.extract_depth` | `tavily_extract_depth` | `tavily`（提取） | `basic`、`advanced`（未显式指定且因反爬或 JS 拦截页升档时自动切换为 `advanced`） |
 | `tinyfish.ttl` | `tinyfish_ttl` | `tinyfish`（提取） | 非负整数秒数；`0` 表示强制实时渲染抓取 |
 | `exa.max_age_hours` | `exa_max_age_hours` | `exa`（提取） | `-1`–`720` 整数小时；`0` 强制实时抓取，`-1` 仅读取索引缓存 |
 | `linkup.fetch_mode` | `linkup_fetch_mode` | `linkup`（提取） | `standard`（默认）、`pro` |
-| `linkup.render_js` | `linkup_render_js` | `linkup`（提取） | `true` / `false`（未显式指定且遇反爬/JS 盾升档时自动启用） |
+| `linkup.render_js` | `linkup_render_js` | `linkup`（提取） | `true` / `false`（未显式指定且因反爬或 JS 拦截页升档时自动启用） |
 | `firecrawl.proxy` | `firecrawl_proxy` | `firecrawl`（提取） | `auto`（默认）、`basic`、`enhanced` |
 | `firecrawl.max_pages` | `firecrawl_max_pages` | `firecrawl`（提取） | `1`–`500` 整数；限制单次提取解析的最大 PDF 页数（默认 `20`） |
 

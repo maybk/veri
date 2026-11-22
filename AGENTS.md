@@ -1,6 +1,6 @@
 # veri
 
-`veri` 是面向 AI Agent 与开发者的纯 Go 单二进制多源联网检索与网页 Markdown 提取工具，跨平台支持 macOS、Windows 与 Linux，提供命令行界面（CLI）、MCP 服务端（`veri mcp`）与 Agent Skill（`veri skill`）。
+`veri` 是面向 AI Agent 和开发者的纯 Go 单二进制多源联网检索与网页 Markdown 提取工具，跨平台支持 macOS、Windows 与 Linux，提供命令行界面（CLI）、MCP 服务端（`veri mcp`）与 Agent Skill（`veri skill`）。
 
 ## 架构与模块边界
 

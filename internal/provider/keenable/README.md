@@ -16,7 +16,7 @@
 ## 开发规范
 
 - **云端必须配 Key**：缺 Key 时静默禁用，绝不回退 `/public` 共享匿名池。
-- **403 精细隔离**：`permission_error` 中仅凭证/权限类错误归 `auth_failed` 隔离密钥，`private_url_not_allowed`、特性未开通及 `target_error` 绝不拉黑健康密钥。
+- **403 精细隔离**：`permission_error` 中仅凭据/权限类错误归 `auth_failed` 隔离密钥，`private_url_not_allowed`、特性未开通及 `target_error` 绝不拉黑健康密钥。
 - **隐私提示**：Keenable 官方默认数据策略会留存查询与结果，敏感查询应禁用本源。
 
 ## 验证

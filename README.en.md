@@ -7,7 +7,7 @@
   Single pure-Go binary with zero runtime dependencies — shipping a <strong>CLI</strong>, <strong>MCP Server</strong>, and <strong>Agent Skill</strong>
 </p>
 
-**[简体中文](./README.md)** · **[English](./README.en.md)**
+**[简体中文](./README.md)** · **English** &nbsp;|&nbsp; **[Usage Guide](./docs/guide/usage.md)**
 
 ![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-stdio-4A5568)
@@ -76,22 +76,23 @@ winget install maybk.Veri
 
 ### Manual Download
 
-Prebuilt archives and `SHA256SUMS.txt` checksums are available on [GitHub Releases](https://github.com/maybk/veri/releases); standalone installs can check and upgrade directly via `veri update`. To build from source, see the [Development & Build Guide](./docs/guide/development.md).
+Prebuilt archives and `SHA256SUMS.txt` checksums are available on [GitHub Releases](https://github.com/maybk/veri/releases); script or manual binary installs can check and upgrade via `veri update`. To build from source, see the [Development & Build Guide](./docs/guide/development.md).
 
 ## 🚀 Quick Start
 
-> Web page and GitHub extraction works **out of the box with no API keys**; configuring any single search provider key unlocks web search and cloud extraction. See the [Usage Guide](./docs/guide/usage.md) for full walkthroughs and official API key portals.
+> [!TIP]
+> Web page and GitHub extraction works **out of the box with no API keys**; configuring any single search provider key unlocks web search and cloud extraction. For full walkthroughs, command recipes, and troubleshooting, see the **[Usage Guide](./docs/guide/usage.md)**.
 
 ### 1. Configure API Keys
 
-Credentials are encrypted under `~/.config/veri/` and shared automatically between the CLI and MCP server:
+Credentials are encrypted under `~/.config/veri/` and shared automatically between the CLI and MCP server (see [provider free tiers and API key portals](./docs/guide/usage.md#选型与官方申请入口)):
 
 ```bash
 veri key set exa
 veri key list
 ```
 
-You can also configure keys via `~/.config/veri/config.toml` or environment variables (environment variables always take precedence):
+You can also configure keys via environment variables or `~/.config/veri/config.toml` (see the [Configuration Guide](./docs/guide/configuration.md)); environment variables always take precedence:
 
 ```bash
 export EXA_API_KEY="exa_..."
@@ -111,7 +112,7 @@ veri doctor
 veri fetch https://github.com/modelcontextprotocol/go-sdk
 veri fetch https://example.com/article --section "Authentication" --max-chars 20000
 
-# Web search (requires any one search provider key)
+# Web search (requires any one search provider key; pass a query directly or use 'search' with filter flags)
 veri "golang mcp sdk official"
 veri search "go 1.27 release notes" -t 6m -s go.dev -n 5
 
@@ -121,7 +122,7 @@ veri search "raft leader lease" --fusion -p exa,parallel --json
 
 ### 3. MCP Server Integration
 
-Register `veri mcp` in your MCP client (or run `veri mcp config` to generate the JSON snippet); keys stored locally are shared automatically with no need to duplicate `env`:
+Register `veri mcp` in an MCP-capable client to expose `web_search` and `web_fetch` tools with shared in-process caching (run `veri mcp config` to generate the JSON snippet); keys stored locally take effect automatically with no need to duplicate `env`:
 
 ```json
 {
@@ -149,7 +150,7 @@ Without a global install, you can also run it directly via `npx`:
 
 ### 4. Agent Skill Installation
 
-Recommended via [`npx skills`](https://skills.sh) for unified multi-agent installation and updates:
+Provides routing strategies and extraction recipes for CLI-capable coding agents (usable standalone with the CLI or alongside MCP). Recommended via [`npx skills`](https://skills.sh) for unified multi-agent installation and updates:
 
 ```bash
 npx skills add maybk/veri
@@ -167,7 +168,7 @@ veri skill print     # Print the embedded SKILL.md
 ### 🎯 Core Capabilities
 
 - **Multi-Provider Search & Fallback** - Built-in support for DeepSeek, Keenable, Zhihu, Exa, TinyFish, Tencent WSA, Tavily, Brave, Linkup, Parallel, and Firecrawl, enabled automatically from configured keys; supports automatic failover, language-aware routing, and concurrent fusion deduplication
-- **Clean Web & GitHub Extraction** - Built-in structured GitHub reader and pure-Go local extractor turn pages and repos / issues / PRs / discussions / commits / releases into clean Markdown with zero keys; configured cloud extractors add dynamic rendering and PDF support, plus batch fetching, section slicing, and keyword matching
+- **Clean Web & GitHub Extraction** - Built-in structured GitHub reader and pure-Go local extractor turn web pages and GitHub repos / issues / PRs / discussions / commits / releases into clean Markdown with zero keys; configured cloud extractors add dynamic rendering and PDF support, plus batch fetching, section slicing, and keyword matching
 - **Unified Filter Syntax** - One consistent set of flags for time windows, site allow/block lists, and language filters across providers, with strict native enforcement when needed
 - **CLI / MCP / Skill in One Binary** - One static executable delivers an interactive/scriptable CLI, a standard stdio MCP server, and Agent Skill integration for AI agents
 
@@ -208,7 +209,7 @@ main.go -> internal/cli | internal/mcpserver -> internal/app -> internal/router 
 ## ⚠️ Disclaimer
 
 1. **Compliance** - Use this tool in accordance with applicable laws, target website terms of service, and upstream API policies.
-2. **Privacy** - Configuration files and API keys stay in `~/.config/veri/` on your local machine and are sent only to the upstream providers you configure; `veri` contains no telemetry.
+2. **Privacy** - Configuration files and API keys stay in `~/.config/veri/` on your local machine; requests and credentials go directly to enabled upstream providers, with no relay servers or telemetry.
 3. **Liability** - Search results and extracted web pages originate from third-party sources; the authors assume no liability for external content accuracy or upstream API charges.
 
 ---

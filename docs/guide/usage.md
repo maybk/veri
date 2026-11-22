@@ -161,7 +161,7 @@ veri mcp config --full-path  # 客户端无法继承 PATH 时，输出二进制�
 }
 ```
 
-未全局安装时，也可通过 `npx` 直接拉起 MCP 服务：
+未全局安装时，也可通过 `npx` 直接启动 MCP 服务：
 
 ```json
 {
@@ -178,13 +178,13 @@ veri mcp config --full-path  # 客户端无法继承 PATH 时，输出二进制�
 
 ### Agent Skill
 
-推荐使用 [`npx skills`](https://skills.sh) 跨多 Agent 宿主统一安装与更新：
+为支持命令行调用的编码 Agent 提供检索策略与提取配方（可单独配合 CLI，也可与 MCP 搭配使用）。推荐通过 [`npx skills`](https://skills.sh) 为各类 AI Agent 统一安装与更新：
 
 ```bash
 npx skills add maybk/veri
 ```
 
-无 Node.js 或离线环境可使用内置命令直接安装：
+离线或无 Node.js 环境下，可使用内置命令直接安装：
 
 ```bash
 veri skill install            # 安装到用户目录 ~/.agents/skills/veri/SKILL.md

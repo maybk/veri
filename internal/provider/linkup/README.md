@@ -9,7 +9,7 @@
 - `provider.go`：适配器构造、参数校验、能力声明与 PDF/JS `FetchProfile` 声明。
 - `wire.go`：`/v1/search`、`/v1/fetch` 请求/响应结构体与错误体定义。
 - `search.go`：固定 `outputType=searchResults`、`name` 标题映射、`SEARCH_QUERY_NO_RESULT` 空结果归一与日期夹紧。
-- `fetch.go`：调用 `/v1/fetch` 提取 HTML/PDF 正文，遇反爬/JS 盾自动按需升档 `renderJs` 并回填首行标题。
+- `fetch.go`：调用 `/v1/fetch` 提取 HTML/PDF 正文，遇反爬或 JS 拦截页自动按需升档 `renderJs` 并回填首行标题。
 - `errors.go`：按官方线协议错误码精细拆分多义 HTTP `400`、`403` 与 `429`（区分余额耗尽与并发限流）。
 - `testdata/`：脱敏的上游响应测试样本目录。
 

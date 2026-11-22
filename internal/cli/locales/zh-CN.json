@@ -54,8 +54,8 @@
     }
   },
   "cli": {
-    "root.short": "多源联网检索与网页 Markdown 提取工具（CLI + MCP + Skill）",
-    "root.long": "veri 是面向 AI Agent 与开发者的多源联网检索与网页 Markdown 提取工具。\n直接在根命令后传入查询词等价于执行 `veri search`。",
+    "root.short": "多源联网检索与网页 Markdown 提取工具（CLI、MCP 与 Agent Skill）",
+    "root.long": "veri 是面向 AI Agent 和开发者的多源联网检索与网页 Markdown 提取工具。\n直接在根命令后传入查询词等价于执行 `veri search`。",
     "root.example": "  veri key set deepseek\n  veri \"golang context cancellation\"\n  veri fetch https://go.dev/doc/effective_go --section \"Concurrency\"\n  veri search \"mcp sdk\" -s github.com --json\n  veri search \"raft leader lease\" -F --json",
     "group.query": "检索与提取:",
     "group.admin": "配置与诊断:",
@@ -198,7 +198,7 @@
     "mcp.config.short": "输出客户端可用的 mcpServers JSON 配置片段",
     "mcp.config.flag.full_path": "在 command 字段中使用当前 veri 可执行文件的绝对路径",
     "skill.short": "导出或安装内置 Agent SKILL.md",
-    "skill.long": "导出或安装内置 Agent SKILL.md。推荐使用 `npx skills add maybk/veri` 统一管理多宿主安装与更新；离线环境可直接写入标准 `.agents/skills` 目录或导出原文。",
+    "skill.long": "导出或安装内置 Agent SKILL.md。推荐通过 `npx skills add maybk/veri` 为各类 AI Agent 统一安装与更新；离线环境可直接写入标准 `.agents/skills` 目录或导出原文。",
     "skill.example": "  npx skills add maybk/veri\n  veri skill install\n  veri skill install --project\n  veri skill print",
     "skill.print.short": "输出内置 SKILL.md 内容",
     "skill.install.short": "写入内置 SKILL.md 至 .agents/skills 或指定目录",

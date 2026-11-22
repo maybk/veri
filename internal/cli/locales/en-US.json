@@ -54,8 +54,8 @@
     }
   },
   "cli": {
-    "root.short": "Multi-provider web search and Markdown extraction tool (CLI + MCP + Skill)",
-    "root.long": "veri is a multi-provider web search and clean Markdown page extraction tool for AI agents and developers.\nPassing query arguments directly to the root command runs `veri search`.",
+    "root.short": "Multi-provider web search and Markdown extraction (CLI, MCP, Agent Skill)",
+    "root.long": "veri is a multi-provider web search and clean Markdown extraction tool for AI agents and developers.\nPassing query arguments directly to the root command runs `veri search`.",
     "root.example": "  veri key set deepseek\n  veri \"golang context cancellation\"\n  veri fetch https://go.dev/doc/effective_go --section \"Concurrency\"\n  veri search \"mcp sdk\" -s github.com --json\n  veri search \"raft leader lease\" -F --json",
     "group.query": "Search & Extraction:",
     "group.admin": "Configuration & Diagnostics:",
