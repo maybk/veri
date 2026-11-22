@@ -121,8 +121,8 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 		}
 		notes = append(notes, out.Warnings...)
 
-		// 对云端提取结果统一执行挑战盾与软 404 检测，防止前序云端源返回 HTTP 200 盾页截断后续渲染源。
-		if f.Name() != spec.ProviderLocal && !out.LowQuality && out.Page != nil {
+		// 对云端提取结果统一执行挑战盾与软 404 检测，防止前序云端源（含 excerpt_only 低质降级）返回 HTTP 200 盾页截断渲染源或污染保底内容。
+		if f.Name() != spec.ProviderLocal && !isWallQualityReason(out.QualityMsg) && out.Page != nil {
 			if wall := textnorm.DetectChallengeWall(out.Page.Title, out.Page.Content); wall.LowQuality {
 				out.LowQuality = true
 				out.QualityMsg = wall.Reason
@@ -136,7 +136,7 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 				Results:   1,
 				LatencyMS: latency,
 				Cost:      out.Cost,
-				Warnings:  []string{"quality_gate:" + out.QualityMsg},
+				Warnings:  buildFetchReportWarnings(true, out.QualityMsg, out.Warnings),
 				RequestID: out.RequestID,
 			})
 
@@ -176,19 +176,13 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 			return buildFetchErrorEnvelope(req.URL, policy.strategyLabel, reports, idx > 0, costs, start, se), se
 		}
 
-		var repWarnings []string
-		if out.LowQuality && out.QualityMsg != "" {
-			repWarnings = append(repWarnings, "quality_gate:"+out.QualityMsg)
-		}
-		repWarnings = append(repWarnings, out.Warnings...)
-
 		reports = append(reports, core.ProviderReport{
 			Name:      f.Name(),
 			Status:    core.ProviderStatusOK,
 			Results:   1,
 			LatencyMS: latency,
 			Cost:      out.Cost,
-			Warnings:  repWarnings,
+			Warnings:  buildFetchReportWarnings(out.LowQuality, out.QualityMsg, out.Warnings),
 			RequestID: out.RequestID,
 		})
 		return buildFetchSuccessEnvelope(out.Page, &workReq, policy.strategyLabel, reports, idx > 0, notes, costs, start), nil
@@ -207,6 +201,15 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 		lastErr = summarizeChainFailure("all extractors failed to read target URL", reports, lastErr)
 	}
 	return buildFetchErrorEnvelope(req.URL, policy.strategyLabel, reports, len(reports) > 1, costs, start, lastErr), lastErr
+}
+
+func buildFetchReportWarnings(lowQuality bool, qualityMsg string, warnings []string) []string {
+	if !lowQuality || qualityMsg == "" {
+		return slices.Clone(warnings)
+	}
+	out := make([]string, 0, 1+len(warnings))
+	out = append(out, "quality_gate:"+qualityMsg)
+	return append(out, warnings...)
 }
 
 func isWallQualityReason(reason string) bool {

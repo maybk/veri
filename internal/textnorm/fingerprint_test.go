@@ -157,3 +157,63 @@ func TestFrontmatterTitleHygieneAndBodyStripping(t *testing.T) {
 		t.Fatalf("CleanResultTitle must unescape HTML entities at most once, got %q", got)
 	}
 }
+
+func TestCJKTradToSimpFingerprintFolding(t *testing.T) {
+	// 1. 校验编译期繁简折叠表严格升序、范围合法、无自映射且全局满足单步不动点（fold(fold(r)) == fold(r)）
+	var prev uint16
+	for i, entry := range cjkTradToSimpTable {
+		trad := uint16(entry >> 16)
+		simp := rune(entry & 0xFFFF)
+		if trad < 0x3400 || trad > 0x9FFF || simp < 0x3400 || simp > 0x9FFF || simp == rune(trad) {
+			t.Fatalf("entry[%d] invalid pair 0x%04X -> 0x%04X", i, trad, simp)
+		}
+		if i > 0 && trad <= prev {
+			t.Fatalf("cjkTradToSimpTable not strictly ascending at index %d: 0x%04X <= 0x%04X", i, trad, prev)
+		}
+		prev = trad
+		if got := foldCJKForFingerprint(rune(trad)); got != simp {
+			t.Fatalf("foldCJKForFingerprint(0x%04X) = 0x%04X, want 0x%04X", trad, got, simp)
+		}
+		if again := foldCJKForFingerprint(simp); again != simp {
+			t.Fatalf("non-idempotent fold: 0x%04X -> 0x%04X -> 0x%04X", trad, simp, again)
+		}
+	}
+	for _, untouched := range []rune{-1, 'A', 'あ', 0x33FF, 0xA000, 0x20000} {
+		if got := foldCJKForFingerprint(untouched); got != untouched {
+			t.Fatalf("out-of-range rune 0x%X must remain unchanged, got 0x%X", untouched, got)
+		}
+	}
+	if !slices.Equal(
+		NormalizeTitleForDedup("特朗普吁辉达让黄仁勋回任 - 星島頭條", "星岛头条"),
+		NormalizeTitleForDedup("特朗普籲輝達讓黃仁勳回任", "星島頭條"),
+	) {
+		t.Fatal("expected Traditional/Simplified site suffix to strip consistently")
+	}
+
+	// 2. 实测真实简繁同稿镜像（星岛头条 3639517 简体版 vs 繁体版）必须精准识别为近重复
+	stTitleSimp := NormalizeTitleForDedup("特朗普吁辉达让黄仁勋回任 称习近平赞他是人才 黄同意赴美国会作证", "星島頭條")
+	stBodySimp := BuildTextFingerprint("美国总统特朗普再度表态，力挺黄仁勋重返辉达，表明希望黄仁勋郑重道歉后回去工作，并呼吁辉达应给这位全球顶尖人才第2次机会。特朗普还透露，曾跟中国国家主席习近平谈及黄仁勋事件，对方也称赞黄是杰出人才。与此同时，黄仁勋已同意出席参议院公开听证会作证。")
+	stTitleTrad := NormalizeTitleForDedup("特朗普籲輝達讓黃仁勳回任 稱習近平讚他是人才 黃同意赴美國會作證", "星島頭條")
+	stBodyTrad := BuildTextFingerprint("美國總統特朗普再度表態，力挺黃仁勳重返輝達，表明希望黃仁勳鄭重道歉後回去工作，並呼籲輝達應給這位全球頂尖人才第2次機會。特朗普還透露，曾跟中國國家主席習近平談及黃仁勳事件，對方也稱讚黃是傑出人才。與此同時，黃仁勳已同意出席參議院公開聽證會作證。")
+	if !slices.Equal(stTitleSimp, stTitleTrad) {
+		t.Fatalf("expected Simplified/Traditional mirrored headlines to fold identically: simp=%v trad=%v", stTitleSimp, stTitleTrad)
+	}
+	if !FingerprintsNearDuplicate(stTitleSimp, stBodySimp, stTitleTrad, stBodyTrad) {
+		t.Fatal("expected Simplified and Traditional mirror copies of the same article to match")
+	}
+
+	// 3. 实测中新网繁体 vs 网易简体转载同稿匹配，而不同报道（即便同主题含繁简）绝不误合并
+	cnTitleTrad := NormalizeTitleForDedup("Anthropic聯合創始人擬IPO套現116.73億元", "中国新闻网")
+	cnBodyTrad := BuildTextFingerprint("中新經緯11月11日電 彭博社11日消息，美國人工智能公司Anthropic的七位聯合創始人將在近期IPO中共同出售價值17.5億美元（約合人民幣116.73億元）的股票，每位創始人預計套現約2.5億美元。")
+	cnTitleSimp := NormalizeTitleForDedup("Anthropic联合创始人拟IPO套现116.73亿元", "网易订阅")
+	cnBodySimp := BuildTextFingerprint("中新经纬11月11日电 彭博社11日消息，美国人工智能公司Anthropic的七位联合创始人将在近期IPO中共同出售价值17.5亿美元（约合人民币116.73亿元）的股票，每位创始人预计套现约2.5亿美元。")
+	if !FingerprintsNearDuplicate(cnTitleTrad, cnBodyTrad, cnTitleSimp, cnBodySimp) {
+		t.Fatal("expected Traditional ChinaNews and Simplified NetEase reprint to match")
+	}
+
+	hkOtherTitle := NormalizeTitleForDedup("Anthropic上市令員工一夜成富豪 7名創辦人套現156億", "香港商报")
+	hkOtherBody := BuildTextFingerprint("Anthropic股票掛牌，絕大多數員工一夕間成百萬美元富翁，有數百人身家甚至破1億美元。這批新富豪恐怕很快將令原已瘋漲的三藩市灣區房價再攀高，截至9月員工總數為5300人。")
+	if FingerprintsNearDuplicate(cnTitleSimp, cnBodySimp, hkOtherTitle, hkOtherBody) {
+		t.Fatal("distinct Traditional article on same topic must NOT be collapsed")
+	}
+}

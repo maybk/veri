@@ -387,7 +387,7 @@ func normalizeExtractedTitle(raw string) string {
 	return cleaned
 }
 
-// tokenizeForFingerprint 将标题文本切分为混合粒度 Token：单个 CJK 字符为 1 Token，连续字母/数字串（小写）为 1 Token。
+// tokenizeForFingerprint 将标题文本切分为混合粒度 Token：单个 CJK 字符（繁简折叠后）为 1 Token，连续字母/数字串（小写）为 1 Token。
 func tokenizeForFingerprint(s string, maxTokens int) []string {
 	if s == "" || maxTokens <= 0 {
 		return nil
@@ -409,7 +409,7 @@ func tokenizeForFingerprint(s string, maxTokens int) []string {
 			if !flushWord() {
 				break
 			}
-			tokens = append(tokens, string(r))
+			tokens = append(tokens, string(foldCJKForFingerprint(r)))
 			if len(tokens) >= maxTokens {
 				break
 			}

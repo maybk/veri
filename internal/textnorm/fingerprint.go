@@ -90,7 +90,7 @@ func BuildTextFingerprint(text string) TextFingerprint {
 			if !flushWord() {
 				break
 			}
-			n := utf8.EncodeRune(runeBuf[:], r)
+			n := utf8.EncodeRune(runeBuf[:], foldCJKForFingerprint(r))
 			if !emitToken(fnvHashBytes(fnvOffset64, runeBuf[:n])) {
 				break
 			}

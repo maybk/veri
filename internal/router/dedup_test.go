@@ -380,4 +380,23 @@ func TestCanonicalSelectionHygieneConsensusAndOrderIndependence(t *testing.T) {
 	if noPadEnv.Results[0].URL != "https://wallstreetcn.com/articles/3786222" || strings.Contains(noPadEnv.Results[0].Summary, "canonical_url") || noPadEnv.Results[0].Summary != origBody {
 		t.Fatalf("frontmatter-padded reprint must not leak canonical_url or overwrite longer clean original summary, got %+v", noPadEnv.Results[0])
 	}
+
+	// 7. 单源 auto 模式下简繁同稿镜像（星岛头条简体 + 繁体）自动去重，且对外展示标题/摘要原样保留不改写字形
+	stSimpTitle := "特朗普吁辉达让黄仁勋回任 称习近平赞他是人才 黄同意赴美国会作证"
+	stSimpBody := "美国总统特朗普再度表态，力挺黄仁勋重返辉达，表明希望黄仁勋郑重道歉后回去工作，并呼吁辉达应给这位全球顶尖人才第2次机会。特朗普还透露，曾跟中国国家主席习近平谈及黄仁勋事件，对方也称赞黄是杰出人才。与此同时，黄仁勋已同意出席参议院公开听证会作证。"
+	stTradTitle := "特朗普籲輝達讓黃仁勳回任 稱習近平讚他是人才 黃同意赴美國會作證"
+	stTradBody := "美國總統特朗普再度表態，力挺黃仁勳重返輝達，表明希望黃仁勳鄭重道歉後回去工作，並呼籲輝達應給這位全球頂尖人才第2次機會。特朗普還透露，曾跟中國國家主席習近平談及黃仁勳事件，對方也稱讚黃是傑出人才。與此同時，黃仁勳已同意出席參議院公開聽證會作證。"
+	stDS := &fakeSearcher{
+		name: spec.ProviderDeepSeek,
+		caps: core.Capabilities{MaxCount: 10},
+		outcome: &core.SearchOutcome{Results: []core.Result{
+			{Rank: 1, Title: stSimpTitle, URL: "https://www.stheadline.com/zh-hans/loadnext/0/3639517", Site: "星島頭條", Summary: stSimpBody},
+			{Rank: 2, Title: stTradTitle, URL: "https://www.stheadline.com/realtime-world/3639517/article", Site: "星島頭條", Summary: stTradBody},
+		}},
+	}
+	rST := New(Options{SearchProviders: []string{spec.ProviderDeepSeek}}, []core.Provider{stDS})
+	stEnv, err := rST.Search(context.Background(), &core.SearchRequest{Query: "英伟达 黄仁勋 特朗普", Count: 5})
+	if err != nil || len(stEnv.Results) != 1 || stEnv.Results[0].Title != stSimpTitle {
+		t.Fatalf("expected auto search to collapse Simplified/Traditional mirror while keeping original text, got env=%+v err=%v", stEnv, err)
+	}
 }

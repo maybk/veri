@@ -22,7 +22,7 @@ summary_max_chars = 800
 [fetch]
 strategy = "api_first"                  # api_first | smart_local | local_only | api_only
 providers = ["keenable", "tavily", "firecrawl", "parallel", "exa", "linkup", "deepseek", "tinyfish"]
-providers_global = ["keenable", "parallel", "tavily", "exa", "linkup", "firecrawl", "tinyfish", "deepseek"] # 非中文站点提取链（设 [] 关闭）
+providers_global = ["keenable", "tavily", "parallel", "exa", "linkup", "firecrawl", "tinyfish", "deepseek"] # 非中文站点提取链（设 [] 关闭）
 timeout = "45s"                         # 整次提取超时
 max_bytes = "5MB"                       # 本地抓取解压后响应体上限
 min_content_chars = 300                 # 本地提取正文质量闸门最少字符数

@@ -323,6 +323,9 @@ func TestFetchFullContentFreshAndFallback(t *testing.T) {
 	if out.Page == nil || out.Page.Title != "Effective Go" || !strings.Contains(out.Page.Content, "unusual properties") {
 		t.Fatalf("unexpected page: %+v", out.Page)
 	}
+	if out.LowQuality || out.QualityMsg != "" {
+		t.Fatalf("full_content fetch must not be marked low quality, got low=%v msg=%q", out.LowQuality, out.QualityMsg)
+	}
 	if out.Page.Published == nil || out.Page.Published.Format("2006-01-02") != "2026-05-01" {
 		t.Fatalf("unexpected page published: %v", out.Page.Published)
 	}
@@ -346,7 +349,7 @@ func TestFetchInnerErrorsAndExcerptsFallback(t *testing.T) {
 		case 1:
 			_, _ = w.Write([]byte(`{"extract_id":"e2","session_id":"s2","results":[],"errors":[{"url":"https://a.example","error_type":"http_client_error","http_status_code":403,"content":"Cloudflare challenge"}]}`))
 		case 2:
-			_, _ = w.Write([]byte(`{"extract_id":"e3","session_id":"s3","results":[{"url":"javascript:alert(1)","title":null,"excerpts":["# Fallback Heading\n\nBody text from excerpts"],"full_content":null}],"errors":[]}`))
+			_, _ = w.Write([]byte(`{"extract_id":"e3","session_id":"s3","results":[{"url":"javascript:alert(1)","title":null,"excerpts":["# Fallback Heading\n\nBody text from excerpts"],"full_content":null}],"errors":[],"warnings":[{"type":"warning","message":"Neither objective nor search_queries were provided, provide at least one to increase the relevance of excerpts."}]}`))
 		}
 	}))
 	defer srv.Close()
@@ -365,11 +368,11 @@ func TestFetchInnerErrorsAndExcerptsFallback(t *testing.T) {
 	if se := classifyExtractItemError(extractWireError{ErrorType: "http_error", HTTPStatusCode: &code404}); se.Code != core.CodeNotFound || !strings.Contains(se.Message, "HTTP 404") {
 		t.Fatalf("expected human-readable HTTP 404 message, got %+v", se)
 	}
-	// 全文提取场景过滤掉针对 excerpts 的无关噪音警告，保留其他真实警告
+	// 全文提取场景统一过滤针对 excerpts 的误导性噪音警告，保留其他真实警告
 	if got := filterExtractWarnings([]wireWarning{
 		{Message: "Neither objective nor search_queries were provided, provide at least one to increase the relevance of excerpts."},
 		{Message: "content truncated at 100000 chars"},
-	}, true); !slices.Equal(got, []string{"parallel: content truncated at 100000 chars"}) {
+	}); !slices.Equal(got, []string{"parallel: content truncated at 100000 chars"}) {
 		t.Fatalf("unexpected filtered extract warnings: %v", got)
 	}
 
@@ -380,14 +383,14 @@ func TestFetchInnerErrorsAndExcerptsFallback(t *testing.T) {
 		t.Fatalf("expected challenge error, got %+v", se)
 	}
 
-	// 3. full_content 为 null 时兜底 excerpts、从 H1 提取标题，且拦截非法 javascript: FinalURL（返回空串不污染）
+	// 3. full_content 为 null 时兜底 excerpts、标记 LowQuality(excerpt_only)、压制无关提示、从 H1 提取标题且拦截非法 javascript: FinalURL
 	mode.Store(2)
 	out, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://safe.example/doc"})
 	if err != nil {
 		t.Fatalf("excerpts fallback fetch failed: %v", err)
 	}
-	if out.Page.Title != "Fallback Heading" || out.Page.FinalURL != "" {
-		t.Fatalf("unexpected fallback page: %+v", out.Page)
+	if out.Page.Title != "Fallback Heading" || out.Page.FinalURL != "" || !out.LowQuality || out.QualityMsg != qualityReasonExcerptOnly || len(out.Warnings) != 0 {
+		t.Fatalf("unexpected fallback outcome: page=%+v low=%v msg=%q warnings=%v", out.Page, out.LowQuality, out.QualityMsg, out.Warnings)
 	}
 }
 

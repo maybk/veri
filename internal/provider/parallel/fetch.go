@@ -81,6 +81,11 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 	}
 	finalURL := core.ValidatedFinalURL(item.URL, u.String(), ProviderName, maxFetchURLLength)
 
+	var qualityMsg string
+	if !hasFullContent {
+		qualityMsg = qualityReasonExcerptOnly
+	}
+
 	return &core.FetchOutcome{
 		Page: &core.Page{
 			URL:        u.String(),
@@ -92,9 +97,11 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 			Provider:   ProviderName,
 			SourceType: core.SourceGeneric,
 		},
-		Cost:      core.CloneCost(p.fetchCost),
-		RequestID: textnorm.FirstNonEmpty(wireResp.ExtractID, resp.RequestID),
-		Warnings:  filterExtractWarnings(wireResp.Warnings, hasFullContent),
+		Cost:       core.CloneCost(p.fetchCost),
+		RequestID:  textnorm.FirstNonEmpty(wireResp.ExtractID, resp.RequestID),
+		Warnings:   filterExtractWarnings(wireResp.Warnings),
+		LowQuality: !hasFullContent,
+		QualityMsg: qualityMsg,
 	}, nil
 }
 
@@ -111,15 +118,15 @@ func buildExtractFetchPolicy(ctx context.Context, fetchTimeout time.Duration, fr
 	}
 }
 
-func filterExtractWarnings(wireWarnings []wireWarning, hasFullContent bool) []string {
+func filterExtractWarnings(wireWarnings []wireWarning) []string {
 	var out []string
 	for _, w := range wireWarnings {
 		msg := textnorm.CleanInline(w.Message)
 		if msg == "" {
 			continue
 		}
-		// 全文提取模式不传 objective/search_queries 属正常用法，跳过上游针对 excerpts 相关性给出的提示以免刷屏。
-		if hasFullContent && strings.Contains(msg, "Neither objective nor search_queries were provided") {
+		// Fetch 固定请求 full_content=true，上游针对 excerpts 相关性给出的 objective/search_queries 提示无操作意义且易误导，统一过滤。
+		if strings.Contains(msg, "Neither objective nor search_queries were provided") {
 			continue
 		}
 		out = append(out, "parallel: "+msg)

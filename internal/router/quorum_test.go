@@ -273,6 +273,77 @@ func TestLocalOnlyNotesAndWallHintAccuracy(t *testing.T) {
 	if !strings.Contains(joinedNotes, "exa extraction marked low_quality (too_short)") || !strings.Contains(joinedNotes, "best-effort exa content (too_short)") {
 		t.Fatalf("expected accurate cloud fallback notes, got %v", fbEnv.Meta.Notes)
 	}
+
+	// parallel 返回 excerpt_only 低质降级时，多源链不开启 DynamicRenderHint 并直接切下一提取源拿全文；单源锁定则直接返回保底摘录
+	var nextSawDynamicHint bool
+	parallelExcerpt := &spyFetcher{
+		name: spec.ProviderParallel,
+		fn: func(_ context.Context, _ *core.FetchRequest) (*core.FetchOutcome, error) {
+			return &core.FetchOutcome{
+				Page:       &core.Page{URL: "https://edition.cnn.com/story", Title: "Story", Content: "Nav links excerpt.", Provider: spec.ProviderParallel},
+				LowQuality: true,
+				QualityMsg: "excerpt_only",
+			}, nil
+		},
+	}
+	tavilyFull := &spyFetcher{
+		name: spec.ProviderTavily,
+		fn: func(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
+			nextSawDynamicHint = req.DynamicRenderHint
+			return &core.FetchOutcome{
+				Page: &core.Page{URL: req.URL, Title: "Story", Content: strings.Repeat("Full article paragraph. ", 30), Provider: spec.ProviderTavily},
+			}, nil
+		},
+	}
+	rExcerptEsc := New(Options{
+		FetchStrategy:        core.FetchAPIOnly,
+		FetchProviders:       []string{spec.ProviderParallel, spec.ProviderTavily},
+		FetchProvidersGlobal: []string{spec.ProviderParallel, spec.ProviderTavily},
+	}, []core.Provider{parallelExcerpt, tavilyFull})
+	escEnv, escErr := rExcerptEsc.Fetch(context.Background(), &core.FetchRequest{URL: "https://edition.cnn.com/story"})
+	if escErr != nil || !escEnv.OK || escEnv.Page.Provider != spec.ProviderTavily || nextSawDynamicHint {
+		t.Fatalf("expected excerpt_only fallback to tavily without DynamicRenderHint, got env=%+v hint=%v err=%v", escEnv, nextSawDynamicHint, escErr)
+	}
+	singleEnv, singleErr := rExcerptEsc.Fetch(context.Background(), &core.FetchRequest{
+		URL:       "https://edition.cnn.com/story",
+		Providers: []string{spec.ProviderParallel},
+	})
+	if singleErr != nil || !singleEnv.OK || singleEnv.Page.Provider != spec.ProviderParallel {
+		t.Fatalf("expected single-locked parallel excerpt returned directly, got env=%+v err=%v", singleEnv, singleErr)
+	}
+
+	// 若 excerpt_only 摘录本身仍是反爬盾页，路由器必须升级为 bot_or_js_wall、开启 DynamicRenderHint，且后继失败时严禁将盾页当作保底正文返回
+	var wallNextSawDynamicHint bool
+	parallelWallExcerpt := &spyFetcher{
+		name: spec.ProviderParallel,
+		fn: func(_ context.Context, _ *core.FetchRequest) (*core.FetchOutcome, error) {
+			return &core.FetchOutcome{
+				Page:       &core.Page{URL: "https://blocked.example/story", Title: "Attention Required! | Cloudflare", Content: "Please verify you are human to proceed.", Provider: spec.ProviderParallel},
+				LowQuality: true,
+				QualityMsg: "excerpt_only",
+				Warnings:   []string{"parallel: truncated"},
+			}, nil
+		},
+	}
+	failingNext := &spyFetcher{
+		name: spec.ProviderTavily,
+		fn: func(_ context.Context, req *core.FetchRequest) (*core.FetchOutcome, error) {
+			wallNextSawDynamicHint = req.DynamicRenderHint
+			return nil, core.NewError(core.CodeUpstreamUnavailable, "temporary failure").WithProvider(spec.ProviderTavily)
+		},
+	}
+	rWallExcerpt := New(Options{
+		FetchStrategy:        core.FetchAPIOnly,
+		FetchProviders:       []string{spec.ProviderParallel, spec.ProviderTavily},
+		FetchProvidersGlobal: []string{spec.ProviderParallel, spec.ProviderTavily},
+	}, []core.Provider{parallelWallExcerpt, failingNext})
+	wallEnv, wallErr := rWallExcerpt.Fetch(context.Background(), &core.FetchRequest{URL: "https://blocked.example/story"})
+	if wallErr == nil || wallEnv.OK || !wallNextSawDynamicHint {
+		t.Fatalf("expected challenge wall inside excerpt_only to escalate DynamicRenderHint and fail instead of returning captcha fallback, got env=%+v hint=%v err=%v", wallEnv, wallNextSawDynamicHint, wallErr)
+	}
+	if len(wallEnv.Meta.Providers) < 1 || !slices.Equal(wallEnv.Meta.Providers[0].Warnings, []string{"quality_gate:bot_or_js_wall", "parallel: truncated"}) {
+		t.Fatalf("expected upgraded wall warning and preserved provider warning, got %+v", wallEnv.Meta.Providers)
+	}
 }
 
 func TestApplyPageViewOffsetExceededNote(t *testing.T) {

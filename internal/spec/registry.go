@@ -280,8 +280,8 @@ func DefaultFetchProviders() []string {
 func DefaultFetchProvidersGlobal() []string {
 	return []string{
 		ProviderKeenable,
-		ProviderParallel,
 		ProviderTavily,
+		ProviderParallel,
 		ProviderExa,
 		ProviderLinkup,
 		ProviderFirecrawl,

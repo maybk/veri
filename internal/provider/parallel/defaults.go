@@ -30,4 +30,7 @@ const (
 	minFetchPolicyMaxAgeSeconds  = 600
 	minFetchPolicyTimeoutSeconds = 1
 	maxFetchPolicyTimeoutSeconds = 60
+
+	// qualityReasonExcerptOnly 表示请求 full_content=true 后上游仍仅返回片段摘录时的低质降级原因。
+	qualityReasonExcerptOnly = "excerpt_only"
 )

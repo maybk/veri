@@ -219,7 +219,7 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 		}
 	}
 
-	// 1. 默认配置下海外站点与海外 PDF 优先命中 parallel（全球链 parallel -> tavily -> exa -> tinyfish -> deepseek）
+	// 1. 默认配置下海外站点与海外 PDF 优先命中 tavily（全球链 tavily -> parallel -> exa -> tinyfish -> deepseek）
 	rDefault := New(Options{FetchStrategy: core.FetchAPIFirst}, []core.Provider{
 		mkFetcher(spec.ProviderDeepSeek, false),
 		mkFetcher(spec.ProviderTinyFish, true),
@@ -227,27 +227,26 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 		mkFetcher(spec.ProviderParallel, true),
 		mkFetcher(spec.ProviderExa, true),
 	})
-	if got := rDefault.ActiveFetchChainGlobal(); strings.Join(got, ",") != "parallel,tavily,exa,tinyfish,deepseek" {
+	if got := rDefault.ActiveFetchChainGlobal(); strings.Join(got, ",") != "tavily,parallel,exa,tinyfish,deepseek" {
 		t.Fatalf("unexpected ActiveFetchChainGlobal: %v", got)
 	}
 	ovEnv, err := rDefault.Fetch(context.Background(), &core.FetchRequest{URL: "https://go.dev/doc/effective_go"})
-	if err != nil || ovEnv.Page.Provider != spec.ProviderParallel {
-		t.Fatalf("expected parallel first on global URL, got env=%+v err=%v", ovEnv, err)
+	if err != nil || ovEnv.Page.Provider != spec.ProviderTavily {
+		t.Fatalf("expected tavily first on global URL, got env=%+v err=%v", ovEnv, err)
 	}
 	pdfEnv, err := rDefault.Fetch(context.Background(), &core.FetchRequest{URL: "https://arxiv.org/pdf/2210.03629"})
-	if err != nil || pdfEnv.Page.Provider != spec.ProviderParallel {
-		t.Fatalf("expected parallel first on global PDF URL, got env=%+v err=%v", pdfEnv, err)
+	if err != nil || pdfEnv.Page.Provider != spec.ProviderTavily {
+		t.Fatalf("expected tavily first on global PDF URL, got env=%+v err=%v", pdfEnv, err)
 	}
 
-	// 2. 用户显式配置与默认同序的 FetchProviders（未配 ProvidersGlobal）时，不得静默重排（保持中文链 tavily 在 parallel 之前）
+	// 2. 用户显式配置与默认同序的 FetchProviders（未配 ProvidersGlobal）时，不得静默重排（保持中文链 firecrawl 在 parallel 之前）
 	rExplicit := New(Options{
 		FetchStrategy:          core.FetchAPIFirst,
 		FetchProviders:         spec.DefaultFetchProviders(),
 		FetchProvidersExplicit: true,
 	}, []core.Provider{
 		mkFetcher(spec.ProviderDeepSeek, false),
-		mkFetcher(spec.ProviderTinyFish, true),
-		mkFetcher(spec.ProviderTavily, true),
+		mkFetcher(spec.ProviderFirecrawl, true),
 		mkFetcher(spec.ProviderParallel, true),
 		mkFetcher(spec.ProviderExa, true),
 	})
@@ -255,8 +254,8 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 		t.Fatalf("expected nil ActiveFetchChainGlobal when user explicitly configured single fetch chain, got %v", got)
 	}
 	expEnv, err := rExplicit.Fetch(context.Background(), &core.FetchRequest{URL: "https://go.dev/doc/effective_go"})
-	if err != nil || expEnv.Page.Provider != spec.ProviderTavily {
-		t.Fatalf("expected explicit fetch.providers order respected (tavily first), got env=%+v err=%v", expEnv, err)
+	if err != nil || expEnv.Page.Provider != spec.ProviderFirecrawl {
+		t.Fatalf("expected explicit fetch.providers order respected (firecrawl first), got env=%+v err=%v", expEnv, err)
 	}
 
 	// 2b. 自定义子集 FetchProvidersGlobal 与 SearchProviders 时，ActiveFetchChainGlobal / ActiveFusionChain 仅包含实际执行源，不误附未列出源
