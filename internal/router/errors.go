@@ -44,3 +44,14 @@ func summarizeChainFailure(prefix string, reports []core.ProviderReport, lastErr
 			WithHintKey("hint.multi_provider_failed")
 	}
 }
+
+func noMatchedProviderError(strict bool) *core.Error {
+	if strict {
+		return core.NewError(core.CodeNoProvider, "no provider matched requested filter capabilities").
+			WithHint("Disable strict filter mode or relax filter conditions.").
+			WithHintKey("hint.strict_filter_empty")
+	}
+	return core.NewError(core.CodeNoProvider, "no enabled search provider supports the requested query constraints").
+		WithHint("Shorten the query, relax site filters, or enable another general search provider.").
+		WithHintKey("hint.provider_capability_mismatch")
+}

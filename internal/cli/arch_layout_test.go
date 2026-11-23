@@ -186,27 +186,30 @@ func checkProviderPackageLayouts(t *testing.T, repoRoot string) {
 	// 从 spec.Providers() 单一登记表推导内置 Provider 的预期目录与能力实现契约；
 	// 未登记的新增目录自动回退至 AST 静态推导检验。
 	regProviders := spec.Providers()
-	knownProviders := make([]providerLayoutSpec, 0, len(regProviders))
+	knownByDir := make(map[string]int, len(regProviders))
+	targets := make([]providerLayoutSpec, 0, len(regProviders))
 	for _, info := range regProviders {
-		knownProviders = append(knownProviders, providerLayoutSpec{
-			dir:       strings.ReplaceAll(info.Name, "_", ""),
+		dir := info.PackageDir()
+		if idx, exists := knownByDir[dir]; exists {
+			targets[idx].hasSearch = targets[idx].hasSearch || info.Roles.Has(spec.RoleSearch)
+			targets[idx].hasFetch = targets[idx].hasFetch || info.Roles.Has(spec.RoleFetch)
+			targets[idx].hasWire = targets[idx].hasWire || info.Name != spec.ProviderLocal
+			continue
+		}
+		knownByDir[dir] = len(targets)
+		targets = append(targets, providerLayoutSpec{
+			dir:       dir,
 			hasSearch: info.Roles.Has(spec.RoleSearch),
 			hasFetch:  info.Roles.Has(spec.RoleFetch),
 			hasWire:   info.Name != spec.ProviderLocal,
 		})
 	}
+	expectedPackageDirs := len(targets)
 
 	providersRoot := filepath.Join(repoRoot, "internal", "provider")
 	dirEntries, err := os.ReadDir(providersRoot)
 	if err != nil {
 		t.Fatalf("readdir internal/provider: %v", err)
-	}
-
-	knownByDir := make(map[string]bool, len(knownProviders))
-	targets := make([]providerLayoutSpec, 0, len(knownProviders))
-	for _, kp := range knownProviders {
-		knownByDir[kp.dir] = true
-		targets = append(targets, kp)
 	}
 
 	discoveredDirs := 0
@@ -216,7 +219,7 @@ func checkProviderPackageLayouts(t *testing.T, repoRoot string) {
 			continue
 		}
 		discoveredDirs++
-		if !knownByDir[name] {
+		if _, exists := knownByDir[name]; !exists {
 			inferred := inspectProviderPackageAST(t, filepath.Join(providersRoot, name))
 			targets = append(targets, providerLayoutSpec{
 				dir:       name,
@@ -298,8 +301,8 @@ func checkProviderPackageLayouts(t *testing.T, repoRoot string) {
 		})
 	}
 
-	if expected := len(spec.AllProviders()); discoveredDirs != expected {
-		t.Errorf("discovered %d provider packages under internal/provider, want %d matching spec.AllProviders()", discoveredDirs, expected)
+	if discoveredDirs != expectedPackageDirs {
+		t.Errorf("discovered %d provider packages under internal/provider, want %d matching unique spec.Providers() packages", discoveredDirs, expectedPackageDirs)
 	}
 }
 

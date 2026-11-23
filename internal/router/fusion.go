@@ -186,9 +186,7 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 	if succeeded == 0 {
 		if lastErr == nil {
 			if skipped > 0 && skipped == len(branches) {
-				lastErr = core.NewError(core.CodeNoProvider, "no provider matched requested filter capabilities").
-					WithHint("Disable strict filter mode or relax filter conditions.").
-					WithHintKey("hint.strict_filter_empty")
+				lastErr = noMatchedProviderError(req.StrictFilters)
 			} else {
 				lastErr = core.NewError(core.CodeNoProvider, "no fusion provider succeeded")
 			}

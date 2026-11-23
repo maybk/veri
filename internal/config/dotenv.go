@@ -174,7 +174,7 @@ var credentialEnvIndexCached = sync.OnceValue(func() map[string]envVarTarget {
 	providers := spec.Providers()
 	index := make(map[string]envVarTarget, len(providers)*2)
 	for _, info := range providers {
-		if !info.NeedsCredential() {
+		if !info.OwnsCredential() {
 			continue
 		}
 		for prio, envName := range info.EnvVars {

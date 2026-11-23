@@ -27,7 +27,7 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 | --- | --- | --- | --- | --- |
 | `deepseek` | 搜索、提取 | 无免费档；Search 与 Fetch 均 **¥5 / 1,000 次成功请求（¥0.005/次）**，失败与空结果不计费 | 中英文主力检索与 Markdown 提取（搜 100 QPS / 抓 25 QPS） | [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) |
 | `keenable` | 搜索、提取 | **10 万次/月免费免绑卡**（搜/抓各计 1 次）；超额 $4 / 1,000 次（$0.004/次） | 超大免费月额通用检索与提取；默认策略留存查询与结果 | [Keenable Console](https://app.keenable.ai/console/api-keys) |
-| `zhihu` | 搜索 | 按实名控制台配额发放（每日 00:00 重置；社区实测实名后全网与知乎两池独立，各约 5,000 次/天，未实名约 10 次/天） | 中文全网搜索（默认）与知乎站内问答/文章（`-o zhihu.scope=zhihu`） | [知乎数据开放平台](https://developer.zhihu.com/profile) |
+| `zhihu` / `zhihu_web` | 搜索 | 按实名控制台配额发放（每日 00:00 重置；社区实测实名后全网与站内两池独立，各约 5,000 次/天，未实名约 10 次/天） | 配 1 把 `zhihu` 密钥同时启用两源：`zhihu`（站内问答/专栏，中文 `-F` 默认纳入、`-s zhihu.com` 优先）与 `zhihu_web`（中文全网，`auto` 默认优先） | [知乎数据开放平台](https://developer.zhihu.com/profile) |
 | `exa` | 搜索、提取 | **$10/月免费免绑卡**（每月 1 日重置）+ 新人礼 $10；超额 `auto` 搜 $7 / 1,000 次（$0.007/次，`lite` $0.004/次、`deep` $0.012/次）、抓 $1 / 1,000 页（$0.001/页） | 英文技术文档、语义检索与 PDF/正文提取；响应直出实收账单 | [Exa Dashboard](https://dashboard.exa.ai/api-keys) |
 | `tinyfish` | 搜索、提取 | **免费免绑卡**：搜 12,000 次/天、抓 1,000 页/天（00:00 UTC 重置） | 中英文检索、学术论文与服务端 SPA / JS 动态渲染及 PDF 提取 | [TinyFish Console](https://agent.tinyfish.ai/api-keys) |
 | `tencent_wsa` | 搜索 | **2,000 次/自然月全版本通用免费**（按账号重置，以控制台为准）；超额按版本 ¥14 / ¥20 / ¥26 / 1,000 次（极速 ¥0.014、标准 ¥0.020、旗舰 ¥0.026/次，失败不计费） | 中文资讯、政务、学术与财经检索（需创建 WSA 服务 API Key） | [腾讯云联网搜索控制台](https://console.cloud.tencent.com/wsa) |
@@ -41,7 +41,7 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 **常见搭配建议：**
 
 - **零成本免绑卡起步**：中文推荐 `keenable` + `zhihu` + `tencent_wsa`（2,000 次/月）；英文与网页提取推荐 `keenable` + `exa` + `tavily` + `parallel`（有职业邮箱加配 `linkup`），复杂反爬页面补 `firecrawl`（或开源自托管）。
-- **低价高质主力**：中文推荐 `deepseek`（极速低价，失败与空结果不计费）；英文推荐 `parallel`（`fast` 搜与 Extract 均 $1 / 1,000 次，配合 `exa` 做高精补充）。多中文源用户如需在 `-F` 中固定补充纯知乎社区观点，可执行 `veri config set providers.zhihu.scope zhihu` 并按需设置 `search.fusion_providers`。
+- **低价高质主力**：中文推荐 `deepseek`（极速低价，失败与空结果不计费）搭配 `zhihu`（一把密钥同时启用 `zhihu` 站内与 `zhihu_web` 全网，两池配额独立）；英文推荐 `parallel`（`fast` 搜与 Extract 均 $1 / 1,000 次，配合 `exa` 做高精补充）。
 - **隐私敏感场景**：`keenable` 默认留存查询与结果、`parallel` 标准条款允许去标识化用于模型训练，处理敏感查询时可执行 `veri config set providers.keenable.enabled false` 按需禁用或切至其他源。
 
 > 以上免费额度与参考价格核实于 2026-11，上游资费、活动配额与适用条件随时可能调整，请以各官方控制台与定价页为准；`veri` 源码不内置刊例单价，仅在上游返回账单或用户配置 `price_*` 时估算成本。
@@ -72,7 +72,7 @@ veri doctor --live --yes
 常用密钥管理、行为覆盖与临时切换：
 
 - **移除已保存密钥**：`veri key unset <provider>`
-- **调整单个默认选项**：使用 `veri config set <key> <value>`（如 `veri config set providers.zhihu.scope zhihu`），查看已自定义项用 `veri config show --overrides`，恢复默认用 `veri config unset <key>`。
+- **调整单个默认选项**：使用 `veri config set <key> <value>`（如 `veri config set providers.zhihu_web.search_db realtime`），查看已自定义项用 `veri config show --overrides`，恢复默认用 `veri config unset <key>`。
 - **临时用环境变量覆盖**：直接导出对应环境变量（如 `export DEEPSEEK_API_KEY="sk-..."`、`export EXA_API_KEY="exa_..."`），优先级高于本地加密库与 `config.toml`。完整变量名见 [配置说明](./configuration.md)。
 - **安全约束**：`veri key set` 禁止通过位置参数传入明文密钥，`veri config set` 拒绝向 `api_key` / `token` 写入明文；如已在 `config.toml` 写入明文密钥，可用 `veri key import --from-config`（可先加 `--dry-run` 预览）加密迁入。
 
@@ -101,7 +101,7 @@ veri search "rust async traits" -p exa
 veri search "rust async traits" -p exa,tavily
 
 # 传递厂商扩展参数（-o key=value，可多次指定；完整键名见 providers.md）
-veri search "go 并发" -p zhihu -o zhihu.scope=zhihu
+veri search "go 并发" -p zhihu -o zhihu.sort=VoteUpCount:desc
 
 # 多源并发融合去重（不传 -p 时按当前查询分链使用融合池或前 3 个已启用源）
 veri search "raft leader lease" -F

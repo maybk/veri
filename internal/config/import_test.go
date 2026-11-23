@@ -37,7 +37,7 @@ func TestImportKeysFromConfigLifecycleAndSafety(t *testing.T) {
 		"api_key = \"tvly-new-config-4444\"\r\n\r\n" +
 		"[providers.zhihu]\r\n" +
 		"api_key = \"env:CUSTOM_ZHIHU_KEY\"\r\n" +
-		"scope = \"zhihu\"\r\n\r\n" +
+		"weight = 1.2\r\n\r\n" +
 		"[providers.brave]\r\n" +
 		"api_key = \"env:CUSTOM_BRAVE_KEY,BSA-mixed-plain-5555\"\r\n\r\n" +
 		"[providers.github]\r\n" +
@@ -118,7 +118,7 @@ func TestImportKeysFromConfigLifecycleAndSafety(t *testing.T) {
 		`# api_key = "env:DEEPSEEK_API_KEY"  # multi-key pool`,
 		`timeout = "15s"`,
 		`api_key = "env:CUSTOM_ZHIHU_KEY"`,
-		`scope = "zhihu"`,
+		`weight = 1.2`,
 		`api_key = "tvly-new-config-4444"`,
 		`api_key = "env:CUSTOM_BRAVE_KEY,BSA-mixed-plain-5555"`,
 	} {
@@ -215,10 +215,10 @@ func TestImportKeysFromConfigRestoresCommentedTemplate(t *testing.T) {
 
 	// 模拟用户从 config init 模板取消注释并填入明文：
 	// - keenable 与 github 仅填写明文（段内无其他生效项，应连同表头完整还原回模板注释）
-	// - zhihu 同时启用 scope = "zhihu"（应保留 [providers.zhihu] 与 scope，仅将 api_key 还原为注释默认项）
+	// - exa 同时启用 search_type = "fast"（应保留 [providers.exa] 与 search_type，仅将 api_key 还原为注释默认项）
 	edited := origTemplate
 	edited = strings.Replace(edited, "# [providers.keenable]\n# api_key = \"env:KEENABLE_API_KEY\"", "[providers.keenable]\napi_key = \"kn-template-secret-1111\"", 1)
-	edited = strings.Replace(edited, "# [providers.zhihu]\n# api_key = \"env:ZHIHU_API_KEY\"\n# scope = \"global\"", "[providers.zhihu]\napi_key = \"zh-template-secret-2222\"\nscope = \"zhihu\"", 1)
+	edited = strings.Replace(edited, "# [providers.exa]\n# api_key = \"env:EXA_API_KEY\"\n# search_type = \"auto\"", "[providers.exa]\napi_key = \"exa-template-secret-2222\"\nsearch_type = \"fast\"", 1)
 	edited = strings.Replace(edited, "# [providers.github]\n# enabled = true\n# token = \"env:GITHUB_TOKEN\"", "[providers.github]\n# enabled = true\ntoken = \"ghp_template_token_3333\"", 1)
 	if edited == origTemplate {
 		t.Fatal("failed to patch template test fixture")
@@ -240,14 +240,14 @@ func TestImportKeysFromConfigRestoresCommentedTemplate(t *testing.T) {
 		t.Fatalf("read restored template: %v", err)
 	}
 	afterText := string(afterBytes)
-	for _, leaked := range []string{"kn-template-secret-1111", "zh-template-secret-2222", "ghp_template_token_3333"} {
+	for _, leaked := range []string{"kn-template-secret-1111", "exa-template-secret-2222", "ghp_template_token_3333"} {
 		if strings.Contains(afterText, leaked) {
 			t.Fatalf("restored template leaked plaintext %q", leaked)
 		}
 	}
 	for _, wantSnippet := range []string{
 		"# [providers.keenable]\n# api_key = \"env:KEENABLE_API_KEY\"        # 默认留存查询与结果，敏感场景可设 enabled = false",
-		"[providers.zhihu]\n# api_key = \"env:ZHIHU_API_KEY\"\nscope = \"zhihu\"",
+		"[providers.exa]\n# api_key = \"env:EXA_API_KEY\"\nsearch_type = \"fast\"",
 		"# [providers.github]\n# enabled = true\n# token = \"env:GITHUB_TOKEN\"              # 可选：配置 GitHub Token 提高接口配额",
 	} {
 		if !strings.Contains(afterText, wantSnippet) {
@@ -255,7 +255,7 @@ func TestImportKeysFromConfigRestoresCommentedTemplate(t *testing.T) {
 		}
 	}
 
-	// 验证还原后的文件加载结果：仅剩 zhihu.scope 覆盖，3 个源凭据全部生效自 secrets.json，零明文。
+	// 验证还原后的文件加载结果：仅剩 exa.search_type 覆盖，3 个源凭据全部生效自 secrets.json，零明文。
 	loaded, err := LoadWithEnv(cfgPath, func(string) string { return "" })
 	if err != nil {
 		t.Fatalf("LoadWithEnv after template restore: %v", err)
@@ -263,12 +263,12 @@ func TestImportKeysFromConfigRestoresCommentedTemplate(t *testing.T) {
 	if len(loaded.PlaintextProviders) != 0 {
 		t.Fatalf("expected zero plaintext providers, got %v", loaded.PlaintextProviders)
 	}
-	if !loaded.DefinedKeys["providers.zhihu.scope"] || loaded.DefinedKeys["providers.keenable.api_key"] || loaded.DefinedKeys["providers.github.token"] {
+	if !loaded.DefinedKeys["providers.exa.search_type"] || loaded.DefinedKeys["providers.keenable.api_key"] || loaded.DefinedKeys["providers.github.token"] {
 		t.Fatalf("unexpected DefinedKeys after template restore: %v", loaded.DefinedKeys)
 	}
 	for prov, wantKey := range map[string]string{
 		spec.ProviderKeenable: "kn-template-secret-1111",
-		spec.ProviderZhihu:    "zh-template-secret-2222",
+		spec.ProviderExa:      "exa-template-secret-2222",
 		spec.ProviderGitHub:   "ghp_template_token_3333",
 	} {
 		cred := loaded.Credentials[prov]
@@ -279,7 +279,7 @@ func TestImportKeysFromConfigRestoresCommentedTemplate(t *testing.T) {
 
 	// 验证空行之后的下一段前置注释不会被误判为当前段内注释（纯稀疏段依然彻底移除空表头）。
 	sparsePath := filepath.Join(t.TempDir(), "config.toml")
-	sparseRaw := "[providers.exa]\napi_key = \"exa-sparse-only-4444\"\n\n# zhihu custom section\n[providers.zhihu]\nscope = \"zhihu\"\n"
+	sparseRaw := "[providers.exa]\napi_key = \"exa-sparse-only-4444\"\n\n# zhihu_web custom section\n[providers.zhihu_web]\nsearch_db = \"realtime\"\n"
 	if err := os.WriteFile(sparsePath, []byte(sparseRaw), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestImportKeysFromConfigRestoresCommentedTemplate(t *testing.T) {
 		t.Fatalf("sparse import with next-section comment: %v", err)
 	}
 	sparseAfter, _ := os.ReadFile(sparsePath)
-	wantSparse := "# zhihu custom section\n[providers.zhihu]\nscope = \"zhihu\"\n"
+	wantSparse := "# zhihu_web custom section\n[providers.zhihu_web]\nsearch_db = \"realtime\"\n"
 	if string(sparseAfter) != wantSparse {
 		t.Fatalf("sparse cleanup broke next-section comment:\ngot:\n%s\nwant:\n%s", string(sparseAfter), wantSparse)
 	}

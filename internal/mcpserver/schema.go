@@ -57,7 +57,6 @@ type searchSchemaDefaults struct {
 	maxCount        int
 	defaultDetail   string
 	defaultStrategy string
-	zhihuScope      string
 }
 
 type fetchSchemaDefaults struct {
@@ -83,10 +82,6 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 	effStrategy := strings.TrimSpace(def.defaultStrategy)
 	if effStrategy == "" {
 		effStrategy = string(core.StrategyAuto)
-	}
-	effZhihuScope := strings.TrimSpace(def.zhihuScope)
-	if effZhihuScope == "" {
-		effZhihuScope = spec.ZhihuScopeGlobal
 	}
 
 	allSearchProviders := spec.ProvidersWithRole(spec.RoleSearch)
@@ -156,7 +151,7 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		"options": map[string]any{
 			"type":                 "object",
 			"additionalProperties": map[string]any{"type": "string"},
-			"description":          searchOptionsDescription(effZhihuScope, enabledSearchers),
+			"description":          searchOptionsDescription(enabledSearchers),
 		},
 		"providers": map[string]any{
 			"type":        "array",
@@ -266,7 +261,7 @@ type providerOptionEntry struct {
 }
 
 // searchOptionsDescription 按当前已启用的检索源动态组装 options 描述，减少未启用厂商的常驻上下文占用与误调用。
-func searchOptionsDescription(effZhihuScope string, enabledSearchers []string) string {
+func searchOptionsDescription(enabledSearchers []string) string {
 	catalog := []providerOptionEntry{
 		{
 			provider: spec.ProviderExa,
@@ -308,9 +303,13 @@ func searchOptionsDescription(effZhihuScope string, enabledSearchers []string) s
 		{
 			provider: spec.ProviderZhihu,
 			items: []string{
-				fmt.Sprintf("%q [%s=web|%s=Zhihu Q&A/articles, default: %s]", spec.OptZhihuScope, spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu, effZhihuScope),
-				fmt.Sprintf("%q [%s|%s|%s, %s only]", spec.OptZhihuSearchDB, spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic, spec.ZhihuScopeGlobal),
-				fmt.Sprintf("%q [%s only, e.g. VoteUpCount:desc]", spec.OptZhihuSort, spec.ZhihuScopeZhihu),
+				fmt.Sprintf("%q [Zhihu Q&A/articles sort, e.g. VoteUpCount:desc]", spec.OptZhihuSort),
+			},
+		},
+		{
+			provider: spec.ProviderZhihuWeb,
+			items: []string{
+				fmt.Sprintf("%q [%s|%s|%s]", spec.OptZhihuWebSearchDB, spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic),
 			},
 		},
 		{

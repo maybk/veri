@@ -41,11 +41,11 @@ veri key list                                  # 查看各源凭据来源与加�
 veri key unset deepseek                        # 移除本地加密密钥
 
 # 单项配置（支持 Tab 补全，未设置项随版本自动更新）
-veri config set providers.zhihu.scope zhihu              # 修改单个配置项
-veri config set search.providers deepseek,zhihu,keenable # 列表支持逗号分隔或 TOML 数组
-veri config set search.providers_global ""               # 设为空数组以关闭非中文分链
-veri config get providers.zhihu.scope                    # 查看当前生效值（加 --json 含来源）
-veri config unset providers.zhihu.scope                  # 移除自定义项并恢复默认值
+veri config set providers.zhihu_web.search_db realtime        # 修改单个配置项
+veri config set search.providers deepseek,zhihu_web,keenable  # 列表支持逗号分隔或 TOML 数组
+veri config set search.providers_global ""                    # 设为空数组以关闭非中文分链
+veri config get providers.zhihu_web.search_db                 # 查看当前生效值（加 --json 含来源）
+veri config unset providers.zhihu_web.search_db               # 移除自定义项并恢复默认值
 
 # 查看与参考模板
 veri config show --overrides                   # 仅查看已自定义的配置项（支持 --json）
@@ -63,9 +63,9 @@ veri config path                               # 输出生效的配置文件路�
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ui.lang` | `"auto"` | 终端界面语言：`auto`（跟随系统，非中文环境回退英文）、`zh`、`en`（兼容 `zh_CN.UTF-8` 等标准 Locale） |
-| `search.providers` | `["deepseek", "keenable", "zhihu", "tencent_wsa", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]` | 默认检索链（中文查询优先；显式配置且未设 `providers_global` 时所有语言统一走此链） |
-| `search.providers_global` | `["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"]` | 非中文查询检索链（英文、日韩等或指定非中文 `--lang` 时启用；设 `[]` 关闭） |
-| `search.fusion_providers` | `[]` | `--fusion` 并发源列表（中文优先；为空取 `search.providers` 前 3 个已启用源；仅配此项时所有语言统一使用） |
+| `search.providers` | `["deepseek", "keenable", "zhihu", "zhihu_web", "tencent_wsa", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]` | 默认检索链（中文优先；单源 `auto` 通用搜优先全网、`-s` 命中单站源时自动置顶；显式配置且未设 `providers_global` 时所有语言统一走此链） |
+| `search.providers_global` | `["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu_web", "zhihu"]` | 非中文查询检索链（英文、日韩等或指定非中文 `--lang` 时启用；设 `[]` 关闭） |
+| `search.fusion_providers` | `[]` | `--fusion` 并发源列表（为空取 `search.providers` 前 3 个已启用源；仅配此项时所有语言统一使用） |
 | `search.fusion_providers_global` | `[]` | `--fusion` 非中文并发源列表（为空取 `search.providers_global` 前 3 个已启用源；设 `[]` 关闭分池） |
 | `search.strategy` | `"auto"` | `auto`（链式回退）或 `fusion`（多源并发 RRF 融合） |
 | `search.count` | `8` | 默认返回条数，范围 `1`–`50` |

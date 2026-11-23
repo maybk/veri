@@ -86,7 +86,7 @@ func printProviderTable(rt *runtimeEnv, statuses []app.ProviderStatus) {
 			if s.Details == spec.DetailDisabledInConfig {
 				detailText = disabledConfigLabel
 			} else if info, ok := spec.LookupProvider(s.Name); ok && info.NeedsCredential() {
-				detailText = cat.T("providers.detail.need_key", "provider", info.Name, "env", info.EnvVars[0])
+				detailText = cat.T("providers.detail.need_key", "provider", info.CredentialOwner(), "env", info.EnvVars[0])
 			}
 		}
 		rows = append(rows, []string{s.Name, s.Role, statusText, sourceText, s.Endpoint, timeoutText, detailText})

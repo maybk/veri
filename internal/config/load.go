@@ -221,6 +221,20 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 	return out, nil
 }
 
+// CredentialFor 返回指定 Provider 生效的解析凭据（共享凭据源自动映射至主凭据归属项）。
+func (l *Loaded) CredentialFor(provider string) Credential {
+	if l == nil {
+		return Credential{}
+	}
+	owner := provider
+	if info, ok := spec.LookupProvider(provider); ok {
+		if o := info.CredentialOwner(); o != "" {
+			owner = o
+		}
+	}
+	return l.Credentials[owner]
+}
+
 // RedactedConfig 返回已脱敏的生效配置树副本（供 TOML 与 JSON 输出共享）。
 func (l *Loaded) RedactedConfig() Config {
 	return l.Config.Redacted(l.Credentials)

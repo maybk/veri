@@ -243,7 +243,7 @@ func TestAllProviderSecretsRedactedAndRegisteredInConfig(t *testing.T) {
 		if !Default().Providers.IsEnabled(info.Name) {
 			t.Errorf("Default() provider %s should have enabled=true", info.Name)
 		}
-		if info.NeedsCredential() && Default().Providers.CredentialSpec(info.Name) != spec.DefaultEnvRef(info.Name) {
+		if info.OwnsCredential() && Default().Providers.CredentialSpec(info.Name) != spec.DefaultEnvRef(info.Name) {
 			t.Errorf("Default() credential spec for %s = %q, want %q", info.Name, Default().Providers.CredentialSpec(info.Name), spec.DefaultEnvRef(info.Name))
 		}
 	}
@@ -488,7 +488,22 @@ func TestSaveVaultKeyOverwriteAppendAndDedupe(t *testing.T) {
 		t.Fatalf("vault value after overwrite = %q", got)
 	}
 
-	// 6. 损坏的 secrets.json 在 append 模式下必须报错拒绝，绝不静默覆盖。
+	// 6. 共享凭据子源（zhihu_web / zhihu-web）自动归一至主槽位 zhihu，并在加载后由 CredentialFor 共享解析。
+	zhRes, err := SaveVaultKey(dir, spec.ProviderZhihuWeb, "sk-zhihu-shared-1111", false)
+	if err != nil || zhRes.Provider != spec.ProviderZhihu || zhRes.Total != 1 {
+		t.Fatalf("SaveVaultKey(zhihu_web) = (%+v, %v)", zhRes, err)
+	}
+	loadedShared, err := LoadWithEnv(filepath.Join(dir, spec.ConfigFileName), func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("LoadWithEnv shared credential: %v", err)
+	}
+	zhWebCred := loadedShared.CredentialFor(spec.ProviderZhihuWeb)
+	zhCred := loadedShared.CredentialFor(spec.ProviderZhihu)
+	if zhWebCred.Source != spec.SecretsFileName || !slices.Equal(zhWebCred.Keys, []string{"sk-zhihu-shared-1111"}) || !slices.Equal(zhWebCred.Keys, zhCred.Keys) {
+		t.Fatalf("expected zhihu_web to share zhihu vault credential, got zhihu_web=%+v zhihu=%+v", zhWebCred, zhCred)
+	}
+
+	// 7. 损坏的 secrets.json 在 append 模式下必须报错拒绝，绝不静默覆盖。
 	damagedDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(damagedDir, spec.SecretsFileName), []byte("{corrupt"), 0o600); err != nil {
 		t.Fatal(err)

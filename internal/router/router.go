@@ -119,18 +119,13 @@ func New(opts Options, providers []core.Provider) *Router {
 	return r
 }
 
-// EnabledSearchers 按配置优先级顺序返回当前已启用的 Searcher 名称列表。
+// EnabledSearchers 按 auto 通用检索优先级顺序返回当前已启用的 Searcher 名称列表
+// （通用全网源优先，声明 ScopeDomains 的垂直单站源后置兜底）。
 func (r *Router) EnabledSearchers() []string {
-	seen := make(map[string]struct{}, len(r.searchers))
-	var out []string
-	for _, raw := range r.opts.SearchProviders {
-		name := canonicalProviderKey(raw)
-		if _, ok := r.searchers[name]; ok {
-			if _, dup := seen[name]; !dup {
-				seen[name] = struct{}{}
-				out = append(out, name)
-			}
-		}
+	chain, _ := r.resolveSearchers(r.opts.SearchProviders, false)
+	seen := make(map[string]struct{}, len(chain))
+	for _, s := range chain {
+		seen[canonicalProviderKey(s.Name())] = struct{}{}
 	}
 	var extras []string
 	for name := range r.searchers {
@@ -139,7 +134,10 @@ func (r *Router) EnabledSearchers() []string {
 		}
 	}
 	slices.Sort(extras)
-	return append(out, extras...)
+	for _, name := range extras {
+		chain = append(chain, r.searchers[name])
+	}
+	return searcherNames(orderByScopeForAuto(chain, nil))
 }
 
 // EnabledFetchers 按当前生效 FetchStrategy 的优先级顺序返回可用 Fetcher 名称列表。
@@ -320,7 +318,7 @@ func searcherNames(chain []core.Searcher) []string {
 
 func (r *Router) filterEnabledSearchers(candidates []string) []string {
 	chain, _ := r.resolveSearchers(candidates, false)
-	return searcherNames(chain)
+	return searcherNames(orderByScopeForAuto(chain, nil))
 }
 
 func (r *Router) weightFor(name string) float64 {

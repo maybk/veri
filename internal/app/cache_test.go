@@ -354,14 +354,14 @@ func TestSearchMCPCacheIsolatesIncludeExtraAndNormalizesOptions(t *testing.T) {
 	if _, err := application.SearchMCP(t.Context(), &core.SearchRequest{
 		Query:   "go-opt",
 		Count:   5,
-		Options: map[string]string{"zhihu.scope": "zhihu"},
+		Options: map[string]string{"zhihu.sort": "VoteUpCount:desc"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	envNormHit, err := application.SearchMCP(t.Context(), &core.SearchRequest{
 		Query:   "go-opt",
 		Count:   5,
-		Options: map[string]string{" Zhihu.Scope ": " zhihu "},
+		Options: map[string]string{" Zhihu.Sort ": " VoteUpCount:desc "},
 	})
 	if err != nil || !envNormHit.Meta.Cached {
 		t.Fatalf("expected normalized Options to hit search cache, cached=%v err=%v", envNormHit != nil && envNormHit.Meta.Cached, err)

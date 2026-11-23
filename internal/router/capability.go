@@ -10,6 +10,8 @@ import (
 	"veri/internal/urlnorm"
 )
 
+const reasonSiteScope = "site_scope"
+
 // executionPlan 描述路由层为单个 Searcher 计算出的能力匹配与后过滤模拟计划。
 type executionPlan struct {
 	unsupportedReason string
@@ -67,98 +69,124 @@ func matchCapabilities(caps core.Capabilities, req *core.SearchRequest, strict b
 		plan.adapted.Count = reqCount
 	}
 
-	// 2. Sites 白名单匹配与模拟（含仅支持主机名的厂商路径前缀降级）
+	// 2. Sites 白名单匹配与模拟（含领域作用域前置判定与仅主机名厂商路径前缀降级）
 	if len(req.Filters.Sites) > 0 {
-		hasPath := caps.SiteHostOnly && urlnorm.HasPathDomainFilter(req.Filters.Sites)
-		if hasPath && strict {
-			plan.unsupportedReason = "sites"
-			return plan
-		}
-		nativeSites := req.Filters.Sites
-		if hasPath {
-			nativeSites = urlnorm.ExtractFilterHosts(req.Filters.Sites)
-		}
-		switch caps.Sites {
-		case core.SiteMulti:
-			if caps.MaxSites > 0 && len(nativeSites) > caps.MaxSites {
-				if strict {
-					plan.unsupportedReason = "sites"
-					return plan
-				}
-				plan.adapted.Filters.Sites = nil
-				plan.emulateSites = slices.Clone(req.Filters.Sites)
-				plan.degraded = append(plan.degraded, "sites:emulated")
-			} else if hasPath {
-				plan.adapted.Filters.Sites = nativeSites
-				plan.emulateSites = slices.Clone(req.Filters.Sites)
-				plan.degraded = append(plan.degraded, "sites:emulated")
+		sitesHandledByScope := false
+		if len(caps.ScopeDomains) > 0 {
+			if !anyFilterOverlapsScope(caps.ScopeDomains, req.Filters.Sites) {
+				plan.unsupportedReason = reasonSiteScope
+				return plan
 			}
-		case core.SiteSingle:
-			if len(nativeSites) > 1 {
-				if strict {
-					plan.unsupportedReason = "sites"
-					return plan
-				}
+			if allFiltersCoverAllDomains(req.Filters.Sites, caps.ScopeDomains) {
 				plan.adapted.Filters.Sites = nil
-				plan.emulateSites = slices.Clone(req.Filters.Sites)
-				plan.degraded = append(plan.degraded, "sites:emulated")
-			} else if hasPath {
-				plan.adapted.Filters.Sites = nativeSites
-				plan.emulateSites = slices.Clone(req.Filters.Sites)
-				plan.degraded = append(plan.degraded, "sites:emulated")
+				sitesHandledByScope = true
 			}
-		default:
-			if strict {
+		}
+
+		if !sitesHandledByScope {
+			hasPath := caps.SiteHostOnly && urlnorm.HasPathDomainFilter(req.Filters.Sites)
+			if hasPath && strict {
 				plan.unsupportedReason = "sites"
 				return plan
 			}
-			plan.adapted.Filters.Sites = nil
-			plan.emulateSites = slices.Clone(req.Filters.Sites)
-			plan.degraded = append(plan.degraded, "sites:emulated")
+			nativeSites := req.Filters.Sites
+			if hasPath {
+				nativeSites = urlnorm.ExtractFilterHosts(req.Filters.Sites)
+			}
+			switch caps.Sites {
+			case core.SiteMulti:
+				if caps.MaxSites > 0 && len(nativeSites) > caps.MaxSites {
+					if strict {
+						plan.unsupportedReason = "sites"
+						return plan
+					}
+					plan.adapted.Filters.Sites = nil
+					plan.emulateSites = slices.Clone(req.Filters.Sites)
+					plan.degraded = append(plan.degraded, "sites:emulated")
+				} else if hasPath {
+					plan.adapted.Filters.Sites = nativeSites
+					plan.emulateSites = slices.Clone(req.Filters.Sites)
+					plan.degraded = append(plan.degraded, "sites:emulated")
+				}
+			case core.SiteSingle:
+				if len(nativeSites) > 1 {
+					if strict {
+						plan.unsupportedReason = "sites"
+						return plan
+					}
+					plan.adapted.Filters.Sites = nil
+					plan.emulateSites = slices.Clone(req.Filters.Sites)
+					plan.degraded = append(plan.degraded, "sites:emulated")
+				} else if hasPath {
+					plan.adapted.Filters.Sites = nativeSites
+					plan.emulateSites = slices.Clone(req.Filters.Sites)
+					plan.degraded = append(plan.degraded, "sites:emulated")
+				}
+			default:
+				if strict {
+					plan.unsupportedReason = "sites"
+					return plan
+				}
+				plan.adapted.Filters.Sites = nil
+				plan.emulateSites = slices.Clone(req.Filters.Sites)
+				plan.degraded = append(plan.degraded, "sites:emulated")
+			}
 		}
 	}
 
-	// 3. ExcludeSites 排除站点拆分模拟（含单字段互斥厂商与仅主机名厂商路径排除防误杀）
+	// 3. ExcludeSites 排除站点拆分模拟（含领域作用域前置裁剪、单字段互斥厂商与路径排除防误杀）
 	if len(req.Filters.ExcludeSites) > 0 {
-		switch {
-		case caps.SiteExcludeMutuallyExclusive && len(plan.adapted.Filters.Sites) > 0:
-			if strict {
-				plan.unsupportedReason = "sites+exclude_sites"
+		effectiveExcludes := req.Filters.ExcludeSites
+		if len(caps.ScopeDomains) > 0 {
+			if allDomainsCoveredByAnyFilter(caps.ScopeDomains, effectiveExcludes) {
+				plan.unsupportedReason = reasonSiteScope
 				return plan
 			}
-			plan.adapted.Filters.ExcludeSites = nil
-			plan.emulateExcludes = slices.Clone(req.Filters.ExcludeSites)
-			plan.degraded = append(plan.degraded, "exclude_sites:emulated")
-		case caps.ExcludeSites <= 0:
-			if strict {
-				plan.unsupportedReason = "exclude_sites"
-				return plan
+			effectiveExcludes = filterOverlappingDomainFilters(caps.ScopeDomains, effectiveExcludes)
+		}
+		plan.adapted.Filters.ExcludeSites = slices.Clone(effectiveExcludes)
+
+		if len(effectiveExcludes) > 0 {
+			switch {
+			case caps.SiteExcludeMutuallyExclusive && len(plan.adapted.Filters.Sites) > 0:
+				if strict {
+					plan.unsupportedReason = "sites+exclude_sites"
+					return plan
+				}
+				plan.adapted.Filters.ExcludeSites = nil
+				plan.emulateExcludes = slices.Clone(effectiveExcludes)
+				plan.degraded = append(plan.degraded, "exclude_sites:emulated")
+			case caps.ExcludeSites <= 0:
+				if strict {
+					plan.unsupportedReason = "exclude_sites"
+					return plan
+				}
+				plan.adapted.Filters.ExcludeSites = nil
+				plan.emulateExcludes = slices.Clone(effectiveExcludes)
+				plan.degraded = append(plan.degraded, "exclude_sites:emulated")
+			case caps.SiteHostOnly && urlnorm.HasPathDomainFilter(effectiveExcludes):
+				if strict {
+					plan.unsupportedReason = "exclude_sites"
+					return plan
+				}
+				hostOnly, pathOnly := urlnorm.SplitHostAndPathFilters(effectiveExcludes)
+				if len(hostOnly) > caps.ExcludeSites {
+					plan.adapted.Filters.ExcludeSites = slices.Clone(hostOnly[:caps.ExcludeSites])
+					plan.emulateExcludes = slices.Concat(hostOnly[caps.ExcludeSites:], pathOnly)
+				} else {
+					plan.adapted.Filters.ExcludeSites = hostOnly
+					plan.emulateExcludes = pathOnly
+				}
+				plan.degraded = append(plan.degraded, "exclude_sites:emulated")
+			case len(effectiveExcludes) > caps.ExcludeSites:
+				if strict {
+					plan.unsupportedReason = "exclude_sites"
+					return plan
+				}
+				plan.adapted.Filters.ExcludeSites = slices.Clone(effectiveExcludes[:caps.ExcludeSites])
+				plan.emulateExcludes = slices.Clone(effectiveExcludes[caps.ExcludeSites:])
+				plan.degraded = append(plan.degraded, "exclude_sites:emulated")
 			}
-			plan.adapted.Filters.ExcludeSites = nil
-			plan.emulateExcludes = slices.Clone(req.Filters.ExcludeSites)
-			plan.degraded = append(plan.degraded, "exclude_sites:emulated")
-		case caps.SiteHostOnly && urlnorm.HasPathDomainFilter(req.Filters.ExcludeSites):
-			if strict {
-				plan.unsupportedReason = "exclude_sites"
-				return plan
-			}
-			hostOnly, pathOnly := urlnorm.SplitHostAndPathFilters(req.Filters.ExcludeSites)
-			if len(hostOnly) > caps.ExcludeSites {
-				plan.adapted.Filters.ExcludeSites = slices.Clone(hostOnly[:caps.ExcludeSites])
-				plan.emulateExcludes = slices.Concat(hostOnly[caps.ExcludeSites:], pathOnly)
-			} else {
-				plan.adapted.Filters.ExcludeSites = hostOnly
-				plan.emulateExcludes = pathOnly
-			}
-			plan.degraded = append(plan.degraded, "exclude_sites:emulated")
-		case len(req.Filters.ExcludeSites) > caps.ExcludeSites:
-			if strict {
-				plan.unsupportedReason = "exclude_sites"
-				return plan
-			}
-			plan.adapted.Filters.ExcludeSites = slices.Clone(req.Filters.ExcludeSites[:caps.ExcludeSites])
-			plan.emulateExcludes = slices.Clone(req.Filters.ExcludeSites[caps.ExcludeSites:])
-			plan.degraded = append(plan.degraded, "exclude_sites:emulated")
 		}
 	}
 
@@ -284,4 +312,98 @@ func withinFreshness(pub time.Time, f *core.Freshness) bool {
 		return false
 	}
 	return true
+}
+
+func anyFilterOverlapsScope(scopeDomains, filters []string) bool {
+	for _, f := range filters {
+		for _, sd := range scopeDomains {
+			if urlnorm.DomainFiltersOverlap(sd, f) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// allFiltersCoverAllDomains 判断用户请求的每个站点过滤项都覆盖全部作用域域名（如 -s zhihu.com 覆盖 ["zhihu.com"]）。
+func allFiltersCoverAllDomains(filters, scopeDomains []string) bool {
+	for _, f := range filters {
+		for _, sd := range scopeDomains {
+			if !urlnorm.FilterCoversDomain(f, sd) {
+				return false
+			}
+		}
+	}
+	return len(filters) > 0 && len(scopeDomains) > 0
+}
+
+// allDomainsCoveredByAnyFilter 判断数据源的全部作用域域名均被用户排除列表中的整域项完全覆盖（如 zhihu 遇 -x zhihu.com）。
+func allDomainsCoveredByAnyFilter(scopeDomains, excludes []string) bool {
+	if len(scopeDomains) == 0 || len(excludes) == 0 {
+		return false
+	}
+	for _, sd := range scopeDomains {
+		covered := false
+		for _, ex := range excludes {
+			if urlnorm.FilterCoversDomain(ex, sd) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
+}
+
+func filterOverlappingDomainFilters(scopeDomains, filters []string) []string {
+	var out []string
+	for _, f := range filters {
+		for _, sd := range scopeDomains {
+			if urlnorm.DomainFiltersOverlap(sd, f) {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// orderByScopeForAuto 为 auto 单源自动回退调整通用全网源与垂直单站源（ScopeDomains）的执行顺序：
+//   - 无站点限定或未精确命中垂直源作用域时，通用全网源优先、垂直单站源后置兜底；
+//   - 站点过滤精确覆盖某垂直源作用域（如 -s zhihu.com 对应 zhihu）且兼容其余过滤条件时，该垂直源作为专长源优先置顶。
+func orderByScopeForAuto(chain []core.Searcher, req *core.SearchRequest) []core.Searcher {
+	if len(chain) <= 1 {
+		return chain
+	}
+	hasSites := req != nil && len(req.Filters.Sites) > 0
+	var specialists, general, deferred []core.Searcher
+	for i, s := range chain {
+		caps := resolveCapabilities(s, req)
+		if len(caps.ScopeDomains) == 0 {
+			if general != nil {
+				general = append(general, s)
+			}
+			continue
+		}
+		if general == nil {
+			general = make([]core.Searcher, i, len(chain))
+			copy(general, chain[:i])
+		}
+		if hasSites && allFiltersCoverAllDomains(req.Filters.Sites, caps.ScopeDomains) &&
+			matchCapabilities(caps, req, req.StrictFilters).unsupportedReason == "" {
+			specialists = append(specialists, s)
+			continue
+		}
+		deferred = append(deferred, s)
+	}
+	if general == nil {
+		return chain
+	}
+	out := make([]core.Searcher, 0, len(chain))
+	out = append(out, specialists...)
+	out = append(out, general...)
+	out = append(out, deferred...)
+	return out
 }

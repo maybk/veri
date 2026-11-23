@@ -10,7 +10,8 @@
 | --- | --- | --- | --- | --- |
 | `deepseek` | `search`, `fetch` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` | 提供 `/v1/tools/search` 与 `/v1/tools/fetch`；检索支持 `site:`、`-site:`、`after:`、`before:` 操作符拼装，查询总长上限 128 个 Unicode 字符；提取默认超时 `10s` |
 | `keenable` | `search`, `fetch` | `https://api.keenable.ai` | `KEENABLE_API_KEY` | 提供 `/v1/search`（默认关闭合成卡片）与 `GET /v1/fetch`（支持 `--fresh`）；支持域名过滤与发布时间窗；默认数据策略会留存查询与结果 |
-| `zhihu` | `search` | `https://developer.zhihu.com` | `ZHIHU_API_KEY`<br>`ZHIHU_ACCESS_SECRET` | 默认走全网搜索（`global`），支持 `-o zhihu.scope=zhihu` 切至知乎站内搜索与排序过滤；支持时间范围过滤，自动清洗高亮标签与 UTM 参数 |
+| `zhihu` | `search` | `https://developer.zhihu.com` | `ZHIHU_API_KEY`<br>`ZHIHU_ACCESS_SECRET` | 知乎站内问答与专栏搜索（`zhihu_search`，单次最多 10 条，仅限 `zhihu.com`）；支持赞同/评论/时间排序，`-s zhihu.com` 自动优先，非知乎站点过滤自动跳过 |
+| `zhihu_web` | `search` | `https://developer.zhihu.com` | 共享 `ZHIHU_API_KEY`<br>`ZHIHU_ACCESS_SECRET` | 知乎开放平台中文全网搜索（`global_search`，单次最多 20 条）；支持索引库切换、时间过滤与高亮/UTM 清洗，与 `zhihu` 共用密钥且配额独立 |
 | `exa` | `search`, `fetch` | `https://api.exa.ai` | `EXA_API_KEY` | 提供 `/search` 混合检索与 `/contents` 正文/PDF 提取；支持域名过滤、ISO 日期区间与内容类别筛选，响应返回 `costDollars` 实收账单 |
 | `tinyfish` | `search`, `fetch` | `https://api.search.tinyfish.ai`<br>`https://api.fetch.tinyfish.ai` | `TINYFISH_API_KEY` | 检索与抓取双端点；检索支持分钟级相对时效、日期区间与学术论文模式，抓取支持服务端 SPA / JS 动态渲染与 PDF |
 | `tencent_wsa` | `search` | `https://api.wsa.cloud.tencent.com` | `TENCENT_WSA_API_KEY`<br>`TENCENTCLOUD_WSA_APIKEY` | 腾讯云联网搜索 SearchPro 接口；支持 `lite`、`standard`、`flagship` 版本切换及行业分类筛选 |
@@ -24,7 +25,7 @@
 
 ## 检索选路模式
 
-1. **链式自动回退（`auto`，默认）**：中文查询按 `search.providers` 顺序执行，非中文查询（英文、日韩等或指定非中文 `--lang`）默认走 `search.providers_global`（设 `[]` 或仅显式配置 `search.providers` 时统一走主链）。遇鉴权、配额、限流、超时等可回退错误自动切下一源；开启 `fallback_on_empty` 时空结果也继续回退。
+1. **链式自动回退（`auto`，默认）**：中文查询按 `search.providers` 顺序执行，非中文查询（英文、日韩等或指定非中文 `--lang`）默认走 `search.providers_global`（设 `[]` 或仅显式配置 `search.providers` 时统一走主链）。通用查询优先全网源，单站源（如 `zhihu`）仅作兜底；`-s` 精确匹配单站域名（如 `-s zhihu.com`）时自动优先该站内源。遇鉴权、配额、限流、超时等可回退错误自动切下一源；开启 `fallback_on_empty` 时空结果也继续回退。
 2. **显式单源（`-p <name>`）**：仅调用指定检索源，失败时直接返回该源的结构化错误，不隐式切换其他源。
 3. **多源并发融合（`--fusion` / `-F`）**：并发调用多路检索源（可用 `-p a,b` 或 `search.fusion_providers` / `search.fusion_providers_global` 指定；未指定时按当前查询分链取前 3 个已启用源），经规范化 URL 与内容指纹去重后以加权 RRF 合并排序，并在结果中标注单条命中的多源共识；任一路成功即返回结果，失败支路记入 `meta.providers`。
 4. **过滤能力降级与严格模式**：当所选检索源不原生支持某项过滤条件（如排除多个站点或精确日期范围）时，路由器默认在拉取结果后执行本地后过滤，并在 `meta.notes` 中标注降级说明；传入 `--strict`（或 `strict: true`）则跳过不具备对应原生过滤能力的检索源。
@@ -57,9 +58,8 @@
 | `tencent_wsa.industry` | `wsa_industry` | `tencent_wsa`（检索） | `gov`、`news`、`acad`、`finance` |
 | `tencent_wsa.mode` | `wsa_mode` | `tencent_wsa`（检索） | `0`、`1`、`2` |
 | `keenable.mode` | `keenable_mode` | `keenable`（检索） | `pro`、`realtime` |
-| `zhihu.scope` | `zhihu_scope` | `zhihu`（检索） | `global`（全网搜索）、`zhihu`（知乎站内搜索） |
-| `zhihu.search_db` | `zhihu_search_db` | `zhihu`（检索） | `all`、`realtime`、`static`（仅 `global` 作用域生效） |
-| `zhihu.sort` | `zhihu_sort` | `zhihu`（检索） | 站内排序/区间表达式（仅 `zhihu` 作用域，如 `VoteUpCount:desc`） |
+| `zhihu_web.search_db` | `zhihu_web_search_db` | `zhihu_web`（检索） | `all`、`realtime`、`static` |
+| `zhihu.sort` | `zhihu_sort` | `zhihu`（检索） | 知乎站内排序/区间表达式（如 `VoteUpCount:desc`） |
 | `linkup.depth` | `linkup_depth` | `linkup`（检索） | `flash`、`fast`（默认）、`standard`、`deep` |
 | `parallel.mode` | `parallel_mode` | `parallel`（检索） | `turbo`（仅英/日文且不支持路径前缀）、`fast`（默认）、`basic`、`advanced` |
 | `parallel.location` | `parallel_location` | `parallel`（检索） | 2 位 ISO 国家码（如 `us`、`gb`、`jp`、`cn`） |

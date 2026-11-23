@@ -6,9 +6,9 @@
 # lang = "auto"                           # auto | zh | en
 
 # [search]
-# providers = ["deepseek", "keenable", "zhihu", "tencent_wsa", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
-# providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # 非中文检索链（设 [] 关闭）
-# --fusion 并发池（留空取前 3 个已启用源）
+# providers = ["deepseek", "keenable", "zhihu", "zhihu_web", "tencent_wsa", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
+# providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu_web", "zhihu"] # 非中文检索链（设 [] 关闭）
+# --fusion 并发池（留空取当前检索链前 3 个已启用源）
 ## fusion_providers = ["deepseek", "keenable", "zhihu"]
 ## fusion_providers_global = ["keenable", "parallel", "exa"]
 # strategy = "auto"                       # auto | fusion
@@ -60,11 +60,13 @@
 # mode = "pro"                            # pro | realtime
 
 # [providers.zhihu]
-# api_key = "env:ZHIHU_API_KEY"
-# scope = "global"                        # global（全网）| zhihu（知乎站内）
-# search_db = "all"                       # all | realtime | static（仅 global 生效）
+# api_key = "env:ZHIHU_API_KEY"           # 知乎站内问答与专栏搜索（同时启用 zhihu 与 zhihu_web）
+## price_search = "CNY:0.02"
+
+# [providers.zhihu_web]
+# enabled = true                          # 知乎全网搜索（自动共享 zhihu 密钥 / ZHIHU_API_KEY）
+# search_db = "all"                       # all | realtime | static
 ## price_search = "CNY:0.005"
-## price_zhihu_search = "CNY:0.02"
 
 # [providers.exa]
 # api_key = "env:EXA_API_KEY"

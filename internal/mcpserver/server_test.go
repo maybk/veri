@@ -151,8 +151,7 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 			maxCount:        20,
 			defaultDetail:   string(core.DetailSnippet),
 			defaultStrategy: string(core.StrategyAuto),
-			zhihuScope:      spec.ZhihuScopeZhihu,
-		}, []string{"deepseek", "zhihu"})
+		}, []string{"deepseek", "zhihu_web", "zhihu"})
 		sProps := searchSchema["properties"].(map[string]any)
 		if _, hasSingle := sProps["provider"]; hasSingle {
 			t.Fatal("web_search schema must not expose redundant singular provider field")
@@ -164,9 +163,7 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 		}
 		sOptDesc, _ := sProps["options"].(map[string]any)["description"].(string)
 		for _, want := range []string{
-			spec.OptZhihuScope,
-			"global=web|zhihu=Zhihu Q&A/articles, default: zhihu",
-			spec.OptZhihuSearchDB,
+			spec.OptZhihuWebSearchDB,
 			spec.OptZhihuSort,
 		} {
 			if !strings.Contains(sOptDesc, want) {
@@ -401,7 +398,7 @@ base_url = %q
 }
 
 func TestMCPFusionStrictBackfillAndQuotaRotation(t *testing.T) {
-	var zhihuCalls atomic.Int32
+	var zhihuCalls, zhihuWebCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -409,9 +406,12 @@ func TestMCPFusionStrictBackfillAndQuotaRotation(t *testing.T) {
 			_, _ = w.Write([]byte(`{"results":[{"title":"DS Go","url":"https://go.dev/ds","summary":"ds summary"}]}`))
 		case "/v1/search":
 			_, _ = w.Write([]byte(`{"results":[{"title":"Keen Go","url":"https://go.dev/keen","snippet":"keen summary"}]}`))
-		case "/api/v1/content/global_search":
+		case "/api/v1/content/zhihu_search":
 			zhihuCalls.Add(1)
 			_, _ = w.Write([]byte(`{"Code":30002,"Message":"quota exceeded"}`))
+		case "/api/v1/content/global_search":
+			zhihuWebCalls.Add(1)
+			_, _ = w.Write([]byte(`{"status":0,"data":{"items":[{"title":"ZhihuWeb Go","url":"https://go.dev/zhihu-web","content":"zhihu web summary"}]}}`))
 		case "/SearchPro":
 			_, _ = w.Write([]byte(`{"Response":{"RequestId":"wsa-1","Pages":["{\"title\":\"WSA Go\",\"url\":\"https://go.dev/wsa\",\"passage\":\"wsa summary\",\"site\":\"Go\"}"]}}`))
 		default:
@@ -434,10 +434,13 @@ base_url = %q
 api_key = "sk-zhihu-test"
 base_url = %q
 
+[providers.zhihu_web]
+base_url = %q
+
 [providers.tencent_wsa]
 api_key = "sk-wsa-test"
 base_url = %q
-`, srv.URL, srv.URL, srv.URL, srv.URL)
+`, srv.URL, srv.URL, srv.URL, srv.URL, srv.URL)
 	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -449,10 +452,14 @@ base_url = %q
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 默认顺序应将 zhihu 排在 tencent_wsa 之前
-	wantOrder := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu, spec.ProviderTencentWSA}
+	// 单源 auto 通用搜全网优先（zhihu 垂直源后置兜底），-F 按 search.providers 顺序直取前 3
+	wantOrder := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb, spec.ProviderTencentWSA, spec.ProviderZhihu}
 	if got := application.EnabledSearchers(); !slices.Equal(got, wantOrder) {
 		t.Fatalf("unexpected default EnabledSearchers order: %v", got)
+	}
+	wantFusion := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}
+	if got := application.RunDoctor(t.Context(), "en-US", "default", false).FusionChain; !slices.Equal(got, wantFusion) {
+		t.Fatalf("unexpected default FusionChain order: %v", got)
 	}
 
 	ctx := t.Context()
@@ -464,8 +471,9 @@ base_url = %q
 			Fusion: new(true),
 			Strict: true,
 		})
-		if err != nil || resStrict.IsError || !outStrict.OK || zhihuCalls.Load() != 0 {
-			t.Fatalf("expected MCP strict fusion to backfill tencent_wsa without calling zhihu, got res=%+v out=%+v zhihuCalls=%d err=%v", resStrict, outStrict, zhihuCalls.Load(), err)
+		if err != nil || resStrict.IsError || !outStrict.OK || zhihuCalls.Load() != 0 || zhihuWebCalls.Load() != 0 {
+			t.Fatalf("expected MCP strict fusion to backfill tencent_wsa without calling zhihu/zhihu_web, got res=%+v out=%+v zhihu=%d zhihuWeb=%d err=%v",
+				resStrict, outStrict, zhihuCalls.Load(), zhihuWebCalls.Load(), err)
 		}
 		var strictProvs []string
 		for _, p := range outStrict.Meta.Providers {
@@ -473,6 +481,25 @@ base_url = %q
 		}
 		if !slices.Equal(strictProvs, []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}) {
 			t.Fatalf("expected strict MCP fusion providers [deepseek keenable tencent_wsa], got %v", strictProvs)
+		}
+	})
+
+	t.Run("nonstrict_sites_skips_zhihu_and_backfills_zhihu_web", func(t *testing.T) {
+		resSite, outSite, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
+			Query:  "Go 并发",
+			Sites:  []string{"go.dev"},
+			Fusion: new(true),
+		})
+		if err != nil || resSite.IsError || !outSite.OK || zhihuCalls.Load() != 0 || zhihuWebCalls.Load() != 1 {
+			t.Fatalf("expected non-strict -s go.dev to skip zhihu and backfill zhihu_web, got res=%+v out=%+v zhihu=%d zhihuWeb=%d err=%v",
+				resSite, outSite, zhihuCalls.Load(), zhihuWebCalls.Load(), err)
+		}
+		var provs []string
+		for _, p := range outSite.Meta.Providers {
+			provs = append(provs, p.Name)
+		}
+		if !slices.Equal(provs, []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb}) {
+			t.Fatalf("expected non-strict -s go.dev providers [deepseek keenable zhihu_web], got %v", provs)
 		}
 	})
 
@@ -504,8 +531,16 @@ base_url = %q
 			Query:  "中文融合二",
 			Fusion: new(true),
 		})
-		if err != nil || resQ2.IsError || !outQ2.OK || outQ2.Meta.Partial || zhihuCalls.Load() != 1 {
-			t.Fatalf("expected second MCP fusion to rotate tencent_wsa without re-hitting quota-exhausted zhihu, got out=%+v zhihuCalls=%d err=%v", outQ2, zhihuCalls.Load(), err)
+		if err != nil || resQ2.IsError || !outQ2.OK || outQ2.Meta.Partial || zhihuCalls.Load() != 1 || zhihuWebCalls.Load() != 2 {
+			t.Fatalf("expected second MCP fusion to rotate zhihu_web without re-hitting quota-exhausted zhihu, got out=%+v zhihuCalls=%d zhihuWebCalls=%d err=%v",
+				outQ2, zhihuCalls.Load(), zhihuWebCalls.Load(), err)
+		}
+		var rotatedProvs []string
+		for _, p := range outQ2.Meta.Providers {
+			rotatedProvs = append(rotatedProvs, p.Name)
+		}
+		if !slices.Equal(rotatedProvs, []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb}) {
+			t.Fatalf("expected rotated MCP fusion providers [deepseek keenable zhihu_web], got %v", rotatedProvs)
 		}
 	})
 }

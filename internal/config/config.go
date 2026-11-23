@@ -77,6 +77,7 @@ type ProvidersConfig struct {
 	DeepSeek   DeepSeekConfig   `toml:"deepseek" json:"deepseek"`
 	Keenable   KeenableConfig   `toml:"keenable" json:"keenable"`
 	Zhihu      ZhihuConfig      `toml:"zhihu" json:"zhihu"`
+	ZhihuWeb   ZhihuWebConfig   `toml:"zhihu_web" json:"zhihu_web"`
 	Exa        ExaConfig        `toml:"exa" json:"exa"`
 	TinyFish   TinyFishConfig   `toml:"tinyfish" json:"tinyfish"`
 	TencentWSA TencentWSAConfig `toml:"tencent_wsa" json:"tencent_wsa"`
@@ -187,19 +188,28 @@ type KeenableConfig struct {
 	PriceCredit  string   `toml:"price_credit,omitempty" json:"price_credit,omitempty"`
 }
 
-// ZhihuConfig 配置知乎开放平台全网搜索与站内搜索 API。
+// ZhihuConfig 配置知乎开放平台站内搜索 API（与 zhihu_web 共享同一份 api_key / ZHIHU_API_KEY）。
 type ZhihuConfig struct {
-	Enabled          bool     `toml:"enabled" json:"enabled"`
-	APIKey           string   `toml:"api_key" json:"api_key"`
-	BaseURL          string   `toml:"base_url" json:"base_url"`
-	Scope            string   `toml:"scope" json:"scope"`         // global | zhihu
-	SearchDB         string   `toml:"search_db" json:"search_db"` // all | realtime | static
-	Timeout          Duration `toml:"timeout" json:"timeout"`
-	Concurrency      int      `toml:"concurrency" json:"concurrency"`
-	Weight           float64  `toml:"weight" json:"weight"`
-	QPS              float64  `toml:"qps" json:"qps"`
-	PriceSearch      string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
-	PriceZhihuSearch string   `toml:"price_zhihu_search,omitempty" json:"price_zhihu_search,omitempty"`
+	Enabled     bool     `toml:"enabled" json:"enabled"`
+	APIKey      string   `toml:"api_key" json:"api_key"`
+	BaseURL     string   `toml:"base_url" json:"base_url"`
+	Timeout     Duration `toml:"timeout" json:"timeout"`
+	Concurrency int      `toml:"concurrency" json:"concurrency"`
+	Weight      float64  `toml:"weight" json:"weight"`
+	QPS         float64  `toml:"qps" json:"qps"`
+	PriceSearch string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
+}
+
+// ZhihuWebConfig 配置知乎开放平台全网搜索 API（自动共享 providers.zhihu / ZHIHU_API_KEY 凭据）。
+type ZhihuWebConfig struct {
+	Enabled     bool     `toml:"enabled" json:"enabled"`
+	BaseURL     string   `toml:"base_url" json:"base_url"`
+	SearchDB    string   `toml:"search_db" json:"search_db"` // all | realtime | static
+	Timeout     Duration `toml:"timeout" json:"timeout"`
+	Concurrency int      `toml:"concurrency" json:"concurrency"`
+	Weight      float64  `toml:"weight" json:"weight"`
+	QPS         float64  `toml:"qps" json:"qps"`
+	PriceSearch string   `toml:"price_search,omitempty" json:"price_search,omitempty"`
 }
 
 // LinkupConfig 配置 Linkup Search & Fetch API。

@@ -325,3 +325,47 @@ func matchSingleDomainPattern(host, port, urlPathLower, rawPattern string) bool 
 func isDefaultPortMatch(patPort, port string) bool {
 	return port == "" && (patPort == "80" || patPort == "443")
 }
+
+// FilterCoversDomain 判断站点过滤项是否覆盖整个目标域名（含其所有子域；带路径前缀的过滤项不视为整域覆盖）。
+func FilterCoversDomain(filter, targetDomain string) bool {
+	fHost, fHasPath := parseDomainFilterHost(filter)
+	tHost, tHasPath := parseDomainFilterHost(targetDomain)
+	if fHost == "" || tHost == "" || fHasPath || tHasPath {
+		return false
+	}
+	return hostWithinDomain(tHost, fHost)
+}
+
+// DomainFiltersOverlap 判断数据源作用域域名与用户站点过滤项是否存在域名交集（父子域包含关系）。
+func DomainFiltersOverlap(scopeDomain, filter string) bool {
+	sHost, sHasPath := parseDomainFilterHost(scopeDomain)
+	fHost, _ := parseDomainFilterHost(filter)
+	if sHost == "" || fHost == "" || sHasPath {
+		return false
+	}
+	return hostWithinDomain(fHost, sHost) || hostWithinDomain(sHost, fHost)
+}
+
+func hostWithinDomain(host, domain string) bool {
+	return host == domain || strings.HasSuffix(host, "."+domain)
+}
+
+func parseDomainFilterHost(raw string) (host string, hasPath bool) {
+	p := strings.ToLower(strings.TrimSpace(raw))
+	p = strings.TrimPrefix(p, "https://")
+	p = strings.TrimPrefix(p, "http://")
+	p = strings.TrimPrefix(p, "*.")
+	p = strings.TrimRight(p, "/")
+	if p == "" {
+		return "", false
+	}
+	authority, pathPart, cut := strings.Cut(p, "/")
+	if authority == "" {
+		return "", false
+	}
+	h := authority
+	if splitHost, _, err := net.SplitHostPort(authority); err == nil {
+		h = splitHost
+	}
+	return strings.TrimSpace(h), cut && pathPart != ""
+}

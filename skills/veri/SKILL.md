@@ -18,7 +18,7 @@ veri search -q --json -t 7d -- "<query>"                                # freshn
 veri search -q --json -s docs.python.org -x pypi.org -- "<query>"       # domain include (-s) and exclude (-x); add --lang en [--strict] if needed
 veri search -q --json -p exa -- "<query>"                               # lock one provider (no fallback); -p exa,tavily falls back in order
 veri search -q --json -F -p deepseek,exa,parallel,brave -- "<query>"    # concurrent RRF fusion over explicit providers
-veri search -q --json -p zhihu -o zhihu.scope=zhihu -- "<query>"        # provider option (-o k=v); zhihu defaults to web, scope=zhihu searches Zhihu Q&A
+veri search -q --json -p zhihu -o zhihu.sort=VoteUpCount:desc -- "<query>"  # provider option (-o k=v); zhihu searches Zhihu Q&A/articles, zhihu_web searches Chinese web
 veri fetch -q --json --max-chars 30000 -- "<url>"                       # extract clean Markdown (returns outline when truncated)
 veri fetch -q --json --section "Authentication" -- "<url>"              # read a heading section subtree (combinable with --match)
 veri fetch -q --json --match "Retry-After" -- "<url>"                   # extract matching passages or compact line windows in large code files

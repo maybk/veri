@@ -82,6 +82,7 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 	wantTimeout := map[string]string{
 		spec.ProviderDeepSeek:   "10s",
 		spec.ProviderKeenable:   "10s/25s",
+		spec.ProviderZhihuWeb:   "10s",
 		spec.ProviderZhihu:      "10s",
 		spec.ProviderExa:        "10s/25s",
 		spec.ProviderTinyFish:   "10s/25s",
@@ -97,7 +98,8 @@ func TestProviderStatusTimeoutAndDetailsWhenAllEnabled(t *testing.T) {
 	wantDetails := map[string]string{
 		spec.ProviderDeepSeek:   "concurrency=4",
 		spec.ProviderKeenable:   "mode=pro",
-		spec.ProviderZhihu:      "scope=global (global|zhihu)",
+		spec.ProviderZhihuWeb:   "db=all",
+		spec.ProviderZhihu:      "zhihu.com",
 		spec.ProviderExa:        "type=auto",
 		spec.ProviderTinyFish:   "concurrency=4",
 		spec.ProviderTencentWSA: "edition=standard",

@@ -37,6 +37,7 @@ var factories = []Factory{
 	buildDeepSeek,
 	buildKeenable,
 	buildZhihu,
+	buildZhihuWeb,
 	buildExa,
 	buildTinyFish,
 	buildTencentWSA,
@@ -92,7 +93,7 @@ func statusEntry(name string, enabled bool, source, endpoint, timeout, details s
 	} else {
 		timeout = ""
 		if info.NeedsCredential() {
-			details = fmt.Sprintf("run `veri key set %s` or set %s", info.Name, info.EnvVars[0])
+			details = fmt.Sprintf("run `veri key set %s` or set %s", info.CredentialOwner(), info.EnvVars[0])
 		}
 	}
 	return ProviderStatus{

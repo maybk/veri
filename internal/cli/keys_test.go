@@ -95,3 +95,49 @@ func TestCLIKeySetOverwriteAppendAndHelp(t *testing.T) {
 		t.Fatalf("expected deepseek completion for key set, code=%d out=%q", code, compSet)
 	}
 }
+
+func TestCLIKeySetSharedCredentialActivatesBothZhihuProviders(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+
+	// 通过共享子源名 zhihu_web / zhihu-web 录入密钥，自动归一至 zhihu 槽位并同时激活 zhihu_web 与 zhihu。
+	code, out, errOut := runKeyImportCLI(t, cfgPath, "sk-zhihu-shared-888888\n", "--ui-lang", "zh", "key", "set", "zhihu_web")
+	if code != 0 || errOut != "" || !strings.Contains(out, "zhihu") || strings.Contains(out, "888888") {
+		t.Fatalf("key set zhihu_web failed: code=%d out=%s err=%s", code, out, errOut)
+	}
+	if got, err := credentials.NewVault(dir).Get(spec.ProviderZhihu); err != nil || got != "sk-zhihu-shared-888888" {
+		t.Fatalf("expected zhihu vault slot to store key, got (%q, %v)", got, err)
+	}
+
+	code, provJSON, provErr := runKeyImportCLI(t, cfgPath, "", "providers", "--json")
+	if code != 0 || provErr != "" {
+		t.Fatalf("providers --json failed: code=%d err=%s", code, provErr)
+	}
+	var provOut providersJSONOutput
+	if err := json.Unmarshal([]byte(provJSON), &provOut); err != nil {
+		t.Fatalf("unmarshal providers --json: %v", err)
+	}
+	enabled := make(map[string]bool)
+	for _, p := range provOut.Providers {
+		if p.Enabled {
+			enabled[p.Name] = true
+		}
+	}
+	if !enabled[spec.ProviderZhihu] || !enabled[spec.ProviderZhihuWeb] {
+		t.Fatalf("expected single ZHIHU key to enable both zhihu and zhihu_web, got enabled=%v", enabled)
+	}
+
+	code, listJSON, _ := runKeyImportCLI(t, cfgPath, "", "key", "list", "--json")
+	if code != 0 {
+		t.Fatalf("key list --json failed: code=%d", code)
+	}
+	var listOut keyListJSONOutput
+	if err := json.Unmarshal([]byte(listJSON), &listOut); err != nil {
+		t.Fatalf("unmarshal key list: %v", err)
+	}
+	for _, k := range listOut.Keys {
+		if k.Provider == spec.ProviderZhihuWeb {
+			t.Fatalf("shared child provider zhihu_web must not occupy a duplicate key list slot: %+v", listOut.Keys)
+		}
+	}
+}

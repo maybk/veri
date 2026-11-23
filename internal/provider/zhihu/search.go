@@ -24,49 +24,42 @@ var highlightTagReplacer = strings.NewReplacer(
 	"</EM>", "",
 )
 
-// Search 调用知乎全网搜索（global_search）或站内搜索（zhihu_search）并映射归一化结果。
+// Search 调用知乎站内搜索（zhihu_search）或全网搜索（global_search）并映射归一化结果。
 func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.SearchOutcome, error) {
 	if req == nil {
-		return nil, core.NewError(core.CodeInvalidArgument, "search request must not be nil").WithProvider(ProviderName)
+		return nil, core.NewError(core.CodeInvalidArgument, "search request must not be nil").WithProvider(p.name)
 	}
 	query := strings.TrimSpace(req.Query)
 	if query == "" {
-		return nil, core.NewError(core.CodeInvalidArgument, "query must not be empty").WithProvider(ProviderName)
-	}
-
-	scope := p.scope
-	if rawScope := textnorm.FirstNonEmpty(req.Options[spec.OptZhihuScope], req.Options[spec.OptZhihuScopeAlias]); rawScope != "" {
-		var err error
-		scope, err = normalizeScope(rawScope)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	searchDB := p.searchDB
-	rawDB := strings.TrimSpace(textnorm.FirstNonEmpty(req.Options[spec.OptZhihuSearchDB], req.Options[spec.OptZhihuSearchDBAlias]))
-	if rawDB != "" {
-		var err error
-		searchDB, err = normalizeSearchDB(rawDB)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	rawSort := strings.TrimSpace(textnorm.FirstNonEmpty(req.Options[spec.OptZhihuSort], req.Options[spec.OptZhihuSortAlias]))
-	if rawSort != "" {
-		if err := validateSortBy(rawSort); err != nil {
-			return nil, err
-		}
+		return nil, core.NewError(core.CodeInvalidArgument, "query must not be empty").WithProvider(p.name)
 	}
 
 	params := url.Values{}
 	params.Set("Query", query)
 	var endpoint string
-	var callCost *core.Cost
-	var localWarnings []string
 
-	if scope == spec.ZhihuScopeZhihu {
+	if p.webMode {
+		searchDB := p.searchDB
+		if rawDB := strings.TrimSpace(textnorm.FirstNonEmpty(req.Options[spec.OptZhihuWebSearchDB], req.Options[spec.OptZhihuWebSearchDBAlias])); rawDB != "" {
+			var err error
+			searchDB, err = normalizeSearchDB(p.name, rawDB)
+			if err != nil {
+				return nil, err
+			}
+		}
+		endpoint = p.baseURL + pathGlobalSearch
+		params.Set("Count", strconv.Itoa(spec.ClampSearchCount(req.Count, maxGlobalSearchCount)))
+		params.Set("SearchDB", searchDB)
+		if filterExpr := buildGlobalTimeFilter(req.Filters.Freshness); filterExpr != "" {
+			params.Set("Filter", filterExpr)
+		}
+	} else {
+		rawSort := strings.TrimSpace(textnorm.FirstNonEmpty(req.Options[spec.OptZhihuSort], req.Options[spec.OptZhihuSortAlias]))
+		if rawSort != "" {
+			if err := validateSortBy(p.name, rawSort); err != nil {
+				return nil, err
+			}
+		}
 		endpoint = p.baseURL + pathZhihuSearch
 		params.Set("Count", strconv.Itoa(spec.ClampSearchCount(req.Count, maxZhihuSearchCount)))
 		if rawSort != "" {
@@ -74,21 +67,6 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 		} else if sortRange := buildEditTimeSortBy(req.Filters.Freshness); sortRange != "" {
 			params.Set("SortBy", sortRange)
 		}
-		if rawDB != "" {
-			localWarnings = append(localWarnings, "zhihu: search_db option is ignored in zhihu scope")
-		}
-		callCost = core.CloneCost(p.zhihuSearchCost)
-	} else {
-		endpoint = p.baseURL + pathGlobalSearch
-		params.Set("Count", strconv.Itoa(spec.ClampSearchCount(req.Count, maxGlobalSearchCount)))
-		params.Set("SearchDB", searchDB)
-		if filterExpr := buildGlobalTimeFilter(req.Filters.Freshness); filterExpr != "" {
-			params.Set("Filter", filterExpr)
-		}
-		if rawSort != "" {
-			localWarnings = append(localWarnings, "zhihu: sort option is ignored in global scope")
-		}
-		callCost = core.CloneCost(p.globalSearchCost)
 	}
 
 	nowFn := p.nowFn
@@ -97,7 +75,7 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 	}
 
 	resp, err := p.client.DoJSON(ctx, p.pool, p.gate, httpx.RequestSpec{
-		ProviderName: ProviderName,
+		ProviderName: p.name,
 		Method:       http.MethodGet,
 		URL:          endpoint + "?" + params.Encode(),
 		Timeout:      p.timeout,
@@ -107,8 +85,8 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 			headerRequestTimestamp: strconv.FormatInt(nowFn().Unix(), 10),
 			"Content-Type":         "application/json",
 		},
-		InspectBody: inspectBody,
-		ClassifyErr: classifyHTTPError,
+		InspectBody: p.inspectBody,
+		ClassifyErr: p.classifyHTTPError,
 	})
 	if err != nil {
 		return nil, err
@@ -116,7 +94,7 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 
 	var wireResp searchWireResp
 	if err := json.Unmarshal(resp.Body, &wireResp); err != nil {
-		return nil, core.WrapError(core.CodeUpstreamBadResponse, "failed to decode Zhihu search JSON", err).WithProvider(ProviderName)
+		return nil, core.WrapError(core.CodeUpstreamBadResponse, "failed to decode Zhihu search JSON", err).WithProvider(p.name)
 	}
 
 	mapped := make([]core.Result, 0, len(wireResp.Data.Items))
@@ -155,14 +133,13 @@ func (p *Provider) Search(ctx context.Context, req *core.SearchRequest) (*core.S
 		})
 	}
 
-	cleaned, warnings := core.SanitizeResults(ProviderName, mapped, req.Detail, req.IncludeExtra, urlnorm.Key)
-	allWarnings := append(localWarnings, warnings...)
+	cleaned, warnings := core.SanitizeResults(p.name, mapped, req.Detail, req.IncludeExtra, urlnorm.Key)
 	reqID := textnorm.FirstNonEmpty(wireResp.Data.SearchHashID, resp.RequestID)
 	return &core.SearchOutcome{
 		Results:   cleaned,
-		Cost:      callCost,
+		Cost:      core.CloneCost(p.searchCost),
 		RequestID: reqID,
-		Warnings:  allWarnings,
+		Warnings:  warnings,
 	}, nil
 }
 
@@ -210,7 +187,7 @@ func buildEditTimeSortBy(f *core.Freshness) string {
 	return fmt.Sprintf("EditTime:none:(%s,%s)", minStr, maxStr)
 }
 
-func validateSortBy(raw string) error {
+func validateSortBy(providerName, raw string) error {
 	field, rest, hasColon := strings.Cut(raw, ":")
 	switch field {
 	case "CommentCount", "VoteUpCount", "EditTime", "CreateTime":
@@ -218,7 +195,7 @@ func validateSortBy(raw string) error {
 		return core.NewError(
 			core.CodeInvalidArgument,
 			fmt.Sprintf("invalid zhihu.sort field %q (valid: CommentCount, VoteUpCount, EditTime, CreateTime)", field),
-		).WithProvider(ProviderName)
+		).WithProvider(providerName)
 	}
 	if !hasColon {
 		return nil
@@ -230,48 +207,48 @@ func validateSortBy(raw string) error {
 		return core.NewError(
 			core.CodeInvalidArgument,
 			fmt.Sprintf("invalid zhihu.sort direction %q (valid: asc, desc, none)", dir),
-		).WithProvider(ProviderName)
+		).WithProvider(providerName)
 	}
 	if hasRange {
-		if err := validateSortRange(rangeExpr); err != nil {
+		if err := validateSortRange(providerName, rangeExpr); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateSortRange(expr string) error {
+func validateSortRange(providerName, expr string) error {
 	trimmed := strings.TrimSpace(expr)
 	if len(trimmed) < 3 || trimmed[0] != '(' || trimmed[len(trimmed)-1] != ')' {
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q (expected (min,max))", expr)).WithProvider(ProviderName)
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q (expected (min,max))", expr)).WithProvider(providerName)
 	}
 	inner := trimmed[1 : len(trimmed)-1]
 	loStr, hiStr, ok := strings.Cut(inner, ",")
 	if !ok || strings.Contains(hiStr, ",") {
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q (expected (min,max))", expr)).WithProvider(ProviderName)
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q (expected (min,max))", expr)).WithProvider(providerName)
 	}
 	loStr = strings.TrimSpace(loStr)
 	hiStr = strings.TrimSpace(hiStr)
 	if loStr == "" && hiStr == "" {
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q: at least one bound is required", expr)).WithProvider(ProviderName)
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q: at least one bound is required", expr)).WithProvider(providerName)
 	}
 	var loVal, hiVal int64
 	if loStr != "" {
 		v, err := strconv.ParseInt(loStr, 10, 64)
 		if err != nil || v < 0 {
-			return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range lower bound %q", loStr)).WithProvider(ProviderName)
+			return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range lower bound %q", loStr)).WithProvider(providerName)
 		}
 		loVal = v
 	}
 	if hiStr != "" {
 		v, err := strconv.ParseInt(hiStr, 10, 64)
 		if err != nil || v < 0 {
-			return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range upper bound %q", hiStr)).WithProvider(ProviderName)
+			return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range upper bound %q", hiStr)).WithProvider(providerName)
 		}
 		hiVal = v
 	}
 	if loStr != "" && hiStr != "" && loVal > hiVal {
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q: min exceeds max", expr)).WithProvider(ProviderName)
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid zhihu.sort range %q: min exceeds max", expr)).WithProvider(providerName)
 	}
 	return nil
 }

@@ -23,14 +23,13 @@ var strictEnumTable = map[string][]string{
 	"providers.tavily.extract_depth": {
 		spec.TavilyDepthBasic, spec.TavilyDepthAdvanced,
 	},
-	"providers.brave.mode":        {spec.BraveModeAuto, spec.BraveModeContext, spec.BraveModeWeb},
-	"providers.keenable.mode":     {spec.KeenableModePro, spec.KeenableModeRealtime},
-	"providers.zhihu.scope":       {spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu},
-	"providers.zhihu.search_db":   {spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic},
-	"providers.linkup.depth":      {spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep},
-	"providers.linkup.fetch_mode": {spec.LinkupFetchModeStandard, spec.LinkupFetchModePro},
-	"providers.parallel.mode":     {spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced},
-	"providers.firecrawl.proxy":   {spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced},
+	"providers.brave.mode":          {spec.BraveModeAuto, spec.BraveModeContext, spec.BraveModeWeb},
+	"providers.keenable.mode":       {spec.KeenableModePro, spec.KeenableModeRealtime},
+	"providers.zhihu_web.search_db": {spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic},
+	"providers.linkup.depth":        {spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep},
+	"providers.linkup.fetch_mode":   {spec.LinkupFetchModeStandard, spec.LinkupFetchModePro},
+	"providers.parallel.mode":       {spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced},
+	"providers.firecrawl.proxy":     {spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced},
 }
 
 func strictEnumAllowed(key string) []string {
@@ -181,8 +180,7 @@ func validateProviders(p *ProvidersConfig) error {
 		{"providers.tavily.extract_depth", p.Tavily.ExtractDepth},
 		{"providers.brave.mode", p.Brave.Mode},
 		{"providers.keenable.mode", p.Keenable.Mode},
-		{"providers.zhihu.scope", p.Zhihu.Scope},
-		{"providers.zhihu.search_db", p.Zhihu.SearchDB},
+		{"providers.zhihu_web.search_db", p.ZhihuWeb.SearchDB},
 		{"providers.linkup.depth", p.Linkup.Depth},
 		{"providers.linkup.fetch_mode", p.Linkup.FetchMode},
 		{"providers.parallel.mode", p.Parallel.Mode},

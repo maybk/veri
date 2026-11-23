@@ -78,3 +78,19 @@ func TestIsSafeHTTPURLAndDomainMatch(t *testing.T) {
 		t.Fatalf("unexpected CleanDomainFilters: %v", cleaned)
 	}
 }
+
+func TestDomainScopeRelations(t *testing.T) {
+	if !FilterCoversDomain("zhihu.com", "zhihu.com") || !FilterCoversDomain("*.zhihu.com", "zhuanlan.zhihu.com") {
+		t.Fatal("expected host-only filter to cover domain")
+	}
+	if FilterCoversDomain("zhuanlan.zhihu.com", "zhihu.com") || FilterCoversDomain("zhihu.com/question", "zhihu.com") {
+		t.Fatal("subdomain or path-scoped filter must not cover entire root domain")
+	}
+
+	if !DomainFiltersOverlap("zhihu.com", "zhuanlan.zhihu.com") || !DomainFiltersOverlap("zhihu.com", "zhihu.com/p") {
+		t.Fatal("expected subdomain/path to overlap parent scope domain")
+	}
+	if DomainFiltersOverlap("zhihu.com", "go.dev") || DomainFiltersOverlap("zhihu.com", "notzhihu.com") {
+		t.Fatal("expected unrelated domains not to overlap")
+	}
+}

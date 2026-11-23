@@ -9,6 +9,7 @@ import (
 const (
 	ProviderDeepSeek   = "deepseek"
 	ProviderKeenable   = "keenable"
+	ProviderZhihuWeb   = "zhihu_web"
 	ProviderZhihu      = "zhihu"
 	ProviderExa        = "exa"
 	ProviderTinyFish   = "tinyfish"
@@ -107,14 +108,38 @@ func (r Role) String() string {
 
 // ProviderInfo 是内置 Provider 的静态登记信息。
 type ProviderInfo struct {
-	Name    string   // 全局唯一的小写蛇形标识
-	Roles   Role     // 承担的能力角色
-	EnvVars []string // 凭据环境变量（首项为主变量，其余为兼容别名）；为空表示无需凭据
-	Aliases []string // 可被识别的名称别名
+	Name            string   // 全局唯一的小写蛇形标识
+	Roles           Role     // 承担的能力角色
+	EnvVars         []string // 凭据环境变量（首项为主变量，其余为兼容别名）；为空表示无需凭据
+	Aliases         []string // 可被识别的名称别名
+	Package         string   // 可选：适配器包目录名（留空时默认为移除下划线后的 Name）
+	CredentialGroup string   // 可选：共享凭据归属的主 Provider 标识（留空表示自身持有独立凭据）
 }
 
-// NeedsCredential 判断该 Provider 是否支持配置密钥或访问令牌。
+// NeedsCredential 判断该 Provider 是否需要配置密钥或访问令牌。
 func (p ProviderInfo) NeedsCredential() bool { return len(p.EnvVars) > 0 }
+
+// OwnsCredential 判断该 Provider 是否持有独立的本地凭据存储槽位（共享凭据源返回 false）。
+func (p ProviderInfo) OwnsCredential() bool { return p.NeedsCredential() && p.CredentialGroup == "" }
+
+// CredentialOwner 返回该 Provider 的实际凭据归属主标识；无需凭据时返回空字符串。
+func (p ProviderInfo) CredentialOwner() string {
+	if !p.NeedsCredential() {
+		return ""
+	}
+	if p.CredentialGroup != "" {
+		return p.CredentialGroup
+	}
+	return p.Name
+}
+
+// PackageDir 返回该 Provider 对应的 internal/provider/<dir> 子包目录名。
+func (p ProviderInfo) PackageDir() string {
+	if p.Package != "" {
+		return p.Package
+	}
+	return strings.ReplaceAll(p.Name, "_", "")
+}
 
 // Providers 返回全部内置 Provider 的登记表副本（新增 Provider 只需在此追加一行）。
 func Providers() []ProviderInfo {
@@ -122,6 +147,7 @@ func Providers() []ProviderInfo {
 		{Name: ProviderDeepSeek, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvDeepSeekAPIKey}},
 		{Name: ProviderKeenable, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvKeenableAPIKey}},
 		{Name: ProviderZhihu, Roles: RoleSearch, EnvVars: []string{EnvZhihuAPIKey, EnvZhihuSecretAlias}},
+		{Name: ProviderZhihuWeb, Roles: RoleSearch, EnvVars: []string{EnvZhihuAPIKey, EnvZhihuSecretAlias}, Aliases: []string{"zhihu-web"}, Package: ProviderZhihu, CredentialGroup: ProviderZhihu},
 		{Name: ProviderExa, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvExaAPIKey}},
 		{Name: ProviderTinyFish, Roles: RoleSearch | RoleFetch, EnvVars: []string{EnvTinyFishAPIKey}},
 		{Name: ProviderTencentWSA, Roles: RoleSearch, EnvVars: []string{EnvTencentWSAAPIKey, EnvTencentWSAAliasKey}, Aliases: []string{"tencentwsa", "tencent-wsa"}},
@@ -159,9 +185,9 @@ func ProvidersWithRole(role Role) []string {
 	return providerNames(func(p ProviderInfo) bool { return p.Roles.Has(role) })
 }
 
-// CredentialProviders 返回支持配置密钥或访问令牌的内置适配器名称列表。
+// CredentialProviders 返回持有独立密钥或访问令牌存储槽位的内置适配器名称列表。
 func CredentialProviders() []string {
-	return providerNames(ProviderInfo.NeedsCredential)
+	return providerNames(ProviderInfo.OwnsCredential)
 }
 
 func providerNames(keep func(ProviderInfo) bool) []string {
@@ -188,13 +214,13 @@ func NormalizeProviderName(raw string) (string, bool) {
 	return p.Name, ok
 }
 
-// NormalizeCredentialProvider 规整并校验支持配置密钥的适配器标识。
+// NormalizeCredentialProvider 规整并校验支持配置密钥的适配器标识，共享凭据源自动归并至主凭据标识。
 func NormalizeCredentialProvider(raw string) (string, bool) {
 	p, ok := LookupProvider(raw)
 	if !ok || !p.NeedsCredential() {
 		return "", false
 	}
-	return p.Name, true
+	return p.CredentialOwner(), true
 }
 
 // NormalizeProvidersForRole 校验并规整指定角色的内置 Provider 名称列表（兼容别名、大小写不敏感、保序去重）。
@@ -227,12 +253,14 @@ func DefaultEnvRef(provider string) string {
 	return "env:" + vars[0]
 }
 
-// DefaultSearchProviders 返回内置默认检索路由链的独立副本（中文与中英混合查询优先使用）。
+// DefaultSearchProviders 返回内置默认检索路由链的独立副本
+// （中文与中英混合查询默认序列；单源 auto 通用搜自动将全网源排在单站垂直源之前，-F 融合按序取前 3）。
 func DefaultSearchProviders() []string {
 	return []string{
 		ProviderDeepSeek,
 		ProviderKeenable,
 		ProviderZhihu,
+		ProviderZhihuWeb,
 		ProviderTencentWSA,
 		ProviderBrave,
 		ProviderParallel,
@@ -258,6 +286,7 @@ func DefaultSearchProvidersGlobal() []string {
 		ProviderTinyFish,
 		ProviderFirecrawl,
 		ProviderTencentWSA,
+		ProviderZhihuWeb,
 		ProviderZhihu,
 	}
 }

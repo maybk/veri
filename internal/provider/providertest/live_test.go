@@ -154,19 +154,22 @@ func TestLiveProviders(t *testing.T) {
 		if k == "" {
 			t.Skip("ZHIHU_API_KEY not set")
 		}
-		p, _, err := zhihu.New(zhihu.Options{Keys: []string{k}}, cli)
+		pWeb, _, err := zhihu.NewWeb(zhihu.WebOptions{Keys: []string{k}}, cli)
 		if err != nil {
 			t.Fatal(err)
 		}
-		out, err := p.Search(ctx, &core.SearchRequest{Query: "Go 语言 MCP SDK", Count: 2, Detail: core.DetailSummary})
+		out, err := pWeb.Search(ctx, &core.SearchRequest{Query: "Go 语言 MCP SDK", Count: 2, Detail: core.DetailSummary})
 		if err != nil || len(out.Results) == 0 {
-			t.Fatalf("live global search failed: out=%+v err=%v", out, err)
+			t.Fatalf("live zhihu_web search failed: out=%+v err=%v", out, err)
 		}
-		outCommunity, err := p.Search(ctx, &core.SearchRequest{
-			Query:   "Go 并发编程",
-			Count:   2,
-			Detail:  core.DetailSummary,
-			Options: map[string]string{spec.OptZhihuScope: spec.ZhihuScopeZhihu},
+		pCommunity, _, err := zhihu.New(zhihu.Options{Keys: []string{k}}, cli)
+		if err != nil {
+			t.Fatal(err)
+		}
+		outCommunity, err := pCommunity.Search(ctx, &core.SearchRequest{
+			Query:  "Go 并发编程",
+			Count:  2,
+			Detail: core.DetailSummary,
 		})
 		if err != nil || len(outCommunity.Results) == 0 {
 			t.Fatalf("live zhihu community search failed: out=%+v err=%v", outCommunity, err)

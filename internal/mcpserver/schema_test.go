@@ -22,7 +22,7 @@ import (
 
 func TestMCPSchemaDynamicOptionsFiltering(t *testing.T) {
 	allSearch := spec.ProvidersWithRole(spec.RoleSearch)
-	fullSearchSchema := buildSearchInputSchema(searchSchemaDefaults{zhihuScope: spec.ZhihuScopeGlobal}, allSearch)
+	fullSearchSchema := buildSearchInputSchema(searchSchemaDefaults{}, allSearch)
 	fullSearchOpt := fullSearchSchema["properties"].(map[string]any)["options"].(map[string]any)["description"].(string)
 	if !strings.Contains(fullSearchOpt, "omit by default") {
 		t.Fatalf("expected search options description to state omit by default, got %q", fullSearchOpt)
@@ -42,7 +42,8 @@ func TestMCPSchemaDynamicOptionsFiltering(t *testing.T) {
 		spec.OptTinyFishDomainType,
 		spec.OptWSAIndustry,
 		spec.OptKeenableMode,
-		spec.OptZhihuScope,
+		spec.OptZhihuWebSearchDB,
+		spec.OptZhihuSort,
 		spec.OptLinkupDepth,
 		spec.OptParallelMode,
 		spec.OptParallelLocation,
@@ -324,7 +325,7 @@ func TestMCPOutputSchemaCompactIsolationAndSync(t *testing.T) {
 func TestMCPSparseConfigSetReflectedInSchemaAndReadOnlyBoundary(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
 	noEnv := func(string) string { return "" }
-	if _, err := config.SetValue(cfgPath, "providers.zhihu.scope", "zhihu", noEnv); err != nil {
+	if _, err := config.SetValue(cfgPath, "providers.zhihu_web.enabled", "false", noEnv); err != nil {
 		t.Fatalf("config.SetValue: %v", err)
 	}
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
@@ -376,7 +377,8 @@ func TestMCPSparseConfigSetReflectedInSchemaAndReadOnlyBoundary(t *testing.T) {
 		t.Fatal("missing web_search tool")
 	}
 	raw, _ := json.Marshal(searchTool.InputSchema)
-	if !strings.Contains(string(raw), "default: zhihu") {
-		t.Fatalf("expected sparse providers.zhihu.scope=zhihu reflected in MCP schema, got: %s", string(raw))
+	// 单把 ZHIHU_API_KEY 下关闭 zhihu_web 后，应仅暴露 zhihu（含 zhihu.sort）并省略 zhihu_web.search_db
+	if !strings.Contains(string(raw), spec.OptZhihuSort) || strings.Contains(string(raw), spec.OptZhihuWebSearchDB) {
+		t.Fatalf("expected disabled zhihu_web omitted and zhihu kept in MCP schema, got: %s", string(raw))
 	}
 }

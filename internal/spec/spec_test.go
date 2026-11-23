@@ -19,11 +19,23 @@ func TestProviderRegistryOptionsAndDefaults(t *testing.T) {
 	if p2, ok := NormalizeProviderName("tencentwsa"); !ok || p2 != ProviderTencentWSA {
 		t.Fatalf("NormalizeProviderName(tencentwsa) = %q, %t", p2, ok)
 	}
+	if p3, ok := NormalizeProviderName("zhihu-web"); !ok || p3 != ProviderZhihuWeb {
+		t.Fatalf("NormalizeProviderName(zhihu-web) = %q, %t", p3, ok)
+	}
 	if _, ok := NormalizeProviderName("unknown"); ok {
 		t.Fatal("unknown provider must not normalize")
 	}
 	if _, ok := NormalizeCredentialProvider(ProviderLocal); ok {
 		t.Fatal("local provider must not accept credentials")
+	}
+	if owner, ok := NormalizeCredentialProvider(ProviderZhihuWeb); !ok || owner != ProviderZhihu {
+		t.Fatalf("NormalizeCredentialProvider(zhihu_web) = (%q, %t), want (zhihu, true)", owner, ok)
+	}
+	if slices.Contains(CredentialProviders(), ProviderZhihuWeb) {
+		t.Fatal("shared credential provider zhihu_web must not appear as separate slot in CredentialProviders")
+	}
+	if info, ok := LookupProvider(ProviderZhihuWeb); !ok || info.PackageDir() != ProviderZhihu || info.CredentialOwner() != ProviderZhihu || info.OwnsCredential() {
+		t.Fatalf("unexpected ProviderInfo for zhihu_web: %+v", info)
 	}
 	if got, bad, ok := NormalizeProvidersForRole([]string{"Tencent-WSA", "exa", "tencentwsa", "EXA"}, RoleSearch); !ok || bad != "" || !slices.Equal(got, []string{ProviderTencentWSA, ProviderExa}) {
 		t.Fatalf("NormalizeProvidersForRole valid = (%v, %q, %t)", got, bad, ok)

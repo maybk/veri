@@ -27,10 +27,10 @@ func TestSetGetUnsetAllValueTypes(t *testing.T) {
 		checkLoad func(*testing.T, *Loaded)
 	}{
 		{
-			key: "providers.zhihu.scope", input: "ZHIHU", wantFmt: "zhihu",
+			key: "providers.zhihu_web.search_db", input: "REALTIME", wantFmt: "realtime",
 			checkLoad: func(t *testing.T, l *Loaded) {
-				if l.Config.Providers.Zhihu.Scope != spec.ZhihuScopeZhihu {
-					t.Fatalf("zhihu.scope = %q, want zhihu", l.Config.Providers.Zhihu.Scope)
+				if l.Config.Providers.ZhihuWeb.SearchDB != spec.ZhihuSearchDBRealtime {
+					t.Fatalf("zhihu_web.search_db = %q, want realtime", l.Config.Providers.ZhihuWeb.SearchDB)
 				}
 			},
 		},
@@ -226,26 +226,26 @@ func TestPreserveCommentsMultilineCRLFAndSectionCleanup(t *testing.T) {
 	if err := WriteTemplateForLocale(tplPath, false, "en-US"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SetValue(tplPath, "providers.zhihu.scope", "zhihu", noEnv); err != nil {
+	if _, err := SetValue(tplPath, "providers.zhihu_web.search_db", "realtime", noEnv); err != nil {
 		t.Fatalf("SetValue on commented template: %v", err)
 	}
 	loadedTpl, err := LoadWithEnv(tplPath, noEnv)
-	if err != nil || !loadedTpl.DefinedKeys["providers.zhihu.scope"] || loadedTpl.Config.Providers.Zhihu.Scope != spec.ZhihuScopeZhihu {
-		t.Fatalf("unexpected template override load: defined=%v scope=%q err=%v",
-			loadedTpl.DefinedKeys, loadedTpl.Config.Providers.Zhihu.Scope, err)
+	if err != nil || !loadedTpl.DefinedKeys["providers.zhihu_web.search_db"] || loadedTpl.Config.Providers.ZhihuWeb.SearchDB != spec.ZhihuSearchDBRealtime {
+		t.Fatalf("unexpected template override load: defined=%v search_db=%q err=%v",
+			loadedTpl.DefinedKeys, loadedTpl.Config.Providers.ZhihuWeb.SearchDB, err)
 	}
-	uRes, err := UnsetValue(tplPath, "providers.zhihu.scope")
+	uRes, err := UnsetValue(tplPath, "providers.zhihu_web.search_db")
 	if err != nil || !uRes.Changed || uRes.RemovedFile {
 		t.Fatalf("expected unset on commented template to preserve file, got %+v err=%v", uRes, err)
 	}
 	afterTpl, err := os.ReadFile(tplPath)
-	if err != nil || !strings.Contains(string(afterTpl), "# [providers.zhihu]") || strings.Contains(string(afterTpl), "\n[providers.zhihu]\n") {
+	if err != nil || !strings.Contains(string(afterTpl), "# [providers.zhihu_web]") || strings.Contains(string(afterTpl), "\n[providers.zhihu_web]\n") {
 		t.Fatalf("expected commented template intact after unset:\n%s", string(afterTpl))
 	}
 
 	// 3. 段内追加新键不拆散下一段前置注释；移除本段最后一项时清理空表头且保留下一段前置注释
 	secPath := filepath.Join(dir, "sections.toml")
-	secOrig := "[search]\ncount = 8\n\n# zhihu section comment\n[providers.zhihu]\nscope = \"zhihu\"\n"
+	secOrig := "[search]\ncount = 8\n\n# zhihu_web section comment\n[providers.zhihu_web]\nsearch_db = \"realtime\"\n"
 	if err := os.WriteFile(secPath, []byte(secOrig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestPreserveCommentsMultilineCRLFAndSectionCleanup(t *testing.T) {
 		t.Fatalf("SetValue search.detail: %v", err)
 	}
 	secAfterSet, _ := os.ReadFile(secPath)
-	wantAfterSet := "[search]\ncount = 8\ndetail = \"content\"\n\n# zhihu section comment\n[providers.zhihu]\nscope = \"zhihu\"\n"
+	wantAfterSet := "[search]\ncount = 8\ndetail = \"content\"\n\n# zhihu_web section comment\n[providers.zhihu_web]\nsearch_db = \"realtime\"\n"
 	if string(secAfterSet) != wantAfterSet {
 		t.Fatalf("section insert displaced next header comment:\ngot:\n%s\nwant:\n%s", string(secAfterSet), wantAfterSet)
 	}
@@ -264,7 +264,7 @@ func TestPreserveCommentsMultilineCRLFAndSectionCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	secAfterUnset, _ := os.ReadFile(secPath)
-	wantAfterUnset := "# zhihu section comment\n[providers.zhihu]\nscope = \"zhihu\"\n"
+	wantAfterUnset := "# zhihu_web section comment\n[providers.zhihu_web]\nsearch_db = \"realtime\"\n"
 	if string(secAfterUnset) != wantAfterUnset {
 		t.Fatalf("empty section prune broke next header comment:\ngot:\n%s\nwant:\n%s", string(secAfterUnset), wantAfterUnset)
 	}
@@ -374,10 +374,11 @@ func TestSuggestKeyAndPreWriteValidationSafety(t *testing.T) {
 	noEnv := func(string) string { return "" }
 
 	for in, want := range map[string]string{
-		"zhihu.scope":         "providers.zhihu.scope",
+		"zhihu_web.search_db": "providers.zhihu_web.search_db",
+		"zhihu-web.search_db": "providers.zhihu_web.search_db",
 		"tencent-wsa.edition": "providers.tencent_wsa.edition",
 		"search.cout":         "search.count",
-		"zhihu.scop":          "providers.zhihu.scope",
+		"zhihu_web.search_d":  "providers.zhihu_web.search_db",
 		"completely_x":        "",
 	} {
 		if got := SuggestKey(in); got != want {
@@ -393,7 +394,7 @@ func TestSuggestKeyAndPreWriteValidationSafety(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range [][2]string{
-		{"providers.zhihu.scope", "not_a_scope"},
+		{"providers.zhihu_web.search_db", "not_a_db"},
 		{"search.count", "999"},
 		{"search.strict_filters", "yes"},
 		{"search.timeout", "-5s"},
@@ -409,14 +410,14 @@ func TestSuggestKeyAndPreWriteValidationSafety(t *testing.T) {
 
 	// 行内表语法冲突必须触发安全拒绝且原文件保持字节级不变
 	inlinePath := filepath.Join(dir, "inline.toml")
-	inlineOrig := "[providers]\nzhihu = { scope = \"global\" }\n"
+	inlineOrig := "[providers]\nzhihu_web = { search_db = \"all\" }\n"
 	if err := os.WriteFile(inlinePath, []byte(inlineOrig), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SetValue(inlinePath, "providers.zhihu.scope", "zhihu", noEnv); err == nil {
+	if _, err := SetValue(inlinePath, "providers.zhihu_web.search_db", "realtime", noEnv); err == nil {
 		t.Fatal("expected inline table conflict to fail safely")
 	}
-	if _, err := UnsetValue(inlinePath, "providers.zhihu.scope"); core.AsError(err).MsgKey != "err.config_edit_manual" {
+	if _, err := UnsetValue(inlinePath, "providers.zhihu_web.search_db"); core.AsError(err).MsgKey != "err.config_edit_manual" {
 		t.Fatalf("expected manual edit error for inline table unset, got %v", err)
 	}
 	afterInline, _ := os.ReadFile(inlinePath)
@@ -426,7 +427,7 @@ func TestSuggestKeyAndPreWriteValidationSafety(t *testing.T) {
 
 	// 误把明文密钥填到非 secret 字段值中时，报错绝不得原样回显明文。
 	accidentalKey := "sk-accidental-secret-value-987654"
-	for _, key := range []string{"search.count", "providers.zhihu.scope", "ui.lang", "search.providers"} {
+	for _, key := range []string{"search.count", "providers.zhihu_web.search_db", "ui.lang", "search.providers"} {
 		_, err := SetValue(cfgPath, key, accidentalKey, noEnv)
 		if err == nil || strings.Contains(err.Error(), accidentalKey) {
 			t.Fatalf("SetValue(%s) leaked accidental secret in error: %v", key, err)
@@ -436,10 +437,10 @@ func TestSuggestKeyAndPreWriteValidationSafety(t *testing.T) {
 	// UnsetValue 遇到含未知键的配置必须报错拦截，不能静默返回未设置；
 	// 同时支持通过 SetValue / UnsetValue 修复单个越界值。
 	unknownPath := filepath.Join(dir, "unknown.toml")
-	if err := os.WriteFile(unknownPath, []byte("[providers.zhihu]\nscop = \"zhihu\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(unknownPath, []byte("[providers.zhihu_web]\nsearch_d = \"realtime\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := UnsetValue(unknownPath, "providers.zhihu.scope"); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.config_unknown_keys" {
+	if _, err := UnsetValue(unknownPath, "providers.zhihu_web.search_db"); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.config_unknown_keys" {
 		t.Fatalf("expected UnsetValue to reject unknown keys in file, got %v", err)
 	}
 

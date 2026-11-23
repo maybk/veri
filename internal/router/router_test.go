@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,11 +21,13 @@ type fakeSearcher struct {
 	outcome *core.SearchOutcome
 	err     error
 	lastReq *core.SearchRequest
+	calls   atomic.Int32
 }
 
 func (f *fakeSearcher) Name() string                    { return f.name }
 func (f *fakeSearcher) Capabilities() core.Capabilities { return f.caps }
 func (f *fakeSearcher) Search(ctx context.Context, req *core.SearchRequest) (*core.SearchOutcome, error) {
+	f.calls.Add(1)
 	cp := *req
 	f.lastReq = &cp
 	if f.delay > 0 {
@@ -326,13 +329,14 @@ func TestDefaultSearchChainLanguageSplitAndExplicitOverride(t *testing.T) {
 	all := []core.Provider{
 		mk(spec.ProviderDeepSeek),
 		mk(spec.ProviderKeenable),
+		mk(spec.ProviderZhihuWeb),
 		mk(spec.ProviderTencentWSA),
 		mk(spec.ProviderZhihu),
 		mk(spec.ProviderParallel),
 		mk(spec.ProviderExa),
 	}
 	rDefault := New(Options{}, all)
-	wantGlobal := []string{spec.ProviderKeenable, spec.ProviderParallel, spec.ProviderExa, spec.ProviderDeepSeek, spec.ProviderTencentWSA, spec.ProviderZhihu}
+	wantGlobal := []string{spec.ProviderKeenable, spec.ProviderParallel, spec.ProviderExa, spec.ProviderDeepSeek, spec.ProviderTencentWSA, spec.ProviderZhihuWeb, spec.ProviderZhihu}
 	if got := rDefault.ActiveSearchChainGlobal(); !slices.Equal(got, wantGlobal) {
 		t.Fatalf("ActiveSearchChainGlobal() = %v, want %v", got, wantGlobal)
 	}

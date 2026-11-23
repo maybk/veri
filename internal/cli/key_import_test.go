@@ -29,7 +29,7 @@ func runKeyImportCLI(t *testing.T, cfgPath, stdin string, args ...string) (int, 
 func TestCLIKeyImportFromConfigAndDoctorGuidance(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.toml")
-	raw := "[providers.deepseek]\napi_key = \"sk-cli-ds-1234567890\"\n\n[providers.zhihu]\nscope = \"zhihu\"\napi_key = \"zh-cli-plain-9876543210\"\n"
+	raw := "[providers.deepseek]\napi_key = \"sk-cli-ds-1234567890\"\n\n[providers.zhihu]\nweight = 1.2\napi_key = \"zh-cli-plain-9876543210\"\n"
 	if err := os.WriteFile(cfgPath, []byte(raw), 0o600); err != nil {
 		t.Fatalf("write config.toml: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestCLIKeyImportFromConfigAndDoctorGuidance(t *testing.T) {
 		t.Fatalf("unexpected dry-run JSON result: %+v", dryRes)
 	}
 
-	// 3. 正式执行 veri key import --from-config：写入 secrets.json、清理明文、保留 zhihu.scope。
+	// 3. 正式执行 veri key import --from-config：写入 secrets.json、清理明文、保留 zhihu.weight。
 	code, impOut, impErr := runKeyImportCLI(t, cfgPath, "", "--ui-lang", "zh", "key", "import", "--from-config")
 	if code != 0 || impErr != "" {
 		t.Fatalf("key import --from-config failed: code=%d out=%s err=%s", code, impOut, impErr)
@@ -80,8 +80,8 @@ func TestCLIKeyImportFromConfigAndDoctorGuidance(t *testing.T) {
 	}
 
 	code, ovOut, _ := runKeyImportCLI(t, cfgPath, "", "--ui-lang", "zh", "config", "show", "--overrides")
-	if code != 0 || !strings.Contains(ovOut, `scope = "zhihu"`) || strings.Contains(ovOut, "api_key") {
-		t.Fatalf("expected overrides to keep scope and drop api_key, code=%d out=%s", code, ovOut)
+	if code != 0 || !strings.Contains(ovOut, `weight = 1.2`) || strings.Contains(ovOut, "api_key") {
+		t.Fatalf("expected overrides to keep weight and drop api_key, code=%d out=%s", code, ovOut)
 	}
 
 	// 4. 迁移后 veri key list 显示来源为 secrets.json，veri doctor 不再提示明文密钥。

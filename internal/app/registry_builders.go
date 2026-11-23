@@ -72,31 +72,46 @@ func buildKeenable(loaded *config.Loaded, deps Deps) (core.Provider, ProviderSta
 
 func buildZhihu(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
 	cfg := loaded.Config.Providers.Zhihu
-	cred := loaded.Credentials[spec.ProviderZhihu]
+	cred := loaded.CredentialFor(spec.ProviderZhihu)
 	if !cfg.Enabled {
 		return nil, disabledByConfigEntry(spec.ProviderZhihu, cred.Source, hostFromURL(cfg.BaseURL)), nil
 	}
 	p, enabled, err := zhihu.New(zhihu.Options{
-		Keys:             cred.Keys,
-		BaseURL:          cfg.BaseURL,
-		Scope:            cfg.Scope,
-		SearchDB:         cfg.SearchDB,
-		Timeout:          cfg.Timeout.Duration,
-		Concurrency:      cfg.Concurrency,
-		QPS:              cfg.QPS,
-		PriceSearch:      cfg.PriceSearch,
-		PriceZhihuSearch: cfg.PriceZhihuSearch,
+		Keys:        cred.Keys,
+		BaseURL:     cfg.BaseURL,
+		Timeout:     cfg.Timeout.Duration,
+		Concurrency: cfg.Concurrency,
+		QPS:         cfg.QPS,
+		PriceSearch: cfg.PriceSearch,
 	}, deps.APIClient)
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}
 	timeout := formatProviderTimeout(cfg.Timeout.Duration, 0)
-	scope := cfg.Scope
-	if scope == "" {
-		scope = spec.ZhihuScopeGlobal
+	return p, statusEntry(spec.ProviderZhihu, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, "zhihu.com"), nil
+}
+
+func buildZhihuWeb(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {
+	cfg := loaded.Config.Providers.ZhihuWeb
+	cred := loaded.CredentialFor(spec.ProviderZhihuWeb)
+	if !cfg.Enabled {
+		return nil, disabledByConfigEntry(spec.ProviderZhihuWeb, cred.Source, hostFromURL(cfg.BaseURL)), nil
 	}
-	details := fmt.Sprintf("scope=%s (%s|%s)", scope, spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu)
-	return p, statusEntry(spec.ProviderZhihu, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
+	p, enabled, err := zhihu.NewWeb(zhihu.WebOptions{
+		Keys:        cred.Keys,
+		BaseURL:     cfg.BaseURL,
+		SearchDB:    cfg.SearchDB,
+		Timeout:     cfg.Timeout.Duration,
+		Concurrency: cfg.Concurrency,
+		QPS:         cfg.QPS,
+		PriceSearch: cfg.PriceSearch,
+	}, deps.APIClient)
+	if err != nil {
+		return nil, ProviderStatus{}, err
+	}
+	timeout := formatProviderTimeout(cfg.Timeout.Duration, 0)
+	details := fmt.Sprintf("db=%s", textnorm.FirstNonEmpty(cfg.SearchDB, spec.ZhihuSearchDBAll))
+	return p, statusEntry(spec.ProviderZhihuWeb, enabled, cred.Source, hostFromURL(cfg.BaseURL), timeout, details), nil
 }
 
 func buildExa(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatus, error) {

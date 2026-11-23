@@ -145,6 +145,7 @@ func (r *Router) selectSearchChain(req *core.SearchRequest) ([]core.Searcher, co
 	}
 
 	if !explicit && strategy == core.StrategyAuto {
+		chain = orderByScopeForAuto(chain, req)
 		chain = orderByHealth(r.health, chain)
 	}
 	return chain, strategy, nil
@@ -180,12 +181,18 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 	var notes []string
 	var lastErr *core.Error
 	nativeEmptyCount := 0
+	hadEmptySuccess := false
+	hadFallbackErr := false
 
 	for idx, s := range chain {
 		plan := matchCapabilities(resolveCapabilities(s, req), req, req.StrictFilters)
 		if plan.unsupportedReason != "" {
 			if strategy == core.StrategySingle {
-				se := core.NewError(core.CodeInvalidArgument, fmt.Sprintf("provider %s does not natively support %q", s.Name(), plan.unsupportedReason)).
+				msg := fmt.Sprintf("provider %s does not natively support %q", s.Name(), plan.unsupportedReason)
+				if plan.unsupportedReason == reasonSiteScope {
+					msg = fmt.Sprintf("provider %s cannot match the requested site filter scope", s.Name())
+				}
+				se := core.NewError(core.CodeInvalidArgument, msg).
 					WithProvider(s.Name())
 				reports = append(reports, core.ProviderReport{
 					Name:   s.Name(),
@@ -213,6 +220,7 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 			}
 			r.health.recordError(s.Name(), se)
 			lastErr = se
+			hadFallbackErr = true
 			status := core.ProviderStatusError
 			if se.Code == core.CodeUpstreamTimeout {
 				status = core.ProviderStatusTimeout
@@ -251,6 +259,7 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 		repStatus := core.ProviderStatusOK
 		if len(results) == 0 {
 			repStatus = core.ProviderStatusEmpty
+			hadEmptySuccess = true
 		}
 		reports = append(reports, core.ProviderReport{
 			Name:      s.Name(),
@@ -297,10 +306,27 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 		}
 	}
 
+	if hadEmptySuccess {
+		return &core.Envelope{
+			Schema:  spec.SchemaVersion,
+			OK:      true,
+			Kind:    spec.KindSearch,
+			Query:   req.Query,
+			Results: []core.Result{},
+			Meta: core.Meta{
+				Strategy:     string(strategy),
+				Providers:    reports,
+				FallbackUsed: len(reports) > 1,
+				Partial:      hadFallbackErr,
+				Notes:        notes,
+				Cost:         core.SumCosts(costs),
+				DurationMS:   time.Since(start).Milliseconds(),
+			},
+		}, nil
+	}
+
 	if lastErr == nil {
-		lastErr = core.NewError(core.CodeNoProvider, "no provider matched requested filter capabilities").
-			WithHint("Disable strict filter mode or relax filter conditions.").
-			WithHintKey("hint.strict_filter_empty")
+		lastErr = noMatchedProviderError(req.StrictFilters)
 	} else {
 		lastErr = summarizeChainFailure("all search providers failed", reports, lastErr)
 	}
