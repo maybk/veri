@@ -5,7 +5,7 @@
 lang = "auto"                           # auto | zh | en
 
 [search]
-providers = ["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
+providers = ["deepseek", "keenable", "zhihu", "tencent_wsa", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
 providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # 非中文检索链（设 [] 关闭）
 # --fusion 并发池（留空取前 3 个已启用源）
 # fusion_providers = ["deepseek", "keenable", "tencent_wsa"]

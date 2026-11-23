@@ -232,8 +232,8 @@ func DefaultSearchProviders() []string {
 	return []string{
 		ProviderDeepSeek,
 		ProviderKeenable,
-		ProviderTencentWSA,
 		ProviderZhihu,
+		ProviderTencentWSA,
 		ProviderBrave,
 		ProviderParallel,
 		ProviderExa,

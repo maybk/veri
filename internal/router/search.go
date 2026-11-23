@@ -125,7 +125,7 @@ func (r *Router) selectSearchChain(req *core.SearchRequest) ([]core.Searcher, co
 			return nil, strategy, err
 		}
 	} else if strategy == core.StrategyFusion {
-		chain = r.resolveFusionChain(isNonChineseQuery(req.Query, req.Filters.Lang))
+		chain = r.resolveFusionChain(isNonChineseQuery(req.Query, req.Filters.Lang), req)
 	} else if len(r.opts.SearchProvidersGlobal) > 0 && isNonChineseQuery(req.Query, req.Filters.Lang) {
 		chain, _ = r.resolveSearchers(r.opts.SearchProvidersGlobal, false)
 		if len(chain) == 0 {

@@ -336,7 +336,7 @@ func TestDefaultSearchChainLanguageSplitAndExplicitOverride(t *testing.T) {
 	if got := rDefault.ActiveSearchChainGlobal(); !slices.Equal(got, wantGlobal) {
 		t.Fatalf("ActiveSearchChainGlobal() = %v, want %v", got, wantGlobal)
 	}
-	wantFusionCN := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}
+	wantFusionCN := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}
 	wantFusionGlobal := []string{spec.ProviderKeenable, spec.ProviderParallel, spec.ProviderExa}
 	if got := rDefault.ActiveFusionChain(); !slices.Equal(got, wantFusionCN) {
 		t.Fatalf("ActiveFusionChain() = %v, want %v", got, wantFusionCN)

@@ -155,14 +155,14 @@ func (r *Router) FetchStrategy() core.FetchStrategy { return r.opts.FetchStrateg
 
 // ActiveFusionChain 返回中文或统一 --fusion 模式下默认并发调用的已启用检索源列表。
 func (r *Router) ActiveFusionChain() []string {
-	return searcherNames(r.resolveFusionChain(false))
+	return searcherNames(r.resolveFusionChain(false, nil))
 }
 
 // ActiveFusionChainGlobal 返回非中文查询在 --fusion 模式下默认并发调用的检索源列表；
 // 当未启用独立非中文融合池或有效融合池与主融合池相同时返回 nil。
 func (r *Router) ActiveFusionChainGlobal() []string {
 	primary := r.ActiveFusionChain()
-	global := searcherNames(r.resolveFusionChain(true))
+	global := searcherNames(r.resolveFusionChain(true, nil))
 	if len(global) == 0 || slices.Equal(global, primary) {
 		return nil
 	}
@@ -262,35 +262,49 @@ func (r *Router) ActiveSearchChainGlobal() []string {
 	return global
 }
 
-func (r *Router) resolvePrimaryFusionChain() []core.Searcher {
-	if len(r.opts.FusionProviders) > 0 {
-		chain, _ := r.resolveSearchers(r.opts.FusionProviders, false)
-		return chain
-	}
-	chain, _ := r.resolveSearchers(r.opts.SearchProviders, false)
-	if len(chain) > spec.DefaultFusionAutoLimit {
-		chain = chain[:spec.DefaultFusionAutoLimit]
-	}
-	return chain
-}
-
-func (r *Router) resolveFusionChain(nonChinese bool) []core.Searcher {
+// resolveFusionPoolCandidates 返回融合模式候选检索源及是否属于自动推导池（自动池支持健康重排与能力递补，显式池保持精确配置）。
+func (r *Router) resolveFusionPoolCandidates(nonChinese bool) (chain []core.Searcher, autoDerived bool) {
 	if nonChinese {
 		if len(r.opts.FusionProvidersGlobal) > 0 {
-			if chain, _ := r.resolveSearchers(r.opts.FusionProvidersGlobal, false); len(chain) > 0 {
-				return chain
+			if global, _ := r.resolveSearchers(r.opts.FusionProvidersGlobal, false); len(global) > 0 {
+				return global, false
 			}
 		} else if !r.opts.FusionProvidersGlobalExplicit && len(r.opts.FusionProviders) == 0 && len(r.opts.SearchProvidersGlobal) > 0 {
-			chain, _ := r.resolveSearchers(r.opts.SearchProvidersGlobal, false)
-			if len(chain) > spec.DefaultFusionAutoLimit {
-				chain = chain[:spec.DefaultFusionAutoLimit]
-			}
-			if len(chain) > 0 {
-				return chain
+			if global, _ := r.resolveSearchers(r.opts.SearchProvidersGlobal, false); len(global) > 0 {
+				return global, true
 			}
 		}
 	}
-	return r.resolvePrimaryFusionChain()
+	if len(r.opts.FusionProviders) > 0 {
+		primary, _ := r.resolveSearchers(r.opts.FusionProviders, false)
+		return primary, false
+	}
+	primary, _ := r.resolveSearchers(r.opts.SearchProviders, false)
+	return primary, true
+}
+
+// resolveFusionChain 解析生效的融合检索链；req 为 nil 时返回静态诊断视图，非 nil 时对自动推导池执行健康排序与能力递补后再截断默认并发上限。
+func (r *Router) resolveFusionChain(nonChinese bool, req *core.SearchRequest) []core.Searcher {
+	candidates, autoDerived := r.resolveFusionPoolCandidates(nonChinese)
+	if !autoDerived || len(candidates) == 0 {
+		return candidates
+	}
+	if req != nil {
+		candidates = orderByHealth(r.health, candidates)
+		compatible := make([]core.Searcher, 0, len(candidates))
+		for _, s := range candidates {
+			if matchCapabilities(resolveCapabilities(s, req), req, req.StrictFilters).unsupportedReason == "" {
+				compatible = append(compatible, s)
+			}
+		}
+		if len(compatible) > 0 {
+			candidates = compatible
+		}
+	}
+	if len(candidates) > spec.DefaultFusionAutoLimit {
+		candidates = candidates[:spec.DefaultFusionAutoLimit]
+	}
+	return candidates
 }
 
 func searcherNames(chain []core.Searcher) []string {

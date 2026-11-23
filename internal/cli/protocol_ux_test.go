@@ -158,4 +158,16 @@ func TestCLIValidationLocalizationConflictsAndGuards(t *testing.T) {
 	if c := ExecuteContext(context.Background(), []string{"--config", cfgPath, "--ui-lang", "zh", "--no-color", "config", "show"}, repoFS, BuildInfo{Version: "1.0.0"}, strings.NewReader(""), &o4, &e4, envBadTimeout); c != 2 || !strings.Contains(e4.String(), "VERI_TIMEOUT") || strings.Contains(e4.String(), "invalid VERI_TIMEOUT") {
 		t.Fatalf("expected localized env timeout error, code=%d err=%q", c, e4.String())
 	}
+
+	// 7. CLI -F --strict 全部已启用源不满足原生过滤能力时，返回 exit 3 并输出本地化 --strict 提示
+	var o5, e5 bytes.Buffer
+	envDSOnly := func(k string) string {
+		if k == "DEEPSEEK_API_KEY" {
+			return "sk-strict-fusion-test"
+		}
+		return ""
+	}
+	if c := ExecuteContext(context.Background(), []string{"--config", cfgPath, "--ui-lang", "zh", "--no-color", "search", "-F", "--lang", "zh", "--strict", "Go 并发"}, repoFS, BuildInfo{Version: "1.0.0"}, strings.NewReader(""), &o5, &e5, envDSOnly); c != 3 || !strings.Contains(e5.String(), "--strict") {
+		t.Fatalf("expected exit 3 with localized --strict hint on strict fusion mismatch, code=%d out=%q err=%q", c, o5.String(), e5.String())
+	}
 }

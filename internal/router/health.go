@@ -39,18 +39,29 @@ func (h *healthTracker) recordError(provider string, se *core.Error) {
 	if h == nil || provider == "" || se == nil {
 		return
 	}
-	if se.Code != core.CodeUpstreamTimeout && se.Code != core.CodeUpstreamUnavailable {
-		return
-	}
 	now := h.nowFn()
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	cur := h.entries[provider]
-	cur.failures++
-	if cur.failures >= defaultCircuitFailureThreshold {
-		cur.degradedUntil = now.Add(defaultCircuitCooldown)
+	switch se.Code {
+	case core.CodeUpstreamTimeout, core.CodeUpstreamUnavailable:
+		cur.failures++
+		if cur.failures >= defaultCircuitFailureThreshold {
+			until := now.Add(defaultCircuitCooldown)
+			if until.After(cur.degradedUntil) {
+				cur.degradedUntil = until
+			}
+		}
+	case core.CodeInsufficientBalance, core.CodeAuthFailed, core.CodeNotEnabled:
+		// 余额/配额耗尽、鉴权失败或服务未开通仅在 keypool 无备用健康 Key 时才透传至路由层，立即短冷却后置以免连续空耗。
+		until := now.Add(defaultAccountFailureCooldown)
+		if until.After(cur.degradedUntil) {
+			cur.degradedUntil = until
+		}
+	default:
+		return
 	}
 	h.entries[provider] = cur
-	h.mu.Unlock()
 }
 
 func (h *healthTracker) isDegraded(provider string, now time.Time) bool {
@@ -63,7 +74,7 @@ func (h *healthTracker) isDegraded(provider string, now time.Time) bool {
 	return ok && now.Before(cur.degradedUntil)
 }
 
-// orderByHealth 将处于连续瞬态故障冷却窗口内的 Provider 稳定后置，仅在同时存在健康与降级候选时重排。
+// orderByHealth 将处于故障或配额/鉴权冷却窗口内的 Provider 稳定后置，仅在同时存在健康与降级候选时重排。
 func orderByHealth[T core.Provider](h *healthTracker, chain []T) []T {
 	if h == nil || len(chain) <= 1 {
 		return chain

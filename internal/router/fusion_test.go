@@ -180,7 +180,7 @@ func TestFusionProvidersGlobalSplitMatrix(t *testing.T) {
 	rGlobalOnly := New(Options{
 		FusionProvidersGlobal: []string{spec.ProviderExa, spec.ProviderBrave},
 	}, all)
-	wantDefaultCN := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}
+	wantDefaultCN := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}
 	if got := rGlobalOnly.ActiveFusionChain(); !slices.Equal(got, wantDefaultCN) {
 		t.Fatalf("ActiveFusionChain() = %v, want %v", got, wantDefaultCN)
 	}
@@ -261,5 +261,135 @@ func TestFusionStragglerCancelDoesNotDegradeHealthAndNormalizesOptions(t *testin
 	// 验证路由入口已将大小写/空白 Options 键归一化后透传至底层 Provider
 	if fast1.lastReq == nil || fast1.lastReq.Options["exa.category"] != "news" {
 		t.Fatalf("expected normalized lowercase option key exa.category=news, got %+v", fast1.lastReq)
+	}
+}
+
+func TestFusionAutoCapabilityBackfillAndHealthRotation(t *testing.T) {
+	mkCap := func(name string, caps core.Capabilities) *fakeSearcher {
+		return &fakeSearcher{
+			name: name,
+			caps: caps,
+			outcome: &core.SearchOutcome{
+				Results: []core.Result{{Rank: 1, Title: "Hit " + name, URL: "https://go.dev/" + name, Summary: "summary " + name}},
+			},
+		}
+	}
+	ranNames := func(env *core.Envelope) []string {
+		out := make([]string, 0, len(env.Meta.Providers))
+		for _, p := range env.Meta.Providers {
+			out = append(out, p.Name)
+		}
+		return out
+	}
+
+	// 1. 英文自动 -F + --lang en --strict：全球链前 3 均不支持 Lang，自动顺延递补 brave / tavily / tinyfish
+	rGlobal := New(Options{}, []core.Provider{
+		mkCap(spec.ProviderKeenable, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti}),
+		mkCap(spec.ProviderParallel, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti}),
+		mkCap(spec.ProviderExa, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti}),
+		mkCap(spec.ProviderBrave, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti, Lang: true}),
+		mkCap(spec.ProviderLinkup, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti}),
+		mkCap(spec.ProviderTavily, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti, Lang: true}),
+		mkCap(spec.ProviderDeepSeek, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti, QueryMaxRunes: 128}),
+		mkCap(spec.ProviderTinyFish, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti, Lang: true}),
+	})
+	enLangEnv, err := rGlobal.Search(t.Context(), &core.SearchRequest{
+		Query:         "golang memory model",
+		Strategy:      core.StrategyFusion,
+		StrictFilters: true,
+		Filters:       core.Filters{Lang: []string{"en"}},
+	})
+	wantLangPool := []string{spec.ProviderBrave, spec.ProviderTavily, spec.ProviderTinyFish}
+	if err != nil || !enLangEnv.OK || !slices.Equal(ranNames(enLangEnv), wantLangPool) {
+		t.Fatalf("expected strict --lang auto-fusion backfill %v, got names=%v env=%+v err=%v", wantLangPool, ranNames(enLangEnv), enLangEnv, err)
+	}
+
+	// 2. 中文自动 -F + -s go.dev --strict：zhihu 声明 SiteNone，自动递补第 4 位 tencent_wsa；超长查询同样跳过 deepseek 自动递补
+	rCN := New(Options{}, []core.Provider{
+		mkCap(spec.ProviderDeepSeek, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti, QueryMaxRunes: 128}),
+		mkCap(spec.ProviderKeenable, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti}),
+		mkCap(spec.ProviderZhihu, core.Capabilities{MaxCount: 10, Sites: core.SiteNone}),
+		mkCap(spec.ProviderTencentWSA, core.Capabilities{MaxCount: 10, Sites: core.SiteSingle}),
+	})
+	cnSiteEnv, err := rCN.Search(t.Context(), &core.SearchRequest{
+		Query:         "Go 并发",
+		Strategy:      core.StrategyFusion,
+		StrictFilters: true,
+		Filters:       core.Filters{Sites: []string{"go.dev"}},
+	})
+	wantSitePool := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}
+	if err != nil || !cnSiteEnv.OK || !slices.Equal(ranNames(cnSiteEnv), wantSitePool) {
+		t.Fatalf("expected strict -s auto-fusion backfill %v, got names=%v err=%v", wantSitePool, ranNames(cnSiteEnv), err)
+	}
+
+	longCNQuery := strings.Repeat("并发模型", 40) // 160 runes > deepseek 128 上限
+	longEnv, err := rCN.Search(t.Context(), &core.SearchRequest{
+		Query:    longCNQuery,
+		Strategy: core.StrategyFusion,
+	})
+	wantLongPool := []string{spec.ProviderKeenable, spec.ProviderZhihu, spec.ProviderTencentWSA}
+	if err != nil || !longEnv.OK || !slices.Equal(ranNames(longEnv), wantLongPool) {
+		t.Fatalf("expected query_length auto-fusion backfill %v, got names=%v err=%v", wantLongPool, ranNames(longEnv), err)
+	}
+
+	// 3. 全部候选源均不满足 --strict 时，返回与 auto 模式一致的 strict_filter_empty 提示
+	noMatchEnv, noMatchErr := rCN.Search(t.Context(), &core.SearchRequest{
+		Query:         "Go 并发",
+		Strategy:      core.StrategyFusion,
+		StrictFilters: true,
+		Filters:       core.Filters{Lang: []string{"zh"}},
+	})
+	se := core.AsError(noMatchErr)
+	if noMatchErr == nil || noMatchEnv.OK || se.Code != core.CodeNoProvider || se.HintKey != "hint.strict_filter_empty" {
+		t.Fatalf("expected strict_filter_empty no_provider error, got env=%+v err=%+v", noMatchEnv, se)
+	}
+
+	// 4. 显式配置 FusionProviders 时严格尊重用户池边界，不越权拉入未列出的源
+	rPinned := New(Options{
+		FusionProviders: []string{spec.ProviderDeepSeek, spec.ProviderZhihu},
+	}, []core.Provider{
+		mkCap(spec.ProviderDeepSeek, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti}),
+		mkCap(spec.ProviderZhihu, core.Capabilities{MaxCount: 10, Sites: core.SiteNone}),
+		mkCap(spec.ProviderTencentWSA, core.Capabilities{MaxCount: 10, Sites: core.SiteSingle}),
+	})
+	pinnedEnv, err := rPinned.Search(t.Context(), &core.SearchRequest{
+		Query:         "Go 并发",
+		Strategy:      core.StrategyFusion,
+		StrictFilters: true,
+		Filters:       core.Filters{Sites: []string{"go.dev"}},
+	})
+	if err != nil || !pinnedEnv.OK || !slices.Equal(ranNames(pinnedEnv), []string{spec.ProviderDeepSeek, spec.ProviderZhihu}) {
+		t.Fatalf("explicit fusion pool must not pull in unlisted providers, got names=%v err=%v", ranNames(pinnedEnv), err)
+	}
+
+	// 5. 配额/鉴权错误（CodeInsufficientBalance）立即软降权后置，下一次自动 -F 与 auto 自动轮换健康源，恢复成功后即时复权
+	zhihuQuota := &fakeSearcher{
+		name: spec.ProviderZhihu,
+		caps: core.Capabilities{MaxCount: 10},
+		err:  core.NewError(core.CodeInsufficientBalance, "daily quota exceeded").WithProvider(spec.ProviderZhihu),
+	}
+	rQuota := New(Options{}, []core.Provider{
+		mkCap(spec.ProviderDeepSeek, core.Capabilities{MaxCount: 10}),
+		mkCap(spec.ProviderKeenable, core.Capabilities{MaxCount: 10}),
+		zhihuQuota,
+		mkCap(spec.ProviderTencentWSA, core.Capabilities{MaxCount: 10}),
+	})
+	firstEnv, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "中文测试", Strategy: core.StrategyFusion})
+	if err != nil || !firstEnv.OK || !firstEnv.Meta.Partial || !slices.Equal(ranNames(firstEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}) {
+		t.Fatalf("first call should try default CN top3 with partial zhihu quota failure, got names=%v env=%+v err=%v", ranNames(firstEnv), firstEnv, err)
+	}
+	secondEnv, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "中文测试二", Strategy: core.StrategyFusion})
+	if err != nil || !secondEnv.OK || secondEnv.Meta.Partial || !slices.Equal(ranNames(secondEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}) {
+		t.Fatalf("subsequent auto-fusion must rotate healthy tencent_wsa ahead of quota-exhausted zhihu, got names=%v env=%+v err=%v", ranNames(secondEnv), secondEnv, err)
+	}
+	// 单源恢复成功后立即清零降权状态，重回默认前 3
+	zhihuQuota.err = nil
+	zhihuQuota.outcome = &core.SearchOutcome{Results: []core.Result{{Rank: 1, Title: "Recovered", URL: "https://zhihu.com/p/1", Summary: "ok"}}}
+	if _, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "恢复验证", Providers: []string{spec.ProviderZhihu}}); err != nil {
+		t.Fatalf("single zhihu recovery call failed: %v", err)
+	}
+	recoveredEnv, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "中文测试三", Strategy: core.StrategyFusion})
+	if err != nil || !recoveredEnv.OK || !slices.Equal(ranNames(recoveredEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}) {
+		t.Fatalf("recovered zhihu should rejoin default CN fusion top3, got names=%v err=%v", ranNames(recoveredEnv), err)
 	}
 }

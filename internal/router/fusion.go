@@ -159,6 +159,7 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 	var costs []*core.Cost
 	var allNotes []string
 	succeeded := 0
+	skipped := 0
 	partial := false
 	var lastErr *core.Error
 
@@ -172,6 +173,8 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 		switch br.report.Status {
 		case core.ProviderStatusOK, core.ProviderStatusEmpty:
 			succeeded++
+		case core.ProviderStatusSkipped:
+			skipped++
 		case core.ProviderStatusTimeout, core.ProviderStatusError:
 			partial = true
 			if br.err != nil {
@@ -182,7 +185,13 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 
 	if succeeded == 0 {
 		if lastErr == nil {
-			lastErr = core.NewError(core.CodeNoProvider, "no fusion provider succeeded")
+			if skipped > 0 && skipped == len(branches) {
+				lastErr = core.NewError(core.CodeNoProvider, "no provider matched requested filter capabilities").
+					WithHint("Disable strict filter mode or relax filter conditions.").
+					WithHintKey("hint.strict_filter_empty")
+			} else {
+				lastErr = core.NewError(core.CodeNoProvider, "no fusion provider succeeded")
+			}
 		} else {
 			lastErr = summarizeChainFailure("all fusion providers failed", reports, lastErr)
 		}

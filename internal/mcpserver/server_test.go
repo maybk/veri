@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -395,6 +396,116 @@ base_url = %q
 			badFetchOut.Error.Code != core.CodeInvalidArgument ||
 			badFetchOut.Meta.Strategy != string(core.DefaultFetchStrategy) {
 			t.Fatalf("expected invalid_argument with default fetch strategy for role-mismatched fetch provider, got res=%+v out=%+v err=%v", badFetchRes, badFetchOut, err)
+		}
+	})
+}
+
+func TestMCPFusionStrictBackfillAndQuotaRotation(t *testing.T) {
+	var zhihuCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/tools/search":
+			_, _ = w.Write([]byte(`{"results":[{"title":"DS Go","url":"https://go.dev/ds","summary":"ds summary"}]}`))
+		case "/v1/search":
+			_, _ = w.Write([]byte(`{"results":[{"title":"Keen Go","url":"https://go.dev/keen","snippet":"keen summary"}]}`))
+		case "/api/v1/content/global_search":
+			zhihuCalls.Add(1)
+			_, _ = w.Write([]byte(`{"Code":30002,"Message":"quota exceeded"}`))
+		case "/SearchPro":
+			_, _ = w.Write([]byte(`{"Response":{"RequestId":"wsa-1","Pages":["{\"title\":\"WSA Go\",\"url\":\"https://go.dev/wsa\",\"passage\":\"wsa summary\",\"site\":\"Go\"}"]}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cfgBody := fmt.Sprintf(`
+[providers.deepseek]
+api_key = "sk-ds-test"
+base_url = %q
+
+[providers.keenable]
+api_key = "sk-keen-test"
+base_url = %q
+
+[providers.zhihu]
+api_key = "sk-zhihu-test"
+base_url = %q
+
+[providers.tencent_wsa]
+api_key = "sk-wsa-test"
+base_url = %q
+`, srv.URL, srv.URL, srv.URL, srv.URL)
+	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.LoadWithEnv(cfgPath, func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := app.New(loaded, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 默认顺序应将 zhihu 排在 tencent_wsa 之前
+	wantOrder := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu, spec.ProviderTencentWSA}
+	if got := application.EnabledSearchers(); !slices.Equal(got, wantOrder) {
+		t.Fatalf("unexpected default EnabledSearchers order: %v", got)
+	}
+
+	ctx := t.Context()
+
+	t.Run("strict_sites_backfills_tencent_wsa", func(t *testing.T) {
+		resStrict, outStrict, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
+			Query:  "Go 并发",
+			Sites:  []string{"go.dev"},
+			Fusion: new(true),
+			Strict: true,
+		})
+		if err != nil || resStrict.IsError || !outStrict.OK || zhihuCalls.Load() != 0 {
+			t.Fatalf("expected MCP strict fusion to backfill tencent_wsa without calling zhihu, got res=%+v out=%+v zhihuCalls=%d err=%v", resStrict, outStrict, zhihuCalls.Load(), err)
+		}
+		var strictProvs []string
+		for _, p := range outStrict.Meta.Providers {
+			strictProvs = append(strictProvs, p.Name)
+		}
+		if !slices.Equal(strictProvs, []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}) {
+			t.Fatalf("expected strict MCP fusion providers [deepseek keenable tencent_wsa], got %v", strictProvs)
+		}
+	})
+
+	t.Run("strict_lang_no_match_returns_hint", func(t *testing.T) {
+		resNoMatch, outNoMatch, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
+			Query:  "Go 并发",
+			Lang:   []string{"zh"},
+			Fusion: new(true),
+			Strict: true,
+		})
+		if err != nil ||
+			!resNoMatch.IsError ||
+			outNoMatch.Error == nil ||
+			outNoMatch.Error.Code != core.CodeNoProvider ||
+			!strings.Contains(outNoMatch.Error.Hint, "strict") {
+			t.Fatalf("expected no_provider with strict hint in MCP, got res=%+v out=%+v err=%v", resNoMatch, outNoMatch, err)
+		}
+	})
+
+	t.Run("quota_exhausted_provider_rotates_in_long_lived_mcp", func(t *testing.T) {
+		resQ1, outQ1, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
+			Query:  "中文融合一",
+			Fusion: new(true),
+		})
+		if err != nil || resQ1.IsError || !outQ1.OK || !outQ1.Meta.Partial || zhihuCalls.Load() != 1 {
+			t.Fatalf("expected first MCP fusion to hit zhihu once with partial success, got out=%+v zhihuCalls=%d err=%v", outQ1, zhihuCalls.Load(), err)
+		}
+		resQ2, outQ2, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
+			Query:  "中文融合二",
+			Fusion: new(true),
+		})
+		if err != nil || resQ2.IsError || !outQ2.OK || outQ2.Meta.Partial || zhihuCalls.Load() != 1 {
+			t.Fatalf("expected second MCP fusion to rotate tencent_wsa without re-hitting quota-exhausted zhihu, got out=%+v zhihuCalls=%d err=%v", outQ2, zhihuCalls.Load(), err)
 		}
 	})
 }

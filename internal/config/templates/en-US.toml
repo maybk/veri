@@ -5,7 +5,7 @@
 lang = "auto"                           # auto | zh | en
 
 [search]
-providers = ["deepseek", "keenable", "tencent_wsa", "zhihu", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
+providers = ["deepseek", "keenable", "zhihu", "tencent_wsa", "brave", "parallel", "exa", "tavily", "linkup", "tinyfish", "firecrawl"]
 providers_global = ["keenable", "parallel", "exa", "brave", "linkup", "tavily", "deepseek", "tinyfish", "firecrawl", "tencent_wsa", "zhihu"] # non-Chinese chain (set [] to disable)
 # --fusion pools (empty uses top 3 enabled)
 # fusion_providers = ["deepseek", "keenable", "tencent_wsa"]

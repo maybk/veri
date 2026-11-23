@@ -8,6 +8,7 @@ const (
 	defaultFusionStragglerGrace    = 3 * time.Second
 	defaultCircuitFailureThreshold = 3
 	defaultCircuitCooldown         = 45 * time.Second
+	defaultAccountFailureCooldown  = 5 * time.Minute
 	fetchNotFoundQuorum            = 2
 	searchEmptyQuorum              = 2
 	maxOutlineSections             = 24
