@@ -400,3 +400,10 @@ func TestCanonicalSelectionHygieneConsensusAndOrderIndependence(t *testing.T) {
 		t.Fatalf("expected auto search to collapse Simplified/Traditional mirror while keeping original text, got env=%+v err=%v", stEnv, err)
 	}
 }
+
+func TestMergeAuthorsPreservesOrderAndDeduplicatesCaseInsensitive(t *testing.T) {
+	got := mergeAuthors([]string{"Alice", ""}, []string{"alice", "Bob"})
+	if strings.Join(got, ",") != "Alice,Bob" {
+		t.Fatalf("mergeAuthors got %v, want [Alice Bob]", got)
+	}
+}

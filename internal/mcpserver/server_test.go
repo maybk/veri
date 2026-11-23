@@ -75,7 +75,6 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 
 	ctx := t.Context()
-
 	go func() {
 		_ = mcpSrv.Run(ctx, serverTransport)
 	}()
@@ -87,160 +86,161 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 	}
 	defer func() { _ = session.Close() }()
 
-	// 1. 工具列表必须严格只包含 web_search 与 web_fetch 2 个工具，且包含 outputSchema
-	toolsRes, err := session.ListTools(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListTools: %v", err)
-	}
-	if len(toolsRes.Tools) != 2 {
-		t.Fatalf("expected exactly 2 MCP tools, got %d", len(toolsRes.Tools))
-	}
-	for _, tool := range toolsRes.Tools {
-		if tool.OutputSchema == nil {
-			t.Errorf("tool %s missing OutputSchema", tool.Name)
+	t.Run("list_tools_and_output_schema", func(t *testing.T) {
+		toolsRes, err := session.ListTools(ctx, nil)
+		if err != nil {
+			t.Fatalf("ListTools: %v", err)
 		}
-	}
+		if len(toolsRes.Tools) != 2 {
+			t.Fatalf("expected exactly 2 MCP tools, got %d", len(toolsRes.Tools))
+		}
+		for _, tool := range toolsRes.Tools {
+			if tool.OutputSchema == nil {
+				t.Errorf("tool %s missing OutputSchema", tool.Name)
+			}
+		}
+	})
 
-	// 2. 调用 web_search：验证不可信标签防闭合注入 + StructuredContent 信封 + 缓存命中不重复计费
-	res1, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "web_search",
-		Arguments: map[string]any{
+	t.Run("web_search_sanitization_and_cache", func(t *testing.T) {
+		searchArgs := map[string]any{
 			"query":      "golang mcp",
 			"count":      5,
 			"providers":  []string{"deepseek"},
 			"strict":     true,
 			"timeout_ms": 5000,
 			"options":    map[string]string{"exa.search_type": "auto"},
-		},
-	})
-	if err != nil || res1.IsError {
-		t.Fatalf("web_search failed: res=%+v err=%v", res1, err)
-	}
-	txt := res1.Content[0].(*mcp.TextContent).Text
-	if !strings.Contains(txt, `<untrusted_web_content id="`) || !strings.Contains(txt, "[removed-tag]") {
-		t.Fatalf("expected untrusted tag wrapping & breakout sanitization, got: %s", txt)
-	}
-	if res1.StructuredContent == nil {
-		t.Fatal("expected non-nil StructuredContent")
-	}
-
-	resCached, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "web_search",
-		Arguments: map[string]any{
-			"query":      "golang mcp",
-			"count":      5,
-			"providers":  []string{"deepseek"},
-			"strict":     true,
-			"timeout_ms": 5000,
-			"options":    map[string]string{"exa.search_type": "auto"},
-		},
-	})
-	if err != nil || resCached.IsError || upstreamHits.Load() != 1 {
-		t.Fatalf("expected second identical web_search to hit in-process cache (hits=%d)", upstreamHits.Load())
-	}
-
-	// 3. 空结果不报错（IsError=false）
-	resEmpty, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_search",
-		Arguments: map[string]any{"query": "empty-query-test"},
-	})
-	if err != nil || resEmpty.IsError {
-		t.Fatalf("empty search result must NOT set IsError=true: res=%+v err=%v", resEmpty, err)
-	}
-
-	// 4. 验证 Schema 零 default（不覆盖用户配置）且无冗余 provider 单数参数，并验证 web_fetch 单页、批量去重标签、url+urls 互斥
-	searchSchema := buildSearchInputSchema(searchSchemaDefaults{
-		defaultCount:    3,
-		maxCount:        20,
-		defaultDetail:   string(core.DetailSnippet),
-		defaultStrategy: string(core.StrategyAuto),
-		zhihuScope:      spec.ZhihuScopeZhihu,
-	}, []string{"deepseek", "zhihu"})
-	sProps := searchSchema["properties"].(map[string]any)
-	if _, hasSingle := sProps["provider"]; hasSingle {
-		t.Fatal("web_search schema must not expose redundant singular provider field")
-	}
-	for k, rawProp := range sProps {
-		if _, hasDef := rawProp.(map[string]any)["default"]; hasDef {
-			t.Fatalf("web_search property %q must not define JSON Schema default (ApplyDefaults would override user config)", k)
 		}
-	}
-	sOptDesc, _ := sProps["options"].(map[string]any)["description"].(string)
-	for _, want := range []string{
-		spec.OptZhihuScope,
-		"global=web|zhihu=Zhihu Q&A/articles, default: zhihu",
-		spec.OptZhihuSearchDB,
-		spec.OptZhihuSort,
-	} {
-		if !strings.Contains(sOptDesc, want) {
-			t.Fatalf("web_search options description missing enabled provider option %q: %q", want, sOptDesc)
+		res1, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_search",
+			Arguments: searchArgs,
+		})
+		if err != nil || res1.IsError {
+			t.Fatalf("web_search failed: res=%+v err=%v", res1, err)
 		}
-	}
-	for _, unwanted := range []string{spec.OptKeenableMode, spec.OptLinkupDepth, spec.OptParallelMode, spec.OptFirecrawlCategory} {
-		if strings.Contains(sOptDesc, unwanted) {
-			t.Fatalf("web_search options description should omit disabled provider option %q: %q", unwanted, sOptDesc)
+		txt := res1.Content[0].(*mcp.TextContent).Text
+		if !strings.Contains(txt, `<untrusted_web_content id="`) || !strings.Contains(txt, "[removed-tag]") {
+			t.Fatalf("expected untrusted tag wrapping & breakout sanitization, got: %s", txt)
 		}
-	}
-
-	customSchema := buildFetchInputSchema(fetchSchemaDefaults{
-		defaultMaxChars: 30000,
-		defaultStrategy: string(core.FetchLocalOnly),
-	}, []string{"local"})
-	fProps := customSchema["properties"].(map[string]any)
-	if _, hasSingle := fProps["provider"]; hasSingle {
-		t.Fatal("web_fetch schema must not expose redundant singular provider field")
-	}
-	for k, rawProp := range fProps {
-		if _, hasDef := rawProp.(map[string]any)["default"]; hasDef {
-			t.Fatalf("web_fetch property %q must not define JSON Schema default", k)
+		if res1.StructuredContent == nil {
+			t.Fatal("expected non-nil StructuredContent")
 		}
-	}
-	stratDesc, _ := fProps["strategy"].(map[string]any)["description"].(string)
-	if !strings.Contains(stratDesc, string(core.FetchLocalOnly)) {
-		t.Fatalf("expected strategy description to mention configured default %q, got %q", core.FetchLocalOnly, stratDesc)
-	}
-	fOptDesc, _ := fProps["options"].(map[string]any)["description"].(string)
-	if strings.Contains(fOptDesc, spec.OptFirecrawlProxy) || !strings.Contains(fOptDesc, "no extra keys required") {
-		t.Fatalf("expected local-only web_fetch options description to omit disabled cloud options, got %q", fOptDesc)
-	}
 
-	// url 与 urls 同时传入必须返回 IsError=true
-	bothRes, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_fetch",
-		Arguments: map[string]any{"url": "https://example.com/a", "urls": []string{"https://example.com/b"}},
+		resCached, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_search",
+			Arguments: searchArgs,
+		})
+		if err != nil || resCached.IsError || upstreamHits.Load() != 1 {
+			t.Fatalf("expected second identical web_search to hit in-process cache (hits=%d)", upstreamHits.Load())
+		}
 	})
-	if err != nil || !bothRes.IsError || !strings.Contains(bothRes.Content[0].(*mcp.TextContent).Text, "cannot specify both url and urls") {
-		t.Fatalf("expected url+urls conflict error, got res=%+v err=%v", bothRes, err)
-	}
 
-	fetchRes, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_fetch",
-		Arguments: map[string]any{"url": "https://example.com/doc"},
+	t.Run("web_search_empty_not_error", func(t *testing.T) {
+		resEmpty, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_search",
+			Arguments: map[string]any{"query": "empty-query-test"},
+		})
+		if err != nil || resEmpty.IsError {
+			t.Fatalf("empty search result must NOT set IsError=true: res=%+v err=%v", resEmpty, err)
+		}
 	})
-	if err != nil || fetchRes.IsError {
-		t.Fatalf("default api_first web_fetch failed: res=%+v err=%v", fetchRes, err)
-	}
-	batchRes, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_fetch",
-		Arguments: map[string]any{"urls": []string{"https://example.com/doc", "https://example.com/doc2"}, "strategy": "api_only"},
-	})
-	batchTxt := batchRes.Content[0].(*mcp.TextContent).Text
-	if err != nil || batchRes.IsError || !strings.Contains(batchTxt, "Fetched 2 pages (deepseek):") {
-		t.Fatalf("batch web_fetch failed or duplicated provider label: res=%+v err=%v txt=%s", batchRes, err, batchTxt)
-	}
 
-	// 5. 上游执行失败（402）必须返回 IsError=true、附带 Hint 且 StructuredContent 保留完整失败信封
-	resFail, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_search",
-		Arguments: map[string]any{"query": "trigger-402"},
+	t.Run("input_schema_no_defaults_and_dynamic_options", func(t *testing.T) {
+		searchSchema := buildSearchInputSchema(searchSchemaDefaults{
+			defaultCount:    3,
+			maxCount:        20,
+			defaultDetail:   string(core.DetailSnippet),
+			defaultStrategy: string(core.StrategyAuto),
+			zhihuScope:      spec.ZhihuScopeZhihu,
+		}, []string{"deepseek", "zhihu"})
+		sProps := searchSchema["properties"].(map[string]any)
+		if _, hasSingle := sProps["provider"]; hasSingle {
+			t.Fatal("web_search schema must not expose redundant singular provider field")
+		}
+		for k, rawProp := range sProps {
+			if _, hasDef := rawProp.(map[string]any)["default"]; hasDef {
+				t.Fatalf("web_search property %q must not define JSON Schema default (ApplyDefaults would override user config)", k)
+			}
+		}
+		sOptDesc, _ := sProps["options"].(map[string]any)["description"].(string)
+		for _, want := range []string{
+			spec.OptZhihuScope,
+			"global=web|zhihu=Zhihu Q&A/articles, default: zhihu",
+			spec.OptZhihuSearchDB,
+			spec.OptZhihuSort,
+		} {
+			if !strings.Contains(sOptDesc, want) {
+				t.Fatalf("web_search options description missing enabled provider option %q: %q", want, sOptDesc)
+			}
+		}
+		for _, unwanted := range []string{spec.OptKeenableMode, spec.OptLinkupDepth, spec.OptParallelMode, spec.OptFirecrawlCategory} {
+			if strings.Contains(sOptDesc, unwanted) {
+				t.Fatalf("web_search options description should omit disabled provider option %q: %q", unwanted, sOptDesc)
+			}
+		}
+
+		customSchema := buildFetchInputSchema(fetchSchemaDefaults{
+			defaultMaxChars: 30000,
+			defaultStrategy: string(core.FetchLocalOnly),
+		}, []string{"local"})
+		fProps := customSchema["properties"].(map[string]any)
+		if _, hasSingle := fProps["provider"]; hasSingle {
+			t.Fatal("web_fetch schema must not expose redundant singular provider field")
+		}
+		for k, rawProp := range fProps {
+			if _, hasDef := rawProp.(map[string]any)["default"]; hasDef {
+				t.Fatalf("web_fetch property %q must not define JSON Schema default", k)
+			}
+		}
+		stratDesc, _ := fProps["strategy"].(map[string]any)["description"].(string)
+		if !strings.Contains(stratDesc, string(core.FetchLocalOnly)) {
+			t.Fatalf("expected strategy description to mention configured default %q, got %q", core.FetchLocalOnly, stratDesc)
+		}
+		fOptDesc, _ := fProps["options"].(map[string]any)["description"].(string)
+		if strings.Contains(fOptDesc, spec.OptFirecrawlProxy) || !strings.Contains(fOptDesc, "no extra keys required") {
+			t.Fatalf("expected local-only web_fetch options description to omit disabled cloud options, got %q", fOptDesc)
+		}
 	})
-	if err != nil || !resFail.IsError || resFail.StructuredContent == nil {
-		t.Fatalf("expected IsError=true with StructuredContent on 402 failure, got res=%+v err=%v", resFail, err)
-	}
-	failTxt := resFail.Content[0].(*mcp.TextContent).Text
-	if !strings.Contains(failTxt, string(core.CodeInsufficientBalance)) || !strings.Contains(failTxt, "Hint:") {
-		t.Fatalf("expected error code and Hint in failure text, got: %s", failTxt)
-	}
+
+	t.Run("web_fetch_single_batch_and_conflict", func(t *testing.T) {
+		bothRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_fetch",
+			Arguments: map[string]any{"url": "https://example.com/a", "urls": []string{"https://example.com/b"}},
+		})
+		if err != nil || !bothRes.IsError || !strings.Contains(bothRes.Content[0].(*mcp.TextContent).Text, "cannot specify both url and urls") {
+			t.Fatalf("expected url+urls conflict error, got res=%+v err=%v", bothRes, err)
+		}
+
+		fetchRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_fetch",
+			Arguments: map[string]any{"url": "https://example.com/doc"},
+		})
+		if err != nil || fetchRes.IsError {
+			t.Fatalf("default api_first web_fetch failed: res=%+v err=%v", fetchRes, err)
+		}
+
+		batchRes, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_fetch",
+			Arguments: map[string]any{"urls": []string{"https://example.com/doc", "https://example.com/doc2"}, "strategy": "api_only"},
+		})
+		batchTxt := batchRes.Content[0].(*mcp.TextContent).Text
+		if err != nil || batchRes.IsError || !strings.Contains(batchTxt, "Fetched 2 pages (deepseek):") {
+			t.Fatalf("batch web_fetch failed or duplicated provider label: res=%+v err=%v txt=%s", batchRes, err, batchTxt)
+		}
+	})
+
+	t.Run("upstream_402_error_envelope_with_hint", func(t *testing.T) {
+		resFail, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_search",
+			Arguments: map[string]any{"query": "trigger-402"},
+		})
+		if err != nil || !resFail.IsError || resFail.StructuredContent == nil {
+			t.Fatalf("expected IsError=true with StructuredContent on 402 failure, got res=%+v err=%v", resFail, err)
+		}
+		failTxt := resFail.Content[0].(*mcp.TextContent).Text
+		if !strings.Contains(failTxt, string(core.CodeInsufficientBalance)) || !strings.Contains(failTxt, "Hint:") {
+			t.Fatalf("expected error code and Hint in failure text, got: %s", failTxt)
+		}
+	})
 }
 
 func TestMCPRespectsConfigDefaultsWithoutSchemaOverride(t *testing.T) {
@@ -292,78 +292,109 @@ base_url = %q
 	}
 	defer func() { _ = session.Close() }()
 
-	// 不传 count 和 detail 时，必须采用 config.toml 中的 count=3 与 detail=snippet，绝不被 Schema default 覆盖成 8/summary
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_search",
-		Arguments: map[string]any{"query": "test defaults"},
-	})
-	if err != nil || res.IsError {
-		t.Fatalf("web_search failed: res=%+v err=%v", res, err)
-	}
-	txt := res.Content[0].(*mcp.TextContent).Text
-	if !strings.Contains(txt, "3 results") || strings.Contains(txt, "long summary") || !strings.Contains(txt, "s1") {
-		t.Fatalf("expected config count=3 and detail=snippet respected, got:\n%s", txt)
-	}
-
-	// fusion=false 与 extra=true 路径、以及早退校验与 panic 恢复路径脱敏保护验证
-	resNoFusion, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_search",
-		Arguments: map[string]any{"query": "https://u:SearchEarlyPass99@example.com/a?token=tokLeak88", "fusion": false, "extra": true, "freshness": "invalid-range"},
-	})
-	if err != nil || !resNoFusion.IsError {
-		t.Fatalf("expected invalid freshness error, got res=%+v err=%v", resNoFusion, err)
-	}
-	if scRaw, _ := json.Marshal(resNoFusion.StructuredContent); strings.Contains(string(scRaw), "SearchEarlyPass99") || strings.Contains(string(scRaw), "tokLeak88") {
-		t.Fatalf("web_search validation error leaked credentials in StructuredContent: %s", scRaw)
-	}
-	resBothSecret, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_fetch",
-		Arguments: map[string]any{"url": "https://u:FetchEarlyPass77@example.com/a?api_key=keyLeak66", "urls": []string{"https://example.com/b"}},
-	})
-	if err != nil || !resBothSecret.IsError {
-		t.Fatalf("expected url+urls conflict error, got res=%+v err=%v", resBothSecret, err)
-	}
-	if scRaw, _ := json.Marshal(resBothSecret.StructuredContent); strings.Contains(string(scRaw), "FetchEarlyPass77") || strings.Contains(string(scRaw), "keyLeak66") {
-		t.Fatalf("web_fetch validation error leaked credentials in StructuredContent: %s", scRaw)
-	}
-	resEmptyFetch, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "web_fetch",
-		Arguments: map[string]any{},
-	})
-	if err != nil || !resEmptyFetch.IsError || !strings.Contains(resEmptyFetch.Content[0].(*mcp.TextContent).Text, "either url or urls is required") {
-		t.Fatalf("expected missing url/urls error, got res=%+v err=%v", resEmptyFetch, err)
-	}
-	// panic 兜底保护与脱敏验证（含已知配置密钥、socks5 代理凭据与 Basic 认证头）
-	recRes, recOut, recErr := buildFetchErrorResult(application, "https://u:PanicQueryPass55@example.org", spec.TextFormatMarkdown, recoveredCoreError(application, "boom sk-test-config-default socks5://u:p@127.0.0.1:1080 Authorization: Basic dXNlcjpwYXNzMTIz"))
-	recTxt := recRes.Content[0].(*mcp.TextContent).Text
-	if recErr != nil || !recRes.IsError || recOut.OK || !strings.Contains(recTxt, "boom") {
-		t.Fatalf("unexpected recovered fetch error result: res=%+v out=%+v err=%v", recRes, recOut, recErr)
-	}
-	for _, leaked := range []string{"PanicQueryPass55", "sk-test-config-default", "u:p@", "dXNlcjpwYXNzMTIz"} {
-		if strings.Contains(recTxt, leaked) || strings.Contains(recOut.Query, leaked) || strings.Contains(recOut.Error.Message, leaked) {
-			t.Fatalf("recovered fetch error leaked %q: txt=%s out=%+v", leaked, recTxt, recOut)
-		}
-	}
-	recResS, _, _ := buildSearchErrorResult(nil, "q", spec.TextFormatMarkdown, recoveredCoreError(nil, "boom2"))
-	if !recResS.IsError || !strings.Contains(recResS.Content[0].(*mcp.TextContent).Text, "boom2") {
-		t.Fatalf("unexpected recovered search error result: %+v", recResS)
-	}
-
-	// 防御性校验：即使直接调用 handler 绕过 JSON Schema，空白项、非法或错角色 provider 仍返回 invalid_argument
-	for _, badProvs := range [][]string{{"local"}, {"   "}} {
-		badSearchRes, badSearchOut, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
-			Query:     "go",
-			Providers: badProvs,
+	t.Run("respects_config_count_and_detail", func(t *testing.T) {
+		// 不传 count 和 detail 时，必须采用 config.toml 中的 count=3 与 detail=snippet，绝不被 Schema default 覆盖成 8/summary
+		res, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_search",
+			Arguments: map[string]any{"query": "test defaults"},
 		})
-		if err != nil || !badSearchRes.IsError || badSearchOut.Error == nil || badSearchOut.Error.Code != core.CodeInvalidArgument {
-			t.Fatalf("expected invalid_argument for search providers %v, got res=%+v out=%+v err=%v", badProvs, badSearchRes, badSearchOut, err)
+		if err != nil || res.IsError {
+			t.Fatalf("web_search failed: res=%+v err=%v", res, err)
 		}
-	}
-	badFetchRes, badFetchOut, err := handleWebFetch(ctx, application, spec.TextFormatMarkdown, FetchInput{
-		URL:       "https://example.com",
-		Providers: []string{"zhihu"},
+		txt := res.Content[0].(*mcp.TextContent).Text
+		if !strings.Contains(txt, "3 results") || strings.Contains(txt, "long summary") || !strings.Contains(txt, "s1") {
+			t.Fatalf("expected config count=3 and detail=snippet respected, got:\n%s", txt)
+		}
 	})
-	if err != nil || !badFetchRes.IsError || badFetchOut.Error == nil || badFetchOut.Error.Code != core.CodeInvalidArgument || badFetchOut.Meta.Strategy != string(core.DefaultFetchStrategy) {
-		t.Fatalf("expected invalid_argument with default fetch strategy for role-mismatched fetch provider, got res=%+v out=%+v err=%v", badFetchRes, badFetchOut, err)
-	}
+
+	t.Run("validation_errors_redact_credentials", func(t *testing.T) {
+		resNoFusion, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name: "web_search",
+			Arguments: map[string]any{
+				"query":     "https://u:SearchEarlyPass99@example.com/a?token=tokLeak88",
+				"fusion":    false,
+				"extra":     true,
+				"freshness": "invalid-range",
+			},
+		})
+		if err != nil || !resNoFusion.IsError {
+			t.Fatalf("expected invalid freshness error, got res=%+v err=%v", resNoFusion, err)
+		}
+		scRaw, _ := json.Marshal(resNoFusion.StructuredContent)
+		if strings.Contains(string(scRaw), "SearchEarlyPass99") || strings.Contains(string(scRaw), "tokLeak88") {
+			t.Fatalf("web_search validation error leaked credentials in StructuredContent: %s", scRaw)
+		}
+
+		resBothSecret, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name: "web_fetch",
+			Arguments: map[string]any{
+				"url":  "https://u:FetchEarlyPass77@example.com/a?api_key=keyLeak66",
+				"urls": []string{"https://example.com/b"},
+			},
+		})
+		if err != nil || !resBothSecret.IsError {
+			t.Fatalf("expected url+urls conflict error, got res=%+v err=%v", resBothSecret, err)
+		}
+		scFetchRaw, _ := json.Marshal(resBothSecret.StructuredContent)
+		if strings.Contains(string(scFetchRaw), "FetchEarlyPass77") || strings.Contains(string(scFetchRaw), "keyLeak66") {
+			t.Fatalf("web_fetch validation error leaked credentials in StructuredContent: %s", scFetchRaw)
+		}
+
+		resEmptyFetch, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "web_fetch",
+			Arguments: map[string]any{},
+		})
+		if err != nil || !resEmptyFetch.IsError || !strings.Contains(resEmptyFetch.Content[0].(*mcp.TextContent).Text, "either url or urls is required") {
+			t.Fatalf("expected missing url/urls error, got res=%+v err=%v", resEmptyFetch, err)
+		}
+	})
+
+	t.Run("panic_recovery_redacts_secrets", func(t *testing.T) {
+		panicPayload := "boom sk-test-config-default socks5://u:p@127.0.0.1:1080 Authorization: Basic dXNlcjpwYXNzMTIz"
+		recRes, recOut, recErr := buildFetchErrorResult(
+			application,
+			"https://u:PanicQueryPass55@example.org",
+			spec.TextFormatMarkdown,
+			recoveredCoreError(application, panicPayload),
+		)
+		recTxt := recRes.Content[0].(*mcp.TextContent).Text
+		if recErr != nil || !recRes.IsError || recOut.OK || !strings.Contains(recTxt, "boom") {
+			t.Fatalf("unexpected recovered fetch error result: res=%+v out=%+v err=%v", recRes, recOut, recErr)
+		}
+		for _, leaked := range []string{"PanicQueryPass55", "sk-test-config-default", "u:p@", "dXNlcjpwYXNzMTIz"} {
+			if strings.Contains(recTxt, leaked) || strings.Contains(recOut.Query, leaked) || strings.Contains(recOut.Error.Message, leaked) {
+				t.Fatalf("recovered fetch error leaked %q: txt=%s out=%+v", leaked, recTxt, recOut)
+			}
+		}
+
+		recResS, _, _ := buildSearchErrorResult(nil, "q", spec.TextFormatMarkdown, recoveredCoreError(nil, "boom2"))
+		if !recResS.IsError || !strings.Contains(recResS.Content[0].(*mcp.TextContent).Text, "boom2") {
+			t.Fatalf("unexpected recovered search error result: %+v", recResS)
+		}
+	})
+
+	t.Run("handler_provider_validation_and_role_guards", func(t *testing.T) {
+		// 即使直接调用 handler 绕过 JSON Schema，空白项、非法或错角色 provider 仍返回 invalid_argument
+		for _, badProvs := range [][]string{{"local"}, {"   "}} {
+			badSearchRes, badSearchOut, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 5, 20, SearchInput{
+				Query:     "go",
+				Providers: badProvs,
+			})
+			if err != nil || !badSearchRes.IsError || badSearchOut.Error == nil || badSearchOut.Error.Code != core.CodeInvalidArgument {
+				t.Fatalf("expected invalid_argument for search providers %v, got res=%+v out=%+v err=%v", badProvs, badSearchRes, badSearchOut, err)
+			}
+		}
+
+		badFetchRes, badFetchOut, err := handleWebFetch(ctx, application, spec.TextFormatMarkdown, FetchInput{
+			URL:       "https://example.com",
+			Providers: []string{"zhihu"},
+		})
+		if err != nil ||
+			!badFetchRes.IsError ||
+			badFetchOut.Error == nil ||
+			badFetchOut.Error.Code != core.CodeInvalidArgument ||
+			badFetchOut.Meta.Strategy != string(core.DefaultFetchStrategy) {
+			t.Fatalf("expected invalid_argument with default fetch strategy for role-mismatched fetch provider, got res=%+v out=%+v err=%v", badFetchRes, badFetchOut, err)
+		}
+	})
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -13,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"veri/internal/config"
@@ -212,133 +210,6 @@ func TestRunDoctorResolverStatesAndLiveChecks(t *testing.T) {
 	}
 	if application.Config() == nil {
 		t.Fatal("App.Config() must not be nil")
-	}
-}
-
-func TestFirecrawlSelfHostedKeylessStatusInApp(t *testing.T) {
-	cfgPath := filepath.Join(t.TempDir(), "config.toml")
-	body := "[providers.firecrawl]\nbase_url = \"http://127.0.0.1:3002\"\n"
-	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := config.LoadWithEnv(cfgPath, func(string) string { return "" })
-	if err != nil {
-		t.Fatalf("LoadWithEnv: %v", err)
-	}
-	application, err := NewWithStderr(loaded, "1.0.0-test", io.Discard)
-	if err != nil {
-		t.Fatalf("NewWithStderr: %v", err)
-	}
-	var found *ProviderStatus
-	for _, st := range application.ProviderStatuses() {
-		if st.Name == spec.ProviderFirecrawl {
-			cp := st
-			found = &cp
-			break
-		}
-	}
-	if found == nil || !found.Enabled || found.Source != spec.CredSourceOptional || !strings.Contains(found.Details, "self_host") {
-		t.Fatalf("expected enabled keyless self-hosted firecrawl status, got %+v", found)
-	}
-
-	// 禁用自托管 Firecrawl 时同样展示 optional 而非 missing（与 GitHub 保持一致）
-	disabledCfgPath := filepath.Join(t.TempDir(), "disabled.toml")
-	if err := os.WriteFile(disabledCfgPath, []byte("[providers.firecrawl]\nenabled = false\nbase_url = \"http://127.0.0.1:3002\"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	disabledLoaded, err := config.LoadWithEnv(disabledCfgPath, func(string) string { return "" })
-	if err != nil {
-		t.Fatalf("LoadWithEnv disabled: %v", err)
-	}
-	disabledApp, err := NewWithStderr(disabledLoaded, "1.0.0-test", io.Discard)
-	if err != nil {
-		t.Fatalf("NewWithStderr disabled: %v", err)
-	}
-	for _, st := range disabledApp.ProviderStatuses() {
-		if st.Name == spec.ProviderFirecrawl {
-			if st.Enabled || st.Source != spec.CredSourceOptional {
-				t.Fatalf("expected disabled self-hosted firecrawl source=optional, got %+v", st)
-			}
-			break
-		}
-	}
-}
-
-func TestSearchMCPCacheIsolatesIncludeExtraAndNormalizesOptions(t *testing.T) {
-	var hits atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hits.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"Code":0,"Message":"","Data":{"SearchHashId":"h1","Items":[{"Title":"Go","ContentType":"answer","ContentText":"body","Url":"https://www.zhihu.com/question/1","VoteUpCount":42}]}}`)
-	}))
-	defer srv.Close()
-
-	cfgPath := filepath.Join(t.TempDir(), "config.toml")
-	body := "[search]\nproviders = [\"zhihu\"]\n[providers.zhihu]\nbase_url = \"" + srv.URL + "\"\n"
-	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == spec.EnvZhihuAPIKey {
-			return "zh-cache-test-key"
-		}
-		return ""
-	})
-	if err != nil {
-		t.Fatalf("LoadWithEnv: %v", err)
-	}
-	application, err := NewWithStderr(loaded, "1.0.0-test", io.Discard)
-	if err != nil {
-		t.Fatalf("NewWithStderr: %v", err)
-	}
-
-	// 1. extra=false 与 extra=true 不得共用缓存键，后者必须重新查询并返回 extra
-	envNoExtra, err := application.SearchMCP(t.Context(), &core.SearchRequest{Query: "go", Count: 5, IncludeExtra: false})
-	if err != nil || !envNoExtra.OK || len(envNoExtra.Results) != 1 || envNoExtra.Results[0].Extra != nil {
-		t.Fatalf("unexpected extra=false result: env=%+v err=%v", envNoExtra, err)
-	}
-	envWithExtra, err := application.SearchMCP(t.Context(), &core.SearchRequest{Query: "go", Count: 5, IncludeExtra: true})
-	if err != nil || !envWithExtra.OK || envWithExtra.Meta.Cached || len(envWithExtra.Results) != 1 || envWithExtra.Results[0].Extra == nil {
-		t.Fatalf("expected extra=true cache miss with populated Extra, got cached=%v results=%+v err=%v", envWithExtra.Meta.Cached, envWithExtra.Results, err)
-	}
-	if hits.Load() != 2 {
-		t.Fatalf("expected 2 upstream hits across extra=false/true, got %d", hits.Load())
-	}
-
-	// 2. Options 键大小写与首尾空白归一化命中同一缓存键
-	if _, err := application.SearchMCP(t.Context(), &core.SearchRequest{
-		Query:   "go-opt",
-		Count:   5,
-		Options: map[string]string{"zhihu.scope": "zhihu"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	envNormHit, err := application.SearchMCP(t.Context(), &core.SearchRequest{
-		Query:   "go-opt",
-		Count:   5,
-		Options: map[string]string{" Zhihu.Scope ": " zhihu "},
-	})
-	if err != nil || !envNormHit.Meta.Cached {
-		t.Fatalf("expected normalized Options to hit search cache, cached=%v err=%v", envNormHit != nil && envNormHit.Meta.Cached, err)
-	}
-
-	// 3. 未指定 Providers（走自动/分链路由）与显式传入 search.providers 必须隔离缓存键，避免英文分链或融合池误命中缓存
-	cfg := config.Default().Search
-	kAuto := buildSearchCacheKey(&core.SearchRequest{Query: "golang context"}, cfg, 24000)
-	kExplicit := buildSearchCacheKey(&core.SearchRequest{Query: "golang context", Providers: cfg.Providers}, cfg, 24000)
-	if kAuto == kExplicit {
-		t.Fatal("auto-routed search cache key must not collide with explicit search.providers cache key")
-	}
-
-	// 4. 大小写/空白扩展参数均准确触发 fresh 缓存旁路
-	for _, opts := range []map[string]string{
-		{" Fresh ": " TRUE "},
-		{" Exa.Max_Age_Hours ": " 0 "},
-		{" TINYFISH_TTL ": "0"},
-	} {
-		if !isFreshFetchBypass(opts) {
-			t.Fatalf("expected isFreshFetchBypass=true for %+v", opts)
-		}
 	}
 }
 

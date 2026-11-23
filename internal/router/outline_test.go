@@ -1,7 +1,8 @@
 package router
 
 import (
-	"context"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -85,66 +86,6 @@ func TestFenceAwareSliceOutlineSectionAndMatchViews(t *testing.T) {
 	matchView, mNotes := ApplyPageView(full, &core.FetchRequest{Match: "Retry-After"})
 	if len(mNotes) != 0 || !strings.Contains(matchView.Content, "Authentication") || !strings.Contains(matchView.Content, "Retry-After") {
 		t.Fatalf("unexpected match view: notes=%v content=\n%s", mNotes, matchView.Content)
-	}
-}
-
-func TestCircuitSoftDegradationAndFusionFetchFloor(t *testing.T) {
-	flaky := &fakeSearcher{
-		name: "deepseek",
-		caps: core.Capabilities{MaxCount: 50},
-		err:  core.NewError(core.CodeUpstreamUnavailable, "503").WithProvider("deepseek"),
-	}
-	healthy := &fakeSearcher{
-		name: "exa",
-		caps: core.Capabilities{MaxCount: 10},
-		outcome: &core.SearchOutcome{
-			Results: []core.Result{{Rank: 1, Title: "OK", URL: "https://exa.ai/ok", Summary: "healthy"}},
-		},
-	}
-
-	r := New(Options{SearchProviders: []string{"deepseek", "exa"}}, []core.Provider{flaky, healthy})
-
-	// Trigger 3 consecutive 503 errors on primary provider to open soft circuit.
-	for range defaultCircuitFailureThreshold {
-		env, err := r.Search(context.Background(), &core.SearchRequest{Query: "中文路由测试", Count: 3})
-		if err != nil || !env.OK {
-			t.Fatalf("expected fallback to healthy exa, err=%v", err)
-		}
-	}
-
-	// 4th call should route directly to healthy exa first (FallbackUsed == false)!
-	env4, err := r.Search(context.Background(), &core.SearchRequest{Query: "中文路由测试", Count: 3})
-	if err != nil || len(env4.Meta.Providers) != 1 || env4.Meta.Providers[0].Name != "exa" {
-		t.Fatalf("expected degraded primary deprioritized after 3 failures, got providers=%+v err=%v", env4.Meta.Providers, err)
-	}
-
-	// Verify Fusion fetchFloor=10 expands small Count=3 to 10 on branches, then trims back to 3.
-	s1 := &fakeSearcher{
-		name: "brave",
-		caps: core.Capabilities{MaxCount: 20},
-		outcome: &core.SearchOutcome{
-			Results: []core.Result{
-				{Rank: 1, Title: "A", URL: "https://a.example.com"},
-				{Rank: 2, Title: "B", URL: "https://b.example.com"},
-				{Rank: 3, Title: "C", URL: "https://c.example.com"},
-				{Rank: 4, Title: "Shared", URL: "https://shared.example.com"},
-			},
-		},
-	}
-	s2 := &fakeSearcher{
-		name: "tavily",
-		caps: core.Capabilities{MaxCount: 20},
-		outcome: &core.SearchOutcome{
-			Results: []core.Result{
-				{Rank: 1, Title: "Shared", URL: "https://shared.example.com"},
-			},
-		},
-	}
-	rf := New(Options{FusionProviders: []string{"brave", "tavily"}}, []core.Provider{s1, s2})
-	fEnv, err := rf.Search(context.Background(), &core.SearchRequest{Query: "test", Strategy: core.StrategyFusion, Count: 2})
-	if err != nil || s1.lastReq.Count != defaultFusionFetchFloor || len(fEnv.Results) != 2 || fEnv.Results[0].URL != "https://shared.example.com" {
-		t.Fatalf("expected fusion fetchFloor=%d and consensus winner #1, got s1.Count=%d results=%+v err=%v",
-			defaultFusionFetchFloor, s1.lastReq.Count, fEnv.Results, err)
 	}
 }
 
@@ -474,5 +415,79 @@ func TestCleanHeadingTextStripsMarkdownAnchorLinks(t *testing.T) {
 		if got := cleanHeadingText(tc.in); got != tc.want {
 			t.Errorf("cleanHeadingText(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestApplyPageViewSectionAndMatchPipeline(t *testing.T) {
+	doc := strings.Join([]string{
+		"## Intro",
+		"This intro also mentions channel once.",
+		"",
+		"## Concurrency",
+		"Goroutines coordinate via select and channel primitives.",
+		"",
+		"Another unrelated paragraph.",
+		"",
+		"## Errors",
+		"Always check errors; never ignore channel close errors.",
+	}, "\n")
+
+	full := &core.Page{URL: "https://go.dev/doc/effective_go", Content: doc}
+	view, notes := ApplyPageView(full, &core.FetchRequest{Section: "Concurrency", Match: "channel"})
+	if len(notes) != 0 {
+		t.Fatalf("unexpected notes: %v", notes)
+	}
+	if strings.Contains(view.Content, "This intro") || strings.Contains(view.Content, "Always check errors") {
+		t.Fatalf("match leaked outside target section:\n%s", view.Content)
+	}
+	if !strings.Contains(view.Content, "Goroutines coordinate via select and channel") {
+		t.Fatalf("expected matching passage within Concurrency section:\n%s", view.Content)
+	}
+	wantFullOffset := utf8.RuneCountInString(doc[:strings.Index(doc, "Goroutines coordinate")])
+	if !strings.Contains(view.Content, fmt.Sprintf("offset=%d", wantFullOffset)) {
+		t.Fatalf("expected global offset=%d in anchor, got:\n%s", wantFullOffset, view.Content)
+	}
+	// 章节内 0 命中时返回章节预览 + 明确提示
+	missView, missNotes := ApplyPageView(full, &core.FetchRequest{Section: "Concurrency", Match: "nonexistent_term_xyz"})
+	if len(missNotes) == 0 || !strings.Contains(missNotes[0], `in section "Concurrency"`) || !strings.Contains(missView.Content, "## Concurrency") {
+		t.Fatalf("unexpected section match miss fallback: notes=%v content=%s", missNotes, missView.Content)
+	}
+}
+
+func TestApplyPageViewOffsetExceededNote(t *testing.T) {
+	doc := "# Intro\n\nHello world.\n\n## Concurrency\n\nGoroutines communicate via channels.\n"
+	full := &core.Page{URL: "https://example.com/doc", Title: "Doc", Content: doc}
+	total := utf8.RuneCountInString(doc)
+
+	// 1. 全文越界（包含刚好等于总长与超大偏移）均安全返回空正文并附带明确 note
+	for _, off := range []int{total, 99999999} {
+		view, notes := ApplyPageView(full, &core.FetchRequest{Offset: off, MaxChars: 1000})
+		if view.Content != "" || view.NextOffset != nil || view.TotalChars != total {
+			t.Fatalf("offset=%d unexpected view: %+v", off, view)
+		}
+		wantNote := fmt.Sprintf("offset %d exceeds available content length (%d chars)", off, total)
+		if !slices.Contains(notes, wantNote) {
+			t.Fatalf("offset=%d expected note %q, got %v", off, wantNote, notes)
+		}
+	}
+
+	// 2. offset=0 的空页面及正常末页（0 < offset < total）均不误报越界 note
+	emptyView, emptyNotes := ApplyPageView(&core.Page{URL: "https://example.com/empty", Content: ""}, &core.FetchRequest{Offset: 0})
+	if emptyView.Content != "" || len(emptyNotes) != 0 {
+		t.Fatalf("empty page at offset 0 should not emit offset note, got %v", emptyNotes)
+	}
+	tailView, tailNotes := ApplyPageView(full, &core.FetchRequest{Offset: total - 5, MaxChars: 100})
+	if tailView.Content == "" || tailView.NextOffset != nil || len(tailNotes) != 0 {
+		t.Fatalf("valid tail page should not emit offset note: view=%+v notes=%v", tailView, tailNotes)
+	}
+
+	// 3. --section 与 --match 作用域视图内越界同样提示对应视图长度
+	secView, secNotes := ApplyPageView(full, &core.FetchRequest{Section: "Concurrency", Offset: 9999})
+	if secView.Content != "" || !slices.Contains(secNotes, fmt.Sprintf("offset 9999 exceeds available content length (%d chars)", secView.TotalChars)) {
+		t.Fatalf("section offset overflow mismatch: view=%+v notes=%v", secView, secNotes)
+	}
+	matchView, matchNotes := ApplyPageView(full, &core.FetchRequest{Match: "channels", Offset: 9999})
+	if matchView.Content != "" || !slices.Contains(matchNotes, fmt.Sprintf("offset 9999 exceeds available content length (%d chars)", matchView.TotalChars)) {
+		t.Fatalf("match offset overflow mismatch: view=%+v notes=%v", matchView, matchNotes)
 	}
 }

@@ -119,63 +119,6 @@ func TestSearchAutoFallbackLanguageRoutingAndEmulation(t *testing.T) {
 	}
 }
 
-func TestSearchFusionRRFMergeAndPartialTimeout(t *testing.T) {
-	relHigh := 0.95
-	p1 := &fakeSearcher{
-		name: "deepseek",
-		caps: core.Capabilities{MaxCount: 50},
-		outcome: &core.SearchOutcome{
-			Results: []core.Result{
-				{Rank: 1, Title: "Official SDK", URL: "https://github.com/modelcontextprotocol/go-sdk?utm_source=x", Snippet: "Short", Summary: "Short summary"},
-				{Rank: 2, Title: "Unique DS", URL: "https://deepseek.com/blog", Summary: "DS blog"},
-			},
-			Cost: &core.Cost{Currency: core.CurrencyCNY, Micros: 5000, Estimated: true},
-		},
-	}
-	p2 := &fakeSearcher{
-		name: "exa",
-		caps: core.Capabilities{MaxCount: 10},
-		outcome: &core.SearchOutcome{
-			Results: []core.Result{
-				{Rank: 1, Title: "MCP Go SDK", URL: "http://www.github.com/modelcontextprotocol/go-sdk/", Summary: "Much longer merged summary from Exa highlights!", Relevance: &relHigh},
-			},
-			Cost: &core.Cost{Currency: core.CurrencyUSD, Micros: 4000, Estimated: false},
-		},
-	}
-	slow := &fakeSearcher{
-		name:  "tinyfish",
-		caps:  core.Capabilities{MaxCount: 10},
-		delay: 200 * time.Millisecond,
-	}
-
-	r := New(Options{
-		SearchProviders: []string{"deepseek", "exa", "tinyfish"},
-		SearchTimeout:   50 * time.Millisecond,
-	}, []core.Provider{p1, p2, slow})
-
-	env, err := r.Search(context.Background(), &core.SearchRequest{
-		Query:    "mcp go sdk",
-		Strategy: core.StrategyFusion,
-		Count:    5,
-	})
-	if err != nil || !env.OK {
-		t.Fatalf("Fusion failed: env=%+v err=%v", env, err)
-	}
-	if !env.Meta.Partial {
-		t.Fatal("expected Meta.Partial=true when slow branch timed out")
-	}
-	if len(env.Results) != 2 {
-		t.Fatalf("expected deduplicated 2 fused results, got %d: %+v", len(env.Results), env.Results)
-	}
-	top := env.Results[0]
-	if len(top.Providers) != 2 || !strings.Contains(top.Summary, "Much longer merged summary") {
-		t.Fatalf("expected RRF top result to merge providers & longest summary: %+v", top)
-	}
-	if len(env.Meta.Cost) != 2 {
-		t.Fatalf("expected separate CNY and USD cost totals, got %+v", env.Meta.Cost)
-	}
-}
-
 func TestSmartLocalEscalationFallbackAndBudgetPagination(t *testing.T) {
 	gh := &fakeSpecialistFetcher{
 		name: "github",

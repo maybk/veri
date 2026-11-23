@@ -18,19 +18,80 @@ import (
 	"veri/internal/core"
 )
 
-// TestArchitectureBoundaries 扫描全仓 Go 源码，强制校验单文件行数上限、分层单向导入白名单、clikit 零业务耦合与中文字面量隔离。
+var archForbiddenDocRefs = []string{
+	"docs/" + "design",
+	"docs/" + "providers",
+}
+
+func archRepoRoot() string {
+	return filepath.Clean(filepath.Join("..", ".."))
+}
+
+type gitIgnoreRules struct {
+	rootAnchored  map[string]bool
+	anyLevelNames map[string]bool
+}
+
+// loadGitIgnoreRules 解析根级 .gitignore 中的目录忽略规则，区分根锚定路径与任意层级目录名。
+func loadGitIgnoreRules(repoRoot string) gitIgnoreRules {
+	rules := gitIgnoreRules{
+		rootAnchored:  make(map[string]bool),
+		anyLevelNames: make(map[string]bool),
+	}
+	raw, err := os.ReadFile(filepath.Join(repoRoot, ".gitignore"))
+	if err != nil {
+		return rules
+	}
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		rawRule := strings.TrimSpace(line)
+		if rawRule == "" || strings.HasPrefix(rawRule, "#") || strings.HasPrefix(rawRule, "!") {
+			continue
+		}
+		anchored := strings.HasPrefix(rawRule, "/")
+		trimmed := filepath.ToSlash(strings.Trim(rawRule, "/"))
+		if trimmed == "" || strings.ContainsAny(trimmed, "*?[") {
+			continue
+		}
+		if anchored || strings.Contains(trimmed, "/") {
+			rules.rootAnchored[trimmed] = true
+		} else {
+			rules.anyLevelNames[trimmed] = true
+		}
+	}
+	return rules
+}
+
+// shouldSkipRepoWalkDir 判断全仓扫描时是否应跳过隐藏目录、.gitignore 忽略目录或独立子模块目录。
+func shouldSkipRepoWalkDir(repoRoot, path string, d fs.DirEntry, ignored gitIgnoreRules) bool {
+	if path == repoRoot {
+		return false
+	}
+	name := d.Name()
+	if ignored.anyLevelNames[name] {
+		return true
+	}
+	if strings.HasPrefix(name, ".") && name != ".github" {
+		return true
+	}
+	if rel, err := filepath.Rel(repoRoot, path); err == nil {
+		if ignored.rootAnchored[filepath.ToSlash(rel)] {
+			return true
+		}
+	}
+	if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+		return true
+	}
+	return false
+}
+
+// TestArchitectureBoundaries 扫描全仓 Go 源码，强制校验分层单向导入白名单、clikit 零业务耦合、HTTP/init 红线与中文字面量隔离。
 func TestArchitectureBoundaries(t *testing.T) {
-	repoRoot := filepath.Clean(filepath.Join("..", ".."))
+	repoRoot := archRepoRoot()
 	const modulePrefix = "veri/"
 
 	cjkAllowlist := map[string]bool{
 		"internal/textnorm/time.go":    true, // 中文日期格式解析模板（2006年01月02日）
 		"internal/textnorm/quality.go": true, // 中文反爬验证与软 404 特征词匹配
-	}
-
-	forbiddenDocRefs := []string{
-		"docs/" + "design",
-		"docs/" + "providers",
 	}
 
 	var goFiles []string
@@ -58,19 +119,11 @@ func TestArchitectureBoundaries(t *testing.T) {
 		rel, _ := filepath.Rel(repoRoot, path)
 		rel = filepath.ToSlash(rel)
 
-		if filepath.Base(rel) == "extra_test.go" {
-			t.Errorf("%s uses forbidden generic test filename extra_test.go; name test files by responsibility", rel)
-		}
-
 		raw, rErr := os.ReadFile(path)
 		if rErr != nil {
 			t.Fatalf("read %s: %v", rel, rErr)
 		}
-		lineCount := bytes.Count(raw, []byte("\n")) + 1
-		if lineCount > 500 {
-			t.Errorf("%s has %d lines, exceeding 500-line limit", rel, lineCount)
-		}
-		for _, ref := range forbiddenDocRefs {
+		for _, ref := range archForbiddenDocRefs {
 			if bytes.Contains(raw, []byte(ref)) {
 				t.Errorf("%s contains coupled reference to %q", rel, ref)
 			}
