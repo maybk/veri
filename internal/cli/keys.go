@@ -29,6 +29,7 @@ func newKeyCmd(rt *runtimeEnv) *cobra.Command {
 	requireSubcommand(keyCmd)
 	addOrderedCommands(keyCmd,
 		newKeySetCmd(rt),
+		newKeyImportCmd(rt),
 		newKeyListCmd(rt),
 		newKeyUnsetCmd(rt),
 	)
@@ -37,10 +38,11 @@ func newKeyCmd(rt *runtimeEnv) *cobra.Command {
 
 func newKeySetCmd(rt *runtimeEnv) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "set <provider>",
-		Short:   rt.cat.T("key.set.short"),
-		Long:    rt.cat.T("key.set.long"),
-		Example: rt.cat.T("key.set.example"),
+		Use:               "set <provider>",
+		Short:             rt.cat.T("key.set.short"),
+		Long:              rt.cat.T("key.set.long"),
+		Example:           rt.cat.T("key.set.example"),
+		ValidArgsFunction: completeCredentialProviderArg,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return core.NewError(core.CodeInvalidArgument, "provider name is required").
@@ -105,10 +107,11 @@ func isInputInterrupted(err error) bool {
 
 func newKeyUnsetCmd(rt *runtimeEnv) *cobra.Command {
 	return &cobra.Command{
-		Use:     "unset <provider>",
-		Aliases: []string{"rm", "delete"},
-		Short:   rt.cat.T("key.unset.short"),
-		Args:    requireExactArgs(1, "err.missing_key_provider", ""),
+		Use:               "unset <provider>",
+		Aliases:           []string{"rm", "delete"},
+		Short:             rt.cat.T("key.unset.short"),
+		ValidArgsFunction: completeCredentialProviderArg,
+		Args:              requireExactArgs(1, "err.missing_key_provider", ""),
 		RunE: func(_ *cobra.Command, args []string) error {
 			provider, ok := spec.NormalizeCredentialProvider(args[0])
 			if !ok {
@@ -243,4 +246,19 @@ func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, rt.cat.T("key.list.flag.json"))
 	return cmd
+}
+
+func completeCredentialProviderArg(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	prefix := strings.ToLower(strings.TrimSpace(toComplete))
+	providers := spec.CredentialProviders()
+	out := make([]string, 0, len(providers))
+	for _, p := range providers {
+		if strings.HasPrefix(p, prefix) {
+			out = append(out, p)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }

@@ -16,6 +16,7 @@
 - `config_cmd.go`：`veri config` 配置项读写、查看、模板生成与补全子命令。
 - `update.go`：`veri update` 检查更新与跨平台安全自更新子命令。
 - `keys.go`：`veri key` 本地加密密钥增删与状态查看子命令。
+- `key_import.go`：`veri key import` 批量加密导入与配置明文迁移子命令。
 - `integrations.go`：`veri mcp`（含只读 `veri mcp config`）、`veri skill` 与 `veri version` 子命令。
 - `testdata/`：命令行端到端测试使用的标准输出黄金比对样本目录。
 

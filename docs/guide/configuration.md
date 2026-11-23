@@ -7,7 +7,7 @@
 ```text
 ~/.config/veri/
 ├── config.toml                # 可选：仅存放自定义配置项（未设置项随版本自动更新）
-├── secrets.json               # veri key set 生成的本地加密凭据库（权限 0600）
+├── secrets.json               # veri key 保存的本地加密凭据库（权限 0600）
 └── secret.key                 # 本机生成的本地加密主密钥（自动按系统安全权限保护）
 ```
 
@@ -16,7 +16,7 @@
 1. **命令行标志 / MCP 请求参数**（如 `-p`、`--strategy`、`--timeout`、`--ui-lang`）
 2. **`VERI_*` 行为环境变量**（如 `VERI_PROVIDERS`、`VERI_FETCH_STRATEGY`、`VERI_LANG`）
 3. **厂商密钥环境变量**（如 `DEEPSEEK_API_KEY`、`EXA_API_KEY`；含 MCP 客户端 `env` 注入项，始终优先于本地文件）
-4. **本地加密凭据库**（`~/.config/veri/secrets.json`，由 `veri key set` 写入）
+4. **本地加密凭据库**（`~/.config/veri/secrets.json`，由 `veri key` 写入）
 5. **TOML 配置文件**（`~/.config/veri/config.toml` 中的 `env:` 引用或明文 `api_key`）
 6. **内置默认值**
 
@@ -34,6 +34,8 @@
 # 凭据管理（无需 config.toml）
 veri key set deepseek                          # 交互隐藏输入并加密保存密钥
 printf '%s' "$EXA_API_KEY" | veri key set exa  # 从标准输入导入单个密钥
+veri key import --from-config                  # 加密迁入 config.toml 明文密钥并清理明文
+veri key import .env                           # 从 .env 批量加密导入（`-` 表示标准输入）
 veri key list                                  # 查看各源凭据来源与加密状态
 veri key unset deepseek                        # 移除本地加密密钥
 
@@ -51,7 +53,7 @@ veri config init                               # 生成全注释参考模板（�
 veri config path                               # 输出生效的配置文件路径
 ```
 
-`config.toml` 启用严格键名与值校验；`veri config set` 禁止向 `api_key` / `token` 写入明文（仅允许 `env:VAR_NAME`），密钥请通过 `veri key set <provider>` 加密保存。
+`config.toml` 启用严格键名与值校验；`veri config set` 禁止向 `api_key` / `token` 写入明文（仅允许 `env:VAR_NAME`），密钥请通过 `veri key set <provider>` 或 `veri key import` 加密保存。使用 `veri key import --from-config` 迁入明文密钥后会自动清理明文行，并保留注释、`env:` 引用与其他配置（支持 `--dry-run` 预览、`--overwrite` 覆盖冲突与 `--keep-config` 保留原文件）。
 
 ## 核心配置字段
 
@@ -136,5 +138,5 @@ veri config path                               # 输出生效的配置文件路�
 
 1. **SSRF 防护、内网隔离与 Fake-IP 兼容**：本地与 GitHub 抓取在拨号阶段校验目标 IP 并逐跳复验重定向，默认拦截回环、私网、链路本地、云元数据（`169.254.169.254`）与 CGNAT 地址；仅放行经域名解析返回且命中 `network.fake_ip_cidrs` 的 TUN 虚拟地址，URL 字面量直连 Fake-IP 仍被拦截。回环、私网与解析至内网的目标仅在本地处理，不向外部云端提取源转发。API 客户端同步阻断 HTTPS 向 HTTP 的协议降级与向内网回环的跨源重定向。
 2. **计费安全重试与冷却轮换**：请求发出后若发生读超时或连接中断，客户端禁止自动重放以防重复扣费；仅对明确未扣费的 `408 / 429 / 500 / 502 / 503 / 504` 或池内备用密钥最多重试 1 次，并按限流、欠费、鉴权失败分级冷却隔离。
-3. **全链路凭据脱敏与权限审计**：`veri config show`、错误提示与诊断日志自动遮蔽已知密钥、认证头、代理密码与敏感查询参数；Unix 下若配置文件含明文密钥或凭据库权限宽于 `0600`，启动与 `veri doctor` 均会告警。
+3. **全链路凭据脱敏与权限审计**：`veri config show`（含 `--overrides`）、`veri config get`、错误提示与诊断日志自动遮蔽已知密钥、认证头、代理密码与敏感查询参数；`veri config set` 拒绝写入明文 `api_key` / `token`；Unix 下若手工写入的配置文件含明文密钥或凭据库权限宽于 `0600`，启动与 `veri doctor` 均会告警。
 4. **外部网页内容隔离与隐形注入清洗**：MCP 文本输出默认包裹在带单次随机边界标识的 `<untrusted_web_content id="...">` 标签内并转义内嵌同名标签以防伪造提前闭合；同时剥离不可见格式控制符/变体选择符与零可见度 CSS 隐藏节点，降低间接提示注入风险。

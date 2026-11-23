@@ -41,8 +41,8 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 **常见搭配建议：**
 
 - **零成本免绑卡起步**：中文推荐 `keenable` + `zhihu` + `tencent_wsa`（2,000 次/月）；英文与网页提取推荐 `keenable` + `exa` + `tavily` + `parallel`（有职业邮箱加配 `linkup`），复杂反爬页面补 `firecrawl`（或开源自托管）。
-- **低价高质主力**：中文推荐 `deepseek`（极速低价，失败与空结果不计费）；英文推荐 `parallel`（`fast` 搜与 Extract 均 $1 / 1,000 次，配合 `exa` 做高精补充）。
-- **隐私敏感场景**：`keenable` 默认留存查询与结果、`parallel` 标准条款允许去标识化用于模型训练，处理敏感查询时可在 `config.toml` 中按需禁用或切至其他源。
+- **低价高质主力**：中文推荐 `deepseek`（极速低价，失败与空结果不计费）；英文推荐 `parallel`（`fast` 搜与 Extract 均 $1 / 1,000 次，配合 `exa` 做高精补充）。多中文源用户如需在 `-F` 中固定补充纯知乎社区观点，可执行 `veri config set providers.zhihu.scope zhihu` 并按需设置 `search.fusion_providers`。
+- **隐私敏感场景**：`keenable` 默认留存查询与结果、`parallel` 标准条款允许去标识化用于模型训练，处理敏感查询时可执行 `veri config set providers.keenable.enabled false` 按需禁用或切至其他源。
 
 > 以上免费额度与参考价格核实于 2026-11，上游资费、活动配额与适用条件随时可能调整，请以各官方控制台与定价页为准；`veri` 源码不内置刊例单价，仅在上游返回账单或用户配置 `price_*` 时估算成本。
 
@@ -54,8 +54,10 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 # 1. 交互式无回显保存密钥（按需替换为上表任意标识）
 veri key set deepseek
 
-# 也支持从标准输入管道导入（适合自动化或密码管理器联动）
+# 批量导入或从标准输入导入
 printf '%s' "$EXA_API_KEY" | veri key set exa
+veri key import .env                           # 从 .env 批量导入（支持 `-` 从标准输入读取）
+veri key import --from-config                  # 加密迁入 config.toml 明文密钥并清理明文
 
 # 2. 查看当前已生效的密钥来源与启用的源
 veri key list
@@ -66,12 +68,12 @@ veri doctor
 veri doctor --live --yes
 ```
 
-常用密钥管理与临时覆盖：
+常用密钥管理、行为覆盖与临时切换：
 
 - **移除已保存密钥**：`veri key unset <provider>`
 - **调整单个默认选项**：使用 `veri config set <key> <value>`（如 `veri config set providers.zhihu.scope zhihu`），查看已自定义项用 `veri config show --overrides`，恢复默认用 `veri config unset <key>`。
 - **临时用环境变量覆盖**：直接导出对应环境变量（如 `export DEEPSEEK_API_KEY="sk-..."`、`export EXA_API_KEY="exa_..."`），优先级高于本地加密库与 `config.toml`。完整变量名见 [配置说明](./configuration.md)。
-- **安全约束**：`veri key set` 禁止通过位置参数传入明文密钥，`veri config set` 拒绝向 `api_key` / `token` 写入明文。
+- **安全约束**：`veri key set` 禁止通过位置参数传入明文密钥，`veri config set` 拒绝向 `api_key` / `token` 写入明文；如已在 `config.toml` 写入明文密钥，可用 `veri key import --from-config`（可先加 `--dry-run` 预览）加密迁入。
 
 ## 常用命令速查
 

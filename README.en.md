@@ -92,7 +92,7 @@ veri key set exa
 veri key list
 ```
 
-You can also pass keys via environment variables (highest precedence); see the [Configuration Guide](./docs/guide/configuration.md) for option overrides:
+You can also pass keys via environment variables (highest precedence); see the [Configuration Guide](./docs/guide/configuration.md) for batch import and option overrides:
 
 ```bash
 export EXA_API_KEY="exa_..."

@@ -11,6 +11,8 @@
 - `keys.go`：配置键元数据索引、拼写建议、单键脱敏读取与自定义覆盖视图。
 - `edit.go`：单键写入、移除清理、明文密钥拦截与落盘前预校验。
 - `toml_edit.go`：保留注释与换行的 TOML 行级编辑与字面量格式化。
+- `dotenv.go`：`.env` 文件与标准输入批量加密导入及 dotenv 语法解析。
+- `import.go`：`config.toml` 明文密钥加密迁入、清理预演与结果模型。
 - `credentials.go`：环境变量、加密凭据库与配置文件的优先级合并及多密钥脱敏。
 - `validate.go`：枚举、数值边界、代理协议、网段与自定义单价语法校验。
 - `template.go`：内嵌双语配置模板加载与 `veri config init` 原子写入。

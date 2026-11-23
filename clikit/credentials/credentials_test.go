@@ -89,3 +89,61 @@ func TestSealerRandomNonceAndTamperRejection(t *testing.T) {
 		t.Fatal("expected truncated ciphertext to be rejected")
 	}
 }
+
+func TestVaultSetManyAtomicityAndValidation(t *testing.T) {
+	root := t.TempDir()
+	vault := NewVault(root)
+
+	// 空批量写入不应产生任何磁盘副作用。
+	if err := vault.SetMany(nil); err != nil {
+		t.Fatalf("SetMany(nil) error: %v", err)
+	}
+	if _, err := os.Stat(vault.SecretsPath()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected empty SetMany not to create secrets.json, stat err=%v", err)
+	}
+
+	if err := vault.Set("existing", "keep-me-1234"); err != nil {
+		t.Fatalf("seed Set failed: %v", err)
+	}
+
+	// 包含空值或大小写冲突时必须整批拒绝，原有记录不受影响。
+	if err := vault.SetMany(map[string]string{
+		"alpha": "sk-alpha-1111",
+		"beta":  "   ",
+	}); err == nil {
+		t.Fatal("expected SetMany with empty secret to fail")
+	}
+	if err := vault.SetMany(map[string]string{
+		"Gamma": "sk-gamma-1",
+		"gamma": "sk-gamma-2",
+	}); err == nil {
+		t.Fatal("expected SetMany with case-folded conflicting values to fail")
+	}
+	if keys, err := vault.ListKeys(); err != nil || len(keys) != 1 || keys[0] != "existing" {
+		t.Fatalf("failed batch should not mutate vault, got keys=%v err=%v", keys, err)
+	}
+
+	// 正常批量写入应单次落盘并保留既有条目，磁盘绝无明文。
+	if err := vault.SetMany(map[string]string{
+		"Alpha": "sk-alpha-1111",
+		"beta":  "sk-beta-2222,sk-beta-3333",
+	}); err != nil {
+		t.Fatalf("SetMany failed: %v", err)
+	}
+	rawDisk, err := os.ReadFile(vault.SecretsPath())
+	if err != nil {
+		t.Fatalf("read secrets.json: %v", err)
+	}
+	for _, secret := range []string{"keep-me-1234", "sk-alpha-1111", "sk-beta-2222", "sk-beta-3333"} {
+		if strings.Contains(string(rawDisk), secret) {
+			t.Fatalf("secrets.json leaked plaintext %q", secret)
+		}
+	}
+	all, err := vault.LoadAll()
+	if err != nil {
+		t.Fatalf("LoadAll failed: %v", err)
+	}
+	if all["existing"] != "keep-me-1234" || all["alpha"] != "sk-alpha-1111" || all["beta"] != "sk-beta-2222,sk-beta-3333" {
+		t.Fatalf("unexpected decrypted batch: %+v", all)
+	}
+}

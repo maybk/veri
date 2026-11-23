@@ -92,7 +92,7 @@ veri key set deepseek
 veri key list
 ```
 
-也可通过环境变量传入密钥（优先级最高），更多配置项用法见[配置说明](./docs/guide/configuration.md)：
+也可通过环境变量传入密钥（优先级最高），更多批量导入与配置项用法见[配置说明](./docs/guide/configuration.md)：
 
 ```bash
 export DEEPSEEK_API_KEY="sk-..."

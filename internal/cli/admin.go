@@ -224,6 +224,9 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 			if rep.PermWarning {
 				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Yellow(rt.cat.T("doctor.perm_warn",
 					"mode", rep.ConfigMode, "path", rep.ConfigPath)))
+			} else if len(rep.PlaintextProviders) > 0 {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Yellow(rt.cat.T("doctor.plaintext_hint",
+					"providers", strings.Join(rep.PlaintextProviders, ", "))))
 			}
 			if rep.VaultPermWarning {
 				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Yellow(rt.cat.T("doctor.vault_perm_warn")))

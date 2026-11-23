@@ -33,6 +33,7 @@ type Loaded struct {
 	FetchProvidersExplicit        bool              // 用户在 config.toml 或 VERI_FETCH_PROVIDERS 中显式配置了 fetch.providers
 	PermWarning                   bool              // 配置文件含明文密钥且权限宽于 0600
 	VaultPermWarning              bool              // secrets.json 或 secret.key 权限宽于 0600
+	PlaintextProviders            []string          // config.toml 中存有明文密钥的 Provider 列表（不含明文值）
 	LogLevel                      string
 	LogFormat                     string
 	Credentials                   map[string]Credential
@@ -163,12 +164,9 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		return nil, err
 	}
 
-	vaultSecrets, err := credentials.NewVault(cfgDir).LoadAll()
+	vaultSecrets, err := loadVaultSecrets(credentials.NewVault(cfgDir), cfgDir)
 	if err != nil {
-		return nil, core.WrapError(core.CodeAuthFailed, fmt.Sprintf("failed to load encrypted credentials in %q: %v", cfgDir, err), err).
-			WithHint("Check file permissions or re-save the damaged credential via `veri key set <provider>`.").
-			WithI18n("err.vault_decrypt_failed", "hint.vault_decrypt_failed").
-			WithParam("dir", cfgDir)
+		return nil, err
 	}
 	for provName := range vaultSecrets {
 		out.VaultProviders[provName] = true
@@ -194,6 +192,7 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		out.Credentials[prov] = cred
 		if cred.HasPlainInFile {
 			hasPlain = true
+			out.PlaintextProviders = append(out.PlaintextProviders, prov)
 		}
 		addSecrets(allCandidateKeys)
 	}

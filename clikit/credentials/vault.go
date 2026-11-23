@@ -76,6 +76,46 @@ func (v *Vault) Set(name, secret string) error {
 	return v.writeMapLocked(entries)
 }
 
+// SetMany 校验、加密并单次原子写入多条命名凭据（全量成功或保持原样不变）。
+func (v *Vault) SetMany(items map[string]string) error {
+	if len(items) == 0 {
+		return nil
+	}
+	normalized := make(map[string]string, len(items))
+	for rawName, rawSecret := range items {
+		key, err := normalizeVaultKey(rawName)
+		if err != nil {
+			return err
+		}
+		trimmed := strings.TrimSpace(rawSecret)
+		if trimmed == "" {
+			return fmt.Errorf("secret value for %s must not be empty", key)
+		}
+		if prev, dup := normalized[key]; dup && prev != trimmed {
+			return fmt.Errorf("conflicting values for credential %s", key)
+		}
+		normalized[key] = trimmed
+	}
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	entries, err := v.readMapLocked()
+	if err != nil {
+		return err
+	}
+	sealedBatch := make(map[string]string, len(normalized))
+	for _, key := range slices.Sorted(maps.Keys(normalized)) {
+		sealed, encErr := v.sealer.Encrypt(normalized[key])
+		if encErr != nil {
+			return encErr
+		}
+		sealedBatch[key] = sealed
+	}
+	maps.Copy(entries, sealedBatch)
+	return v.writeMapLocked(entries)
+}
+
 // Get 读取并解封指定命名键的已加密敏感值；不存在时返回 ErrNotFound。
 func (v *Vault) Get(name string) (string, error) {
 	key, err := normalizeVaultKey(name)
