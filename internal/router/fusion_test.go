@@ -305,11 +305,11 @@ func TestFusionAutoCapabilityBackfillAndHealthRotation(t *testing.T) {
 		t.Fatalf("expected strict --lang auto-fusion backfill %v, got names=%v env=%+v err=%v", wantLangPool, ranNames(enLangEnv), enLangEnv, err)
 	}
 
-	// 2. 中文自动 -F + -s go.dev --strict：zhihu_web 声明 SiteNone，自动递补第 4 位 tencent_wsa；超长查询同样跳过 deepseek 自动递补
+	// 2. 中文 -F 严格 -s 与超长查询自动递补
 	rCN := New(Options{}, []core.Provider{
 		mkCap(spec.ProviderDeepSeek, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti, QueryMaxRunes: 128}),
 		mkCap(spec.ProviderKeenable, core.Capabilities{MaxCount: 10, Sites: core.SiteMulti}),
-		mkCap(spec.ProviderZhihuWeb, core.Capabilities{MaxCount: 10, Sites: core.SiteNone}),
+		mkCap(spec.ProviderZhihu, core.Capabilities{MaxCount: 10, Sites: core.SiteNone}),
 		mkCap(spec.ProviderTencentWSA, core.Capabilities{MaxCount: 10, Sites: core.SiteSingle}),
 	})
 	cnSiteEnv, err := rCN.Search(t.Context(), &core.SearchRequest{
@@ -328,7 +328,7 @@ func TestFusionAutoCapabilityBackfillAndHealthRotation(t *testing.T) {
 		Query:    longCNQuery,
 		Strategy: core.StrategyFusion,
 	})
-	wantLongPool := []string{spec.ProviderKeenable, spec.ProviderZhihuWeb, spec.ProviderTencentWSA}
+	wantLongPool := []string{spec.ProviderKeenable, spec.ProviderZhihu, spec.ProviderTencentWSA}
 	if err != nil || !longEnv.OK || !slices.Equal(ranNames(longEnv), wantLongPool) {
 		t.Fatalf("expected query_length auto-fusion backfill %v, got names=%v err=%v", wantLongPool, ranNames(longEnv), err)
 	}
@@ -364,34 +364,34 @@ func TestFusionAutoCapabilityBackfillAndHealthRotation(t *testing.T) {
 	}
 
 	// 5. 配额/鉴权错误（CodeInsufficientBalance）立即软降权后置，下一次自动 -F 与 auto 自动轮换健康源，恢复成功后即时复权
-	zhihuWebQuota := &fakeSearcher{
-		name: spec.ProviderZhihuWeb,
+	zhihuQuota := &fakeSearcher{
+		name: spec.ProviderZhihu,
 		caps: core.Capabilities{MaxCount: 10},
-		err:  core.NewError(core.CodeInsufficientBalance, "daily quota exceeded").WithProvider(spec.ProviderZhihuWeb),
+		err:  core.NewError(core.CodeInsufficientBalance, "daily quota exceeded").WithProvider(spec.ProviderZhihu),
 	}
 	rQuota := New(Options{}, []core.Provider{
 		mkCap(spec.ProviderDeepSeek, core.Capabilities{MaxCount: 10}),
 		mkCap(spec.ProviderKeenable, core.Capabilities{MaxCount: 10}),
-		zhihuWebQuota,
+		zhihuQuota,
 		mkCap(spec.ProviderTencentWSA, core.Capabilities{MaxCount: 10}),
 	})
 	firstEnv, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "中文测试", Strategy: core.StrategyFusion})
-	if err != nil || !firstEnv.OK || !firstEnv.Meta.Partial || !slices.Equal(ranNames(firstEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb}) {
-		t.Fatalf("first call should try default CN top3 with partial zhihu_web quota failure, got names=%v env=%+v err=%v", ranNames(firstEnv), firstEnv, err)
+	if err != nil || !firstEnv.OK || !firstEnv.Meta.Partial || !slices.Equal(ranNames(firstEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}) {
+		t.Fatalf("first call should try default CN top3 with partial zhihu quota failure, got names=%v env=%+v err=%v", ranNames(firstEnv), firstEnv, err)
 	}
 	secondEnv, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "中文测试二", Strategy: core.StrategyFusion})
 	if err != nil || !secondEnv.OK || secondEnv.Meta.Partial || !slices.Equal(ranNames(secondEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}) {
-		t.Fatalf("subsequent auto-fusion must rotate healthy tencent_wsa ahead of quota-exhausted zhihu_web, got names=%v env=%+v err=%v", ranNames(secondEnv), secondEnv, err)
+		t.Fatalf("subsequent auto-fusion must rotate healthy tencent_wsa ahead of quota-exhausted zhihu, got names=%v env=%+v err=%v", ranNames(secondEnv), secondEnv, err)
 	}
 	// 单源恢复成功后立即清零降权状态，重回默认前 3
-	zhihuWebQuota.err = nil
-	zhihuWebQuota.outcome = &core.SearchOutcome{Results: []core.Result{{Rank: 1, Title: "Recovered", URL: "https://example.com/1", Summary: "ok"}}}
-	if _, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "恢复验证", Providers: []string{spec.ProviderZhihuWeb}}); err != nil {
-		t.Fatalf("single zhihu_web recovery call failed: %v", err)
+	zhihuQuota.err = nil
+	zhihuQuota.outcome = &core.SearchOutcome{Results: []core.Result{{Rank: 1, Title: "Recovered", URL: "https://zhihu.com/p/1", Summary: "ok"}}}
+	if _, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "恢复验证", Providers: []string{spec.ProviderZhihu}}); err != nil {
+		t.Fatalf("single zhihu recovery call failed: %v", err)
 	}
 	recoveredEnv, err := rQuota.Search(t.Context(), &core.SearchRequest{Query: "中文测试三", Strategy: core.StrategyFusion})
-	if err != nil || !recoveredEnv.OK || !slices.Equal(ranNames(recoveredEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb}) {
-		t.Fatalf("recovered zhihu_web should rejoin default CN fusion top3, got names=%v err=%v", ranNames(recoveredEnv), err)
+	if err != nil || !recoveredEnv.OK || !slices.Equal(ranNames(recoveredEnv), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}) {
+		t.Fatalf("recovered zhihu should rejoin default CN fusion top3, got names=%v err=%v", ranNames(recoveredEnv), err)
 	}
 }
 
@@ -433,11 +433,9 @@ func TestZhihuSplitAndDomainScopeRouting(t *testing.T) {
 		core.Result{Rank: 1, Title: "WSA Go", URL: "https://go.dev/wsa"},
 	)
 
-	// 1. 单链顺序（search.providers 中 zhihu 第 3、zhihu_web 第 4）：
-	//    - auto 通用搜按 ScopeDomains 自动将全网源排在单站垂直源之前；
-	//    - -F 融合直接按 search.providers 顺序取前 3（零特化表）。
+	// 1. auto 全网优先、单站垫底；-F 按默认顺序取前 3
 	rAll := New(Options{}, []core.Provider{ds, kn, zw, zh, wsa})
-	wantAuto := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb, spec.ProviderTencentWSA, spec.ProviderZhihu}
+	wantAuto := []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA, spec.ProviderZhihuWeb, spec.ProviderZhihu}
 	if got := rAll.EnabledSearchers(); !slices.Equal(got, wantAuto) {
 		t.Fatalf("default auto chain = %v, want %v", got, wantAuto)
 	}
@@ -520,18 +518,27 @@ func TestZhihuSplitAndDomainScopeRouting(t *testing.T) {
 		t.Fatalf("expected degraded specialist to be deprioritized by health order, got env=%+v err=%v", env2, err2)
 	}
 
-	// 3. -F -s go.dev（非严格）：自动跳过 zhihu（site_scope）并顺延递补 zhihu_web
+	// 3. 非严格 -F -s go.dev：跳过 zhihu 并顺延递补
 	zhBefore := zh.calls.Load()
 	envGo, err := rAll.Search(t.Context(), &core.SearchRequest{
 		Query:    "Go 并发",
 		Strategy: core.StrategyFusion,
 		Filters:  core.Filters{Sites: []string{"go.dev"}},
 	})
-	if err != nil || !envGo.OK || zh.calls.Load() != zhBefore || !slices.Equal(ranNames(envGo), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb}) {
+	if err != nil || !envGo.OK || zh.calls.Load() != zhBefore || !slices.Equal(ranNames(envGo), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}) {
 		t.Fatalf("non-strict -s go.dev failed: names=%v zhCalls=%d->%d err=%v", ranNames(envGo), zhBefore, zh.calls.Load(), err)
 	}
+	rNoWSA := New(Options{}, []core.Provider{ds, kn, zw, zh})
+	envGoNoWSA, err := rNoWSA.Search(t.Context(), &core.SearchRequest{
+		Query:    "Go 并发",
+		Strategy: core.StrategyFusion,
+		Filters:  core.Filters{Sites: []string{"go.dev"}},
+	})
+	if err != nil || !envGoNoWSA.OK || !slices.Equal(ranNames(envGoNoWSA), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb}) {
+		t.Fatalf("non-strict -s go.dev without wsa failed: names=%v err=%v", ranNames(envGoNoWSA), err)
+	}
 
-	// 4. -F --strict -s go.dev：跳过 zhihu（site_scope）与 zhihu_web（SiteNone），递补 tencent_wsa
+	// 4. 严格 -F -s go.dev：跳过 zhihu，递补 tencent_wsa
 	envGoStrict, err := rAll.Search(t.Context(), &core.SearchRequest{
 		Query:         "Go 并发",
 		Strategy:      core.StrategyFusion,
@@ -559,15 +566,23 @@ func TestZhihuSplitAndDomainScopeRouting(t *testing.T) {
 		}
 	}
 
-	// 6. -F -x zhihu.com（非严格）：跳过 zhihu（site_scope），顺延递补 zhihu_web 并后过滤剥离 zhihu.com 条目
+	// 6. 非严格 -F -x zhihu.com：跳过 zhihu 并顺延递补，后过滤知乎条目
 	zhBefore = zh.calls.Load()
-	envExclZhihu, err := rAll.Search(t.Context(), &core.SearchRequest{
+	envExclAll, err := rAll.Search(t.Context(), &core.SearchRequest{
+		Query:    "Go 并发",
+		Strategy: core.StrategyFusion,
+		Filters:  core.Filters{ExcludeSites: []string{"zhihu.com"}},
+	})
+	if err != nil || !envExclAll.OK || zh.calls.Load() != zhBefore || !slices.Equal(ranNames(envExclAll), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderTencentWSA}) {
+		t.Fatalf("non-strict -x zhihu.com (all) failed: names=%v zhCalls=%d->%d err=%v", ranNames(envExclAll), zhBefore, zh.calls.Load(), err)
+	}
+	envExclZhihu, err := rNoWSA.Search(t.Context(), &core.SearchRequest{
 		Query:    "Go 并发",
 		Strategy: core.StrategyFusion,
 		Filters:  core.Filters{ExcludeSites: []string{"zhihu.com"}},
 	})
 	if err != nil || !envExclZhihu.OK || zh.calls.Load() != zhBefore || !slices.Equal(ranNames(envExclZhihu), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihuWeb}) {
-		t.Fatalf("non-strict -x zhihu.com failed: names=%v zhCalls=%d->%d err=%v", ranNames(envExclZhihu), zhBefore, zh.calls.Load(), err)
+		t.Fatalf("non-strict -x zhihu.com (no wsa) failed: names=%v zhCalls=%d->%d err=%v", ranNames(envExclZhihu), zhBefore, zh.calls.Load(), err)
 	}
 	for _, res := range envExclZhihu.Results {
 		if res.URL == "https://zhuanlan.zhihu.com/p/77" {

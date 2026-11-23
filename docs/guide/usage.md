@@ -27,7 +27,7 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 | --- | --- | --- | --- | --- |
 | `deepseek` | 搜索、提取 | 无免费档；Search 与 Fetch 均 **¥5 / 1,000 次成功请求（¥0.005/次）**，失败与空结果不计费 | 中英文主力检索与 Markdown 提取（搜 100 QPS / 抓 25 QPS） | [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) |
 | `keenable` | 搜索、提取 | **10 万次/月免费免绑卡**（搜/抓各计 1 次）；超额 $4 / 1,000 次（$0.004/次） | 超大免费月额通用检索与提取；默认策略留存查询与结果 | [Keenable Console](https://app.keenable.ai/console/api-keys) |
-| `zhihu` / `zhihu_web` | 搜索 | 按实名控制台配额发放（每日 00:00 重置；社区实测实名后全网与站内两池独立，各约 5,000 次/天，未实名约 10 次/天） | 配 1 把 `zhihu` 密钥同时启用两源：`zhihu`（站内问答/专栏，中文 `-F` 默认纳入、`-s zhihu.com` 优先）与 `zhihu_web`（中文全网，`auto` 默认优先） | [知乎数据开放平台](https://developer.zhihu.com/profile) |
+| `zhihu` / `zhihu_web` | 搜索 | 按实名控制台配额发放（每日 00:00 重置；社区实测实名后全网与站内两池独立，各约 5,000 次/天，未实名约 10 次/天） | 配 1 把 `zhihu` 密钥同时启用两源：`zhihu`（站内问答/专栏，中文 `-F` 默认纳入、`-s zhihu.com` 优先）与 `zhihu_web`（中文全网，`auto` 优先于站内） | [知乎数据开放平台](https://developer.zhihu.com/profile) |
 | `exa` | 搜索、提取 | **$10/月免费免绑卡**（每月 1 日重置）+ 新人礼 $10；超额 `auto` 搜 $7 / 1,000 次（$0.007/次，`lite` $0.004/次、`deep` $0.012/次）、抓 $1 / 1,000 页（$0.001/页） | 英文技术文档、语义检索与 PDF/正文提取；响应直出实收账单 | [Exa Dashboard](https://dashboard.exa.ai/api-keys) |
 | `tinyfish` | 搜索、提取 | **免费免绑卡**：搜 12,000 次/天、抓 1,000 页/天（00:00 UTC 重置） | 中英文检索、学术论文与服务端 SPA / JS 动态渲染及 PDF 提取 | [TinyFish Console](https://agent.tinyfish.ai/api-keys) |
 | `tencent_wsa` | 搜索 | **2,000 次/自然月全版本通用免费**（按账号重置，以控制台为准）；超额按版本 ¥14 / ¥20 / ¥26 / 1,000 次（极速 ¥0.014、标准 ¥0.020、旗舰 ¥0.026/次，失败不计费） | 中文资讯、政务、学术与财经检索（需创建 WSA 服务 API Key） | [腾讯云联网搜索控制台](https://console.cloud.tencent.com/wsa) |
