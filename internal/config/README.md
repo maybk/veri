@@ -8,10 +8,13 @@
 - `config.go`：配置结构体定义、基于 `toml` 标签的凭据/权重访问与自动脱敏快照构造。
 - `defaults.go`：内置默认配置树。
 - `load.go`：三端配置路径解析、未知 TOML 键拦截、环境变量合并与文件权限审计。
+- `keys.go`：配置键元数据索引、拼写建议、单键脱敏读取与自定义覆盖视图。
+- `edit.go`：单键写入、移除清理、明文密钥拦截与落盘前预校验。
+- `toml_edit.go`：保留注释与换行的 TOML 行级编辑与字面量格式化。
 - `credentials.go`：环境变量、加密凭据库与配置文件的优先级合并及多密钥脱敏。
 - `validate.go`：枚举、数值边界、代理协议、网段与自定义单价语法校验。
-- `template.go`：内嵌双语 TOML 模板加载与 `veri config init` 原子写入逻辑。
-- `templates/`：简体中文与英文注释的 `config.toml` 静态模板文件。
+- `template.go`：内嵌双语配置模板加载与 `veri config init` 原子写入。
+- `templates/`：简体中文与英文的 `config.toml` 全注释参考模板。
 
 ## 开发规范
 

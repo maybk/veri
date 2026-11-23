@@ -2,7 +2,6 @@ package config
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,11 +11,12 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"veri/clikit/credentials"
-	"veri/clikit/redact"
 	"veri/clikit/storage"
 	"veri/internal/core"
 	"veri/internal/spec"
 )
+
+const maxConfigFileBytes = 1 << 20 // 单个 config.toml 读取上限（1 MiB），防止误传超大文件引发内存抖动
 
 // Loaded 携带合并校验后的完整配置、来源元数据与安全审计警告。
 type Loaded struct {
@@ -25,11 +25,14 @@ type Loaded struct {
 	Dir                           string
 	FileExists                    bool
 	FileMode                      os.FileMode
-	SearchProvidersExplicit       bool // 用户在 config.toml 或 VERI_PROVIDERS 中显式配置了 search.providers
-	FusionProvidersGlobalExplicit bool // 用户在 config.toml 中显式配置了 search.fusion_providers_global（含设 [] 关闭分池）
-	FetchProvidersExplicit        bool // 用户在 config.toml 或 VERI_FETCH_PROVIDERS 中显式配置了 fetch.providers
-	PermWarning                   bool // 配置文件含明文密钥且权限宽于 0600
-	VaultPermWarning              bool // secrets.json 或 secret.key 权限宽于 0600
+	DefinedKeys                   map[string]bool   // config.toml 中显式定义的键路径集合
+	EnvOverrides                  map[string]string // 被 VERI_* 行为环境变量覆盖的配置键 -> 变量名
+	fileConfig                    Config            // config.toml 解码后的原始文件态配置（不受环境变量与 vault 覆盖影响）
+	SearchProvidersExplicit       bool              // 用户在 config.toml 或 VERI_PROVIDERS 中显式配置了 search.providers
+	FusionProvidersGlobalExplicit bool              // 用户在 config.toml 中显式配置了 search.fusion_providers_global（含设 [] 关闭分池）
+	FetchProvidersExplicit        bool              // 用户在 config.toml 或 VERI_FETCH_PROVIDERS 中显式配置了 fetch.providers
+	PermWarning                   bool              // 配置文件含明文密钥且权限宽于 0600
+	VaultPermWarning              bool              // secrets.json 或 secret.key 权限宽于 0600
 	LogLevel                      string
 	LogFormat                     string
 	Credentials                   map[string]Credential
@@ -48,7 +51,7 @@ func PeekUILang(explicitPath string, getenv func(string) string) string {
 		return ""
 	}
 	info, err := os.Stat(cfgPath)
-	if err != nil || info.IsDir() || info.Size() > 1<<20 {
+	if err != nil || info.IsDir() || info.Size() > maxConfigFileBytes {
 		return ""
 	}
 	raw, err := os.ReadFile(filepath.Clean(cfgPath)) // #nosec G304 -- local CLI user-specified config file path
@@ -98,6 +101,8 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 	out := &Loaded{
 		Path:           cfgPath,
 		Dir:            cfgDir,
+		DefinedKeys:    make(map[string]bool),
+		EnvOverrides:   make(map[string]string),
 		LogLevel:       resolveLogLevel(getenv(spec.EnvLogLevel)),
 		LogFormat:      resolveLogFormat(getenv(spec.EnvLogFormat)),
 		Credentials:    make(map[string]Credential, len(credProviders)),
@@ -106,31 +111,19 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 	searchGlobalDefined := false
 	fetchGlobalDefined := false
 
-	if info, statErr := os.Stat(cfgPath); statErr == nil {
-		if info.IsDir() {
-			return nil, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("config path %q is a directory", cfgPath)).
-				WithMsgKey("err.config_is_dir").
-				WithParam("path", cfgPath)
-		}
+	raw, fileMode, exists, readErr := readExistingConfigFile(cfgPath)
+	if readErr != nil {
+		return nil, readErr
+	}
+	if exists {
 		out.FileExists = true
-		out.FileMode = info.Mode()
-		raw, readErr := os.ReadFile(filepath.Clean(cfgPath)) // #nosec G304 -- local CLI user-specified config file path
-		if readErr != nil {
-			return nil, core.WrapError(core.CodeInvalidArgument, fmt.Sprintf("failed to read config %q", cfgPath), readErr).
-				WithMsgKey("err.config_read_failed").
-				WithParam("path", cfgPath)
-		}
-		meta, decErr := toml.Decode(string(raw), &cfg)
+		out.FileMode = fileMode
+		meta, decErr := toml.Decode(raw, &cfg)
 		if decErr != nil {
-			safeDetail := redact.Scrub(decErr.Error(), nil)
-			safeCause := decErr
-			if safeDetail != decErr.Error() {
-				safeCause = errors.New(safeDetail)
-			}
-			return nil, core.WrapError(core.CodeInvalidArgument, fmt.Sprintf("invalid TOML in %q: %s", cfgPath, safeDetail), safeCause).
-				WithMsgKey("err.config_invalid_toml").
-				WithParam("path", cfgPath).
-				WithParam("detail", safeDetail)
+			return nil, invalidTOMLError(cfgPath, decErr)
+		}
+		for _, k := range meta.Keys() {
+			out.DefinedKeys[k.String()] = true
 		}
 		if meta.IsDefined("search", "providers") {
 			out.SearchProvidersExplicit = true
@@ -148,21 +141,9 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 			fetchGlobalDefined = true
 		}
 		if undecoded := meta.Undecoded(); len(undecoded) > 0 {
-			keys := make([]string, len(undecoded))
-			for i, k := range undecoded {
-				keys[i] = k.String()
-			}
-			keyList := strings.Join(keys, ", ")
-			return nil, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unknown configuration key(s) in %q: %s", cfgPath, keyList)).
-				WithHint("Check spelling in config.toml or run `veri config show` to inspect supported fields.").
-				WithI18n("err.config_unknown_keys", "hint.unknown_config_keys").
-				WithParam("path", cfgPath).
-				WithParam("keys", keyList)
+			return nil, unknownConfigKeysError(cfgPath, undecoded)
 		}
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return nil, core.WrapError(core.CodeInvalidArgument, fmt.Sprintf("cannot access config %q", cfgPath), statErr).
-			WithMsgKey("err.config_read_failed").
-			WithParam("path", cfgPath)
+		out.fileConfig = cfg
 	}
 
 	if err := applyBehaviorEnv(&cfg, out, getenv); err != nil {
@@ -273,23 +254,32 @@ func resolveLogFormat(raw string) string {
 }
 
 func applyBehaviorEnv(cfg *Config, loaded *Loaded, getenv func(string) string) error {
+	recordEnv := func(key, envName string) {
+		if loaded != nil && loaded.EnvOverrides != nil {
+			loaded.EnvOverrides[key] = envName
+		}
+	}
 	if v := strings.TrimSpace(getenv(spec.EnvLang)); v != "" {
 		cfg.UI.Lang = v
+		recordEnv("ui.lang", spec.EnvLang)
 	}
 	if list := splitEnvList(getenv(spec.EnvProviders)); len(list) > 0 {
 		cfg.Search.Providers = list
+		recordEnv("search.providers", spec.EnvProviders)
 		if loaded != nil {
 			loaded.SearchProvidersExplicit = true
 		}
 	}
 	if list := splitEnvList(getenv(spec.EnvFetchProviders)); len(list) > 0 {
 		cfg.Fetch.Providers = list
+		recordEnv("fetch.providers", spec.EnvFetchProviders)
 		if loaded != nil {
 			loaded.FetchProvidersExplicit = true
 		}
 	}
 	if v := strings.TrimSpace(getenv(spec.EnvFetchStrategy)); v != "" {
 		cfg.Fetch.Strategy = v
+		recordEnv("fetch.strategy", spec.EnvFetchStrategy)
 	}
 	if v := strings.TrimSpace(getenv(spec.EnvTimeout)); v != "" {
 		d, err := time.ParseDuration(v)
@@ -300,6 +290,7 @@ func applyBehaviorEnv(cfg *Config, loaded *Loaded, getenv func(string) string) e
 				WithParam("value", v)
 		}
 		cfg.Search.Timeout = Duration{d}
+		recordEnv("search.timeout", spec.EnvTimeout)
 	}
 	return nil
 }

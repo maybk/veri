@@ -92,7 +92,7 @@ veri key set exa
 veri key list
 ```
 
-You can also configure keys via environment variables or `~/.config/veri/config.toml` (see the [Configuration Guide](./docs/guide/configuration.md)); environment variables always take precedence:
+You can also pass keys via environment variables (highest precedence); see the [Configuration Guide](./docs/guide/configuration.md) for option overrides:
 
 ```bash
 export EXA_API_KEY="exa_..."

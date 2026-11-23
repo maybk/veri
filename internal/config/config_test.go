@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/BurntSushi/toml"
-
 	"veri/clikit/credentials"
 	"veri/internal/core"
 	"veri/internal/spec"
@@ -215,39 +213,6 @@ func TestPeekUILangPosixLocaleAndBilingualTemplates(t *testing.T) {
 	}
 	if !slices.Contains(loaded.AllSecrets, "EnvProxySecret888") {
 		t.Fatal("expected HTTPS_PROXY password to be registered in Loaded.AllSecrets")
-	}
-
-	// 验证内嵌中英文配置模板均符合严格 Schema、与 Default() 完全一致，且双语激活键集合 100% 对称
-	var loadedCfgs []Config
-	var keyLists [][]string
-	for _, loc := range []string{"zh-CN", "en-US"} {
-		tplPath := filepath.Join(t.TempDir(), "config.toml")
-		if err := WriteTemplateForLocale(tplPath, false, loc); err != nil {
-			t.Fatalf("WriteTemplateForLocale(%s): %v", loc, err)
-		}
-		tplLoaded, err := LoadWithEnv(tplPath, func(string) string { return "" })
-		if err != nil {
-			t.Fatalf("generated %s template failed strict LoadWithEnv: %v", loc, err)
-		}
-		if !reflect.DeepEqual(tplLoaded.Config, Default()) {
-			t.Fatalf("%s template drifted from Default() config:\ngot:  %+v\nwant: %+v", loc, tplLoaded.Config, Default())
-		}
-		loadedCfgs = append(loadedCfgs, tplLoaded.Config)
-
-		var rawCfg Config
-		meta, decErr := toml.Decode(TemplateForLocale(loc), &rawCfg)
-		if decErr != nil {
-			t.Fatalf("decode %s template: %v", loc, decErr)
-		}
-		var keys []string
-		for _, k := range meta.Keys() {
-			keys = append(keys, k.String())
-		}
-		slices.Sort(keys)
-		keyLists = append(keyLists, keys)
-	}
-	if !reflect.DeepEqual(loadedCfgs[0], loadedCfgs[1]) || !slices.Equal(keyLists[0], keyLists[1]) {
-		t.Fatalf("zh-CN.toml and en-US.toml keys/values drifted:\nzh=%v\nen=%v", keyLists[0], keyLists[1])
 	}
 }
 

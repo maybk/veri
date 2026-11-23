@@ -51,6 +51,20 @@ var (
 // DefaultPrefixes 是常见云端与开发者平台令牌前缀集合，脱敏时保留前缀以辅助排障。
 var DefaultPrefixes = []string{"github_pat_", "tvly-", "keen_", "exa_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "sk-", "tp-", "fc-"}
 
+// LooksLikeSecret 判断单个无空白字符串是否疑似常见 API Key 或访问令牌，用于防误将凭据当作查询词或路径回显。
+func LooksLikeSecret(raw string) bool {
+	s := strings.TrimSpace(raw)
+	if len(s) < 16 || strings.ContainsAny(s, " \t\r\n") {
+		return false
+	}
+	for _, p := range DefaultPrefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return strings.HasPrefix(s, "BSA") && len(s) >= 24
+}
+
 // MaskKey 使用默认前缀表将密钥脱敏为「前缀 + … + 末 4 位」（如 "sk-…a1b2"）。
 // 短密钥统一返回 "****"，"env:VAR" 引用表达式原样保留，空字符串返回 ""。
 func MaskKey(raw string) string {

@@ -12,7 +12,8 @@
 - `root.go`：根命令装配、裸查询防误触守卫、全局标志绑定与进程退出码映射。
 - `search.go`：`veri search` 子命令、过滤标志解析与结果输出。
 - `fetch.go`：`veri fetch` 子命令（支持单页、多 URL 并发与 `stdin` 批量输入）、章节/关键词定位与分段偏移提示。
-- `admin.go`：`veri providers`、`veri doctor` 与 `veri config` 子命令。
+- `admin.go`：`veri providers` 与 `veri doctor` 子命令。
+- `config_cmd.go`：`veri config` 配置项读写、查看、模板生成与补全子命令。
 - `update.go`：`veri update` 检查更新与跨平台安全自更新子命令。
 - `keys.go`：`veri key` 本地加密密钥增删与状态查看子命令。
 - `integrations.go`：`veri mcp`（含只读 `veri mcp config`）、`veri skill` 与 `veri version` 子命令。

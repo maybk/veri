@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 
 	"veri/clikit/redact"
@@ -13,9 +14,47 @@ import (
 	"veri/internal/spec"
 )
 
+// strictEnumTable 维护所有封闭字符串枚举配置项的唯一合法值表，供配置校验与 CLI 补全共同引用。
+var strictEnumTable = map[string][]string{
+	"mcp.text_format":               {spec.TextFormatMarkdown, spec.TextFormatJSON},
+	"providers.tencent_wsa.edition": {spec.WSAEditionLite, spec.WSAEditionStandard, spec.WSAEditionFlagship},
+	"providers.exa.search_type":     {spec.ExaTypeLite, spec.ExaTypeAuto, spec.ExaTypeFast, spec.ExaTypeInstant, spec.ExaTypeDeepLite, spec.ExaTypeDeep, spec.ExaTypeDeepReasoning},
+	"providers.tavily.search_depth": {spec.TavilyDepthUltraFast, spec.TavilyDepthFast, spec.TavilyDepthBasic, spec.TavilyDepthAdvanced},
+	"providers.tavily.extract_depth": {
+		spec.TavilyDepthBasic, spec.TavilyDepthAdvanced,
+	},
+	"providers.brave.mode":        {spec.BraveModeAuto, spec.BraveModeContext, spec.BraveModeWeb},
+	"providers.keenable.mode":     {spec.KeenableModePro, spec.KeenableModeRealtime},
+	"providers.zhihu.scope":       {spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu},
+	"providers.zhihu.search_db":   {spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic},
+	"providers.linkup.depth":      {spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep},
+	"providers.linkup.fetch_mode": {spec.LinkupFetchModeStandard, spec.LinkupFetchModePro},
+	"providers.parallel.mode":     {spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced},
+	"providers.firecrawl.proxy":   {spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced},
+}
+
+func strictEnumAllowed(key string) []string {
+	return strictEnumTable[key]
+}
+
+func validateEnumValue(key, raw string) error {
+	allowed := strictEnumAllowed(key)
+	if slices.Contains(allowed, strings.ToLower(strings.TrimSpace(raw))) {
+		return nil
+	}
+	return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid %s %q: must be one of %s", key, scrubConfigScalar(raw), strings.Join(allowed, ", ")))
+}
+
+func scrubConfigScalar(raw string) string {
+	if redact.LooksLikeSecret(raw) {
+		return redact.MaskKey(raw)
+	}
+	return redact.Scrub(raw, nil)
+}
+
 func validateConfig(cfg *Config) error {
 	if !isValidUILangSetting(cfg.UI.Lang) {
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid ui.lang %q: must be auto, zh, or en", cfg.UI.Lang))
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid ui.lang %q: must be auto, zh, or en", scrubConfigScalar(cfg.UI.Lang)))
 	}
 
 	if _, err := core.ParseStrategy(cfg.Search.Strategy); err != nil {
@@ -63,10 +102,8 @@ func validateConfig(cfg *Config) error {
 		return err
 	}
 
-	switch strings.ToLower(strings.TrimSpace(cfg.MCP.TextFormat)) {
-	case spec.TextFormatMarkdown, spec.TextFormatJSON:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid mcp.text_format %q: must be markdown or json", cfg.MCP.TextFormat))
+	if err := validateEnumValue("mcp.text_format", cfg.MCP.TextFormat); err != nil {
+		return err
 	}
 	if cfg.MCP.SearchMaxChars < 0 || cfg.MCP.FetchMaxChars < 0 || cfg.MCP.ContentMaxChars < 0 || cfg.MCP.MaxCount < 0 || cfg.MCP.CacheSize < 0 {
 		return core.NewError(core.CodeInvalidArgument, "mcp budget, max_count, and cache_size settings must be >= 0")
@@ -86,7 +123,7 @@ func normalizeProviderList(field string, items []string, wantRole spec.Role) ([]
 	for _, raw := range items {
 		info, ok := spec.LookupProvider(raw)
 		if !ok {
-			return nil, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unknown provider %q in %s", raw, field))
+			return nil, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unknown provider %q in %s", scrubConfigScalar(raw), field))
 		}
 		if !info.Roles.Has(wantRole) {
 			return nil, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("provider %q in %s does not support %s", info.Name, field, wantRole))
@@ -137,73 +174,24 @@ func validateNetwork(netCfg *NetworkConfig) error {
 }
 
 func validateProviders(p *ProvidersConfig) error {
-	switch strings.ToLower(strings.TrimSpace(p.TencentWSA.Edition)) {
-	case spec.WSAEditionLite, spec.WSAEditionStandard, spec.WSAEditionFlagship:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.tencent_wsa.edition %q: must be lite, standard, or flagship", p.TencentWSA.Edition))
+	enumChecks := [][2]string{
+		{"providers.tencent_wsa.edition", p.TencentWSA.Edition},
+		{"providers.exa.search_type", p.Exa.SearchType},
+		{"providers.tavily.search_depth", p.Tavily.SearchDepth},
+		{"providers.tavily.extract_depth", p.Tavily.ExtractDepth},
+		{"providers.brave.mode", p.Brave.Mode},
+		{"providers.keenable.mode", p.Keenable.Mode},
+		{"providers.zhihu.scope", p.Zhihu.Scope},
+		{"providers.zhihu.search_db", p.Zhihu.SearchDB},
+		{"providers.linkup.depth", p.Linkup.Depth},
+		{"providers.linkup.fetch_mode", p.Linkup.FetchMode},
+		{"providers.parallel.mode", p.Parallel.Mode},
+		{"providers.firecrawl.proxy", p.Firecrawl.Proxy},
 	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Exa.SearchType)) {
-	case spec.ExaTypeLite, spec.ExaTypeAuto, spec.ExaTypeFast, spec.ExaTypeInstant, spec.ExaTypeDeepLite, spec.ExaTypeDeep, spec.ExaTypeDeepReasoning:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.exa.search_type %q: must be lite, auto, fast, instant, deep-lite, deep, or deep-reasoning", p.Exa.SearchType))
-	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Tavily.SearchDepth)) {
-	case spec.TavilyDepthUltraFast, spec.TavilyDepthFast, spec.TavilyDepthBasic, spec.TavilyDepthAdvanced:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.tavily.search_depth %q", p.Tavily.SearchDepth))
-	}
-	switch strings.ToLower(strings.TrimSpace(p.Tavily.ExtractDepth)) {
-	case spec.TavilyDepthBasic, spec.TavilyDepthAdvanced:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.tavily.extract_depth %q", p.Tavily.ExtractDepth))
-	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Brave.Mode)) {
-	case spec.BraveModeAuto, spec.BraveModeContext, spec.BraveModeWeb:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.brave.mode %q: must be auto, context, or web", p.Brave.Mode))
-	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Keenable.Mode)) {
-	case spec.KeenableModePro, spec.KeenableModeRealtime:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.keenable.mode %q: must be pro or realtime", p.Keenable.Mode))
-	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Zhihu.Scope)) {
-	case spec.ZhihuScopeGlobal, spec.ZhihuScopeZhihu:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.zhihu.scope %q: must be global or zhihu", p.Zhihu.Scope))
-	}
-	switch strings.ToLower(strings.TrimSpace(p.Zhihu.SearchDB)) {
-	case spec.ZhihuSearchDBAll, spec.ZhihuSearchDBRealtime, spec.ZhihuSearchDBStatic:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.zhihu.search_db %q: must be all, realtime, or static", p.Zhihu.SearchDB))
-	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Linkup.Depth)) {
-	case spec.LinkupDepthFlash, spec.LinkupDepthFast, spec.LinkupDepthStandard, spec.LinkupDepthDeep:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.linkup.depth %q: must be flash, fast, standard, or deep", p.Linkup.Depth))
-	}
-	switch strings.ToLower(strings.TrimSpace(p.Linkup.FetchMode)) {
-	case spec.LinkupFetchModeStandard, spec.LinkupFetchModePro:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.linkup.fetch_mode %q: must be standard or pro", p.Linkup.FetchMode))
-	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Parallel.Mode)) {
-	case spec.ParallelModeTurbo, spec.ParallelModeFast, spec.ParallelModeBasic, spec.ParallelModeAdvanced:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.parallel.mode %q: must be turbo, fast, basic, or advanced", p.Parallel.Mode))
-	}
-
-	switch strings.ToLower(strings.TrimSpace(p.Firecrawl.Proxy)) {
-	case spec.FirecrawlProxyAuto, spec.FirecrawlProxyBasic, spec.FirecrawlProxyEnhanced:
-	default:
-		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid providers.firecrawl.proxy %q: must be auto, basic, or enhanced", p.Firecrawl.Proxy))
+	for _, check := range enumChecks {
+		if err := validateEnumValue(check[0], check[1]); err != nil {
+			return err
+		}
 	}
 	if p.Firecrawl.MaxPDFPages < 1 || p.Firecrawl.MaxPDFPages > spec.MaxFirecrawlPDFPages {
 		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("providers.firecrawl.max_pdf_pages %d out of range [1, %d]", p.Firecrawl.MaxPDFPages, spec.MaxFirecrawlPDFPages))

@@ -69,8 +69,9 @@ veri doctor --live --yes
 常用密钥管理与临时覆盖：
 
 - **移除已保存密钥**：`veri key unset <provider>`
+- **调整单个默认选项**：使用 `veri config set <key> <value>`（如 `veri config set providers.zhihu.scope zhihu`），查看已自定义项用 `veri config show --overrides`，恢复默认用 `veri config unset <key>`。
 - **临时用环境变量覆盖**：直接导出对应环境变量（如 `export DEEPSEEK_API_KEY="sk-..."`、`export EXA_API_KEY="exa_..."`），优先级高于本地加密库与 `config.toml`。完整变量名见 [配置说明](./configuration.md)。
-- **安全约束**：禁止将明文密钥作为命令行位置参数传入，`veri key set` 会拒绝多余参数以防泄露到命令历史。
+- **安全约束**：`veri key set` 禁止通过位置参数传入明文密钥，`veri config set` 拒绝向 `api_key` / `token` 写入明文。
 
 ## 常用命令速查
 

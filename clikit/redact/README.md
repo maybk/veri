@@ -5,8 +5,8 @@
 ## 目录结构
 
 - `doc.go`：包职责与纯标准库边界声明。
-- `redact.go`：`MaskKey`、`MaskKeyWithPrefixes`、`IsSensitiveHeader`、`SanitizeURL` 与 `Scrub`/`ScrubWith` 实现，覆盖已知密钥、HTTP 认证头及内嵌 URL 凭据脱敏。
-- `logger.go`：`NewLogger` 结构化文本/JSON 自动脱敏日志构造器。
+- `redact.go`：疑似密钥识别、密钥前缀掩码、敏感 HTTP 头判定、URL 凭据清洗与文本脱敏。
+- `logger.go`：结构化文本与 JSON 自动脱敏日志构造器。
 
 ## 开发规范
 

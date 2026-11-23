@@ -4,9 +4,14 @@
 
 ## [0.2.3] - 未发布
 
+### 新增
+
+- 新增 `veri config set / get / unset` 与 `veri config show --overrides`，支持按需读写单个配置项。
+
 ### 变更
 
 - 优化中文默认检索与多源融合顺序。
+- `veri config init` 改为生成全注释配置模板，未修改项随版本自动更新。
 
 ### 修复
 

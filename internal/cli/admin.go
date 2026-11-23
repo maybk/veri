@@ -12,7 +12,6 @@ import (
 	"veri/clikit/i18n"
 	"veri/clikit/term"
 	"veri/internal/app"
-	"veri/internal/config"
 	"veri/internal/core"
 	"veri/internal/render"
 	"veri/internal/spec"
@@ -352,82 +351,4 @@ func doctorExitError(rep app.DoctorReport) error {
 		}
 	}
 	return nil
-}
-
-func newConfigCmd(rt *runtimeEnv) *cobra.Command {
-	cfgCmd := &cobra.Command{
-		Use:     "config",
-		GroupID: groupAdmin,
-		Short:   rt.cat.T("config.short"),
-		Example: rt.cat.T("config.example"),
-	}
-	requireSubcommand(cfgCmd)
-
-	var force bool
-	initCmd := &cobra.Command{
-		Use:   "init",
-		Short: rt.cat.T("config.init.short"),
-		Args:  requireNoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			path, err := config.ResolvePath(rt.flags.configPath, rt.getenv)
-			if err != nil {
-				return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
-			}
-			if err := config.WriteTemplateForLocale(path, force, string(rt.uiLocale)); err != nil {
-				return err
-			}
-			_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("config.init.done", "path", path))
-			return nil
-		},
-	}
-	initCmd.Flags().BoolVar(&force, "force", false, rt.cat.T("config.init.flag.force"))
-
-	pathCmd := &cobra.Command{
-		Use:   "path",
-		Short: rt.cat.T("config.path.short"),
-		Args:  requireNoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			path, err := config.ResolvePath(rt.flags.configPath, rt.getenv)
-			if err != nil {
-				return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
-			}
-			_, _ = fmt.Fprintln(rt.stdout, path)
-			return nil
-		},
-	}
-
-	var showJSON bool
-	showCmd := &cobra.Command{
-		Use:   "show",
-		Short: rt.cat.T("config.show.short"),
-		Args:  requireNoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			loaded, err := config.LoadWithEnv(rt.flags.configPath, rt.getenv)
-			if err != nil {
-				return err
-			}
-			if showJSON {
-				jsonText, jErr := render.MarshalEnvelopeJSON(loaded.RedactedConfig())
-				if jErr != nil {
-					return jErr
-				}
-				_, _ = fmt.Fprint(rt.stdout, jsonText)
-				return nil
-			}
-			redacted, err := loaded.FormatRedactedTOML()
-			if err != nil {
-				return core.WrapError(core.CodeInternal, "failed to render redacted config", err)
-			}
-			_, _ = fmt.Fprint(rt.stdout, redacted)
-			return nil
-		},
-	}
-	showCmd.Flags().BoolVar(&showJSON, "json", false, rt.cat.T("config.show.flag.json"))
-
-	addOrderedCommands(cfgCmd,
-		initCmd,
-		pathCmd,
-		showCmd,
-	)
-	return cfgCmd
 }

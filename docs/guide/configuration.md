@@ -6,7 +6,7 @@
 
 ```text
 ~/.config/veri/
-├── config.toml                # 可选：检索链、超时、策略与扩展参数（支持 env: 引用或明文）
+├── config.toml                # 可选：仅存放自定义配置项（未设置项随版本自动更新）
 ├── secrets.json               # veri key set 生成的本地加密凭据库（权限 0600）
 └── secret.key                 # 本机生成的本地加密主密钥（自动按系统安全权限保护）
 ```
@@ -31,16 +31,27 @@
 常用配置与密钥管理命令：
 
 ```bash
-veri key set deepseek                          # 交互无回显输入并加密保存密钥
-printf '%s' "$EXA_API_KEY" | veri key set exa  # 通过管道从标准输入读取并加密保存密钥
-veri key list                                  # 查看各源生效凭据来源、加密库状态与脱敏掩码
-veri key unset deepseek                        # 移除本地加密密钥库中指定源的密钥
-veri config init                               # 按当前界面语言生成带注释的 config.toml 模板（权限 0600，覆盖加 --force）
-veri config path                               # 输出当前生效的配置文件路径
-veri config show                               # 输出合并并脱敏后的生效配置
+# 凭据管理（无需 config.toml）
+veri key set deepseek                          # 交互隐藏输入并加密保存密钥
+printf '%s' "$EXA_API_KEY" | veri key set exa  # 从标准输入导入单个密钥
+veri key list                                  # 查看各源凭据来源与加密状态
+veri key unset deepseek                        # 移除本地加密密钥
+
+# 单项配置（支持 Tab 补全，未设置项随版本自动更新）
+veri config set providers.zhihu.scope zhihu              # 修改单个配置项
+veri config set search.providers deepseek,zhihu,keenable # 列表支持逗号分隔或 TOML 数组
+veri config set search.providers_global ""               # 设为空数组以关闭非中文分链
+veri config get providers.zhihu.scope                    # 查看当前生效值（加 --json 含来源）
+veri config unset providers.zhihu.scope                  # 移除自定义项并恢复默认值
+
+# 查看与参考模板
+veri config show --overrides                   # 仅查看已自定义的配置项（支持 --json）
+veri config show                               # 查看合并并脱敏后的生效配置（支持 --json）
+veri config init                               # 生成全注释参考模板（权限 0600，覆盖加 --force）
+veri config path                               # 输出生效的配置文件路径
 ```
 
-`config.toml` 启用严格键名校验，遇到拼写错误或未知字段时立即返回 `invalid_argument` 并指出具体键名。
+`config.toml` 启用严格键名与值校验；`veri config set` 禁止向 `api_key` / `token` 写入明文（仅允许 `env:VAR_NAME`），密钥请通过 `veri key set <provider>` 加密保存。
 
 ## 核心配置字段
 

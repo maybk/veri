@@ -164,3 +164,28 @@ func TestSanitizeURLSchemeLessAndMalformedCredentials(t *testing.T) {
 		})
 	}
 }
+
+func TestLooksLikeSecret(t *testing.T) {
+	for _, secret := range []string{
+		"sk-1234567890abcdef",
+		"ghp_1234567890abcdef",
+		"tvly-1234567890abcdef",
+		"BSA1234567890abcdefghijkl",
+	} {
+		if !LooksLikeSecret(secret) {
+			t.Fatalf("expected LooksLikeSecret(%q) = true", secret)
+		}
+	}
+	for _, nonSecret := range []string{
+		"",
+		"sk-short",
+		".env",
+		"keys.env",
+		"sk-with spaces 1234567890",
+		"BSAshort123",
+	} {
+		if LooksLikeSecret(nonSecret) {
+			t.Fatalf("expected LooksLikeSecret(%q) = false", nonSecret)
+		}
+	}
+}

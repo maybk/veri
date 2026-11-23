@@ -320,3 +320,63 @@ func TestMCPOutputSchemaCompactIsolationAndSync(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPSparseConfigSetReflectedInSchemaAndReadOnlyBoundary(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	noEnv := func(string) string { return "" }
+	if _, err := config.SetValue(cfgPath, "providers.zhihu.scope", "zhihu", noEnv); err != nil {
+		t.Fatalf("config.SetValue: %v", err)
+	}
+	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
+		if k == "ZHIHU_API_KEY" {
+			return "zhihu-test-token-1234"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	// 确认未设置的默认检索链保持内置默认跟随升级
+	if !slices.Equal(loaded.Config.Search.Providers, spec.DefaultSearchProviders()) {
+		t.Fatalf("sparse config unexpectedly altered default search.providers: %v", loaded.Config.Search.Providers)
+	}
+
+	application, err := app.New(loaded, "test")
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
+	srv := New(application, "test")
+
+	ctx := t.Context()
+	ct, st := mcp.NewInMemoryTransports()
+	if _, err := srv.Connect(ctx, st, nil); err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	tools, err := session.ListTools(ctx, &mcp.ListToolsParams{})
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	var searchTool *mcp.Tool
+	for _, tool := range tools.Tools {
+		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+			t.Fatalf("MCP tool %q must remain strictly read-only", tool.Name)
+		}
+		if tool.Name == "web_search" {
+			searchTool = tool
+		}
+	}
+	if searchTool == nil {
+		t.Fatal("missing web_search tool")
+	}
+	raw, _ := json.Marshal(searchTool.InputSchema)
+	if !strings.Contains(string(raw), "default: zhihu") {
+		t.Fatalf("expected sparse providers.zhihu.scope=zhihu reflected in MCP schema, got: %s", string(raw))
+	}
+}

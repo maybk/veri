@@ -91,8 +91,7 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read seed config.toml: %v", err)
 	}
-	seededCfg := strings.ReplaceAll(string(rawSeedCfg), `base_url = "https://api.deepseek.com"`, `base_url = "`+srv.URL+`"`)
-	seededCfg = strings.ReplaceAll(seededCfg, `api_key = "env:DEEPSEEK_API_KEY"`, `api_key = "sk-supersecret9876"`)
+	seededCfg := string(rawSeedCfg) + "\n[providers.deepseek]\nbase_url = \"" + srv.URL + "\"\napi_key = \"sk-supersecret9876\"\n"
 	if err := os.WriteFile(cfgPath, []byte(seededCfg), 0o600); err != nil {
 		t.Fatalf("write seeded config.toml: %v", err)
 	}
@@ -160,13 +159,17 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("config init failed: %s", errStr)
 		}
-		// 替换自定义测试端点与明文 Key，验证 config show 脱敏
+		code, ovEmptyOut, _ := execCLI(t, isolatedCfg, "", nil, "--no-color", "config", "show", "--overrides", "--json")
+		if code != 0 || strings.TrimSpace(ovEmptyOut) != "{}" {
+			t.Fatalf("expected commented template to have zero overrides, code=%d out=%q", code, ovEmptyOut)
+		}
+
+		// 追加自定义测试端点与明文 Key，验证 config show 脱敏
 		rawCfg, err := os.ReadFile(isolatedCfg)
 		if err != nil {
 			t.Fatalf("read config.toml: %v", err)
 		}
-		patched := strings.ReplaceAll(string(rawCfg), `base_url = "https://api.deepseek.com"`, `base_url = "`+srv.URL+`"`)
-		patched = strings.ReplaceAll(patched, `api_key = "env:DEEPSEEK_API_KEY"`, `api_key = "sk-supersecret9876"`)
+		patched := string(rawCfg) + "\n[providers.deepseek]\nbase_url = \"" + srv.URL + "\"\napi_key = \"sk-supersecret9876\"\n"
 		if err := os.WriteFile(isolatedCfg, []byte(patched), 0o600); err != nil {
 			t.Fatalf("write patched config.toml: %v", err)
 		}
@@ -260,12 +263,11 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 
 		// providers.local.enabled = false 时双语状态展示与内网拒绝提示
 		noLocalCfgPath := filepath.Join(t.TempDir(), "no-local.toml")
-		noLocalCfg := strings.Replace(seededCfg, "[providers.local]\nenabled = true", "[providers.local]\nenabled = false", 1)
-		if noLocalCfg == seededCfg {
-			t.Fatalf("failed to disable [providers.local] in generated config template")
-		}
-		if err := os.WriteFile(noLocalCfgPath, []byte(noLocalCfg), 0o600); err != nil {
+		if err := os.WriteFile(noLocalCfgPath, []byte(seededCfg), 0o600); err != nil {
 			t.Fatal(err)
+		}
+		if nlSetCode, _, nlSetErr := execCLI(t, noLocalCfgPath, "", nil, "config", "set", "providers.local.enabled", "false"); nlSetCode != 0 {
+			t.Fatalf("config set providers.local.enabled=false failed: code=%d err=%s", nlSetCode, nlSetErr)
 		}
 		nlCode, nlOut, _ := execCLI(t, noLocalCfgPath, "", nil, "--ui-lang", "zh", "providers")
 		if nlCode != 0 || !strings.Contains(nlOut, "已在配置中禁用") {
@@ -444,8 +446,8 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 			t.Fatalf("en config init failed: code=%d", enCode)
 		}
 		assertContainsAll(t, "en config template", string(enRaw),
-			"# veri configuration file.",
-			"[providers.local]\nenabled = true",
+			"# veri configuration reference template.",
+			"# [providers.local]\n# enabled = true",
 		)
 	})
 }

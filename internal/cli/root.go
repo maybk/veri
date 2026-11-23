@@ -364,7 +364,7 @@ func newRootCmd(rt *runtimeEnv) *cobra.Command {
 }
 
 func guardRootShorthandArgs(cmd *cobra.Command, args []string) error {
-	if slices.ContainsFunc(args, looksLikeRawSecretToken) {
+	if slices.ContainsFunc(args, redact.LooksLikeSecret) {
 		return core.NewError(core.CodeInvalidArgument, "refusing to send an apparent API key or token as a search query").
 			WithHint("To save an API key, run `veri key set <provider>`.").
 			WithI18n("err.secret_as_query", "hint.secret_as_query")
@@ -407,19 +407,6 @@ func guardRootShorthandArgs(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
-}
-
-func looksLikeRawSecretToken(raw string) bool {
-	s := strings.TrimSpace(raw)
-	if len(s) < 16 || strings.ContainsAny(s, " \t\r\n") {
-		return false
-	}
-	for _, p := range redact.DefaultPrefixes {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return strings.HasPrefix(s, "BSA") && len(s) >= 24
 }
 
 func isAutoLangSetting(raw string) bool {
