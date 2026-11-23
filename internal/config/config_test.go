@@ -435,3 +435,65 @@ func TestConfigValidatesProviderBaseURLsAndRedactsCredentials(t *testing.T) {
 		t.Fatalf("explicit global/chars/qps config failed: cfg=%+v err=%v", loadedCustomGlobal, err)
 	}
 }
+
+func TestSaveVaultKeyOverwriteAppendAndDedupe(t *testing.T) {
+	dir := t.TempDir()
+
+	// 1. 不支持的 Provider 与仅含空白/逗号的空输入必须被拒绝；大小写自动归一。
+	if _, err := SaveVaultKey(dir, "unknown-prov", "sk-any", false); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.unsupported_provider" {
+		t.Fatalf("expected err.unsupported_provider, got %v", err)
+	}
+	for _, emptyRaw := range []string{"", "   ", " , \n , "} {
+		if _, err := SaveVaultKey(dir, spec.ProviderDeepSeek, emptyRaw, false); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.empty_api_key" {
+			t.Fatalf("expected err.empty_api_key for %q, got %v", emptyRaw, err)
+		}
+	}
+
+	// 2. 首次 append（尚无旧密钥）应归一 Provider 并直接写入去重。
+	res1, err := SaveVaultKey(dir, "DeepSeek", "sk-ds-1111, sk-ds-1111", true)
+	if err != nil || res1.Provider != spec.ProviderDeepSeek || !res1.Changed || res1.Added != 1 || res1.Duplicates != 1 || res1.Total != 1 {
+		t.Fatalf("first append = (%+v, %v)", res1, err)
+	}
+
+	// 3. 再次追加完全相同的密钥必须幂等返回 Changed=false 且不重写 secrets.json。
+	beforeRaw, err := os.ReadFile(res1.SecretsPath)
+	if err != nil {
+		t.Fatalf("read secrets.json: %v", err)
+	}
+	dupRes, err := SaveVaultKey(dir, spec.ProviderDeepSeek, " sk-ds-1111 ", true)
+	if err != nil || dupRes.Changed || dupRes.Added != 0 || dupRes.Duplicates != 1 || dupRes.Total != 1 {
+		t.Fatalf("duplicate append = (%+v, %v)", dupRes, err)
+	}
+	afterRaw, err := os.ReadFile(res1.SecretsPath)
+	if err != nil || string(afterRaw) != string(beforeRaw) {
+		t.Fatalf("duplicate append must not rewrite secrets.json: err=%v", err)
+	}
+
+	// 4. 追加部分重复多密钥应保序合并去重。
+	addRes, err := SaveVaultKey(dir, spec.ProviderDeepSeek, "sk-ds-1111, sk-ds-2222\nsk-ds-3333, sk-ds-2222", true)
+	if err != nil || !addRes.Changed || addRes.Added != 2 || addRes.Duplicates != 2 || addRes.Total != 3 {
+		t.Fatalf("partial duplicate append = (%+v, %v)", addRes, err)
+	}
+	got, err := credentials.NewVault(dir).Get(spec.ProviderDeepSeek)
+	if err != nil || got != "sk-ds-1111,sk-ds-2222,sk-ds-3333" {
+		t.Fatalf("vault value after append = (%q, %v)", got, err)
+	}
+
+	// 5. 覆盖模式（appendMode=false）替换全部旧密钥并规范去重。
+	overRes, err := SaveVaultKey(dir, spec.ProviderDeepSeek, "sk-ds-new-1, sk-ds-new-2, sk-ds-new-1", false)
+	if err != nil || !overRes.Changed || overRes.Added != 2 || overRes.Duplicates != 1 || overRes.Total != 2 {
+		t.Fatalf("overwrite multi-key = (%+v, %v)", overRes, err)
+	}
+	if got, _ = credentials.NewVault(dir).Get(spec.ProviderDeepSeek); got != "sk-ds-new-1,sk-ds-new-2" {
+		t.Fatalf("vault value after overwrite = %q", got)
+	}
+
+	// 6. 损坏的 secrets.json 在 append 模式下必须报错拒绝，绝不静默覆盖。
+	damagedDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(damagedDir, spec.SecretsFileName), []byte("{corrupt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveVaultKey(damagedDir, spec.ProviderDeepSeek, "sk-ds-9999", true); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_decrypt_failed" {
+		t.Fatalf("expected err.vault_decrypt_failed on corrupt vault append, got %v", err)
+	}
+}

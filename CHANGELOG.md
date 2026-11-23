@@ -7,6 +7,7 @@
 ### 新增
 
 - 新增 `veri config set / get / unset` 与 `veri config show --overrides`，支持按需读写单个配置项。
+- `veri key set` 新增 `-a/--append`，支持向同一源追加多把密钥并自动去重。
 - 新增 `veri key import`，支持从 `config.toml` 或 `.env` 批量加密导入密钥。
 
 ### 变更

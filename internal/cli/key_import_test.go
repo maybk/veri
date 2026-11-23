@@ -99,6 +99,31 @@ func TestCLIKeyImportFromConfigAndDoctorGuidance(t *testing.T) {
 	if code != 0 || noneErr != "" || !strings.Contains(noneOut, "未在") {
 		t.Fatalf("repeat import on clean config failed: code=%d out=%s err=%s", code, noneOut, noneErr)
 	}
+
+	// 6. 从 config init 模板取消注释填明文后迁入，自动还原为注释默认项与注释表头（零覆盖、零明文）。
+	tplCfg := filepath.Join(t.TempDir(), "config.toml")
+	if code, _, errOut := runKeyImportCLI(t, tplCfg, "", "--ui-lang", "zh", "config", "init"); code != 0 {
+		t.Fatalf("config init failed: code=%d err=%s", code, errOut)
+	}
+	tplRaw, err := os.ReadFile(tplCfg)
+	if err != nil {
+		t.Fatalf("read init template: %v", err)
+	}
+	tplEdited := strings.Replace(string(tplRaw), "# [providers.keenable]\n# api_key = \"env:KEENABLE_API_KEY\"", "[providers.keenable]\napi_key = \"kn-cli-tpl-secret-7777\"", 1)
+	if err := os.WriteFile(tplCfg, []byte(tplEdited), 0o600); err != nil {
+		t.Fatalf("write patched template: %v", err)
+	}
+	if code, _, errOut := runKeyImportCLI(t, tplCfg, "", "--ui-lang", "zh", "key", "import", "--from-config"); code != 0 || errOut != "" {
+		t.Fatalf("template key import failed: code=%d err=%s", code, errOut)
+	}
+	tplRestored, _ := os.ReadFile(tplCfg)
+	if !strings.Contains(string(tplRestored), "# [providers.keenable]\n# api_key = \"env:KEENABLE_API_KEY\"") || strings.Contains(string(tplRestored), "kn-cli-tpl-secret-7777") {
+		t.Fatalf("expected template restored to commented default without plaintext:\n%s", string(tplRestored))
+	}
+	code, ovJSON, _ := runKeyImportCLI(t, tplCfg, "", "config", "show", "--overrides", "--json")
+	if code != 0 || strings.TrimSpace(ovJSON) != "{}" {
+		t.Fatalf("expected zero overrides after restoring template key, code=%d out=%q", code, ovJSON)
+	}
 }
 
 func TestCLIKeyImportFromEnvFileAndStdin(t *testing.T) {

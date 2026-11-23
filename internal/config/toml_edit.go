@@ -114,15 +114,8 @@ func applySetLineEdit(content, section, field, literal string) string {
 			continue
 		}
 		if k, comment, endIdx, ok := parseKeyAssignment(lines, i); ok && k == field {
-			newLine := leadingWhitespace(lines[i]) + field + " = " + literal
-			if comment != "" {
-				newLine += comment
-			}
-			out := make([]string, 0, len(lines)-(endIdx-i))
-			out = append(out, lines[:i]...)
-			out = append(out, newLine)
-			out = append(out, lines[endIdx+1:]...)
-			return joinLinesWithNewline(out)
+			newLine := leadingWhitespace(lines[i]) + field + " = " + literal + comment
+			return joinLinesWithNewline(replaceLineSpan(lines, i, endIdx, newLine))
 		} else if ok {
 			sectionIndent = leadingWhitespace(lines[i])
 			lastAssignEnd = endIdx
@@ -161,12 +154,19 @@ func applySetLineEdit(content, section, field, literal string) string {
 	return joinLinesWithNewline(lines)
 }
 
-// applyUnsetLineEdit 从指定 [section] 移除 field 赋值（含多行数组），并在段内完全为空时连带清理空表头。
+// applyUnsetLineEdit 从指定 [section] 移除 field 赋值（含多行数组与多行字符串），并在段内完全为空时连带清理空表头。
 func applyUnsetLineEdit(content, section, field string) (string, bool) {
+	return applyCleanSecretLineEdit(content, section, field, "")
+}
+
+// applyCleanSecretLineEdit 清理指定 [section] 下的键值赋值：
+// 当 defaultRef 非空且该行带行尾注释或所在段落包含紧贴段内注释（典型如 config init 参考模板）时，
+// 将其原地还原为注释默认引用 `# <field> = "<defaultRef>"`（段内再无其他生效项时将表头一并注释回 `# [section]`）；
+// 否则按稀疏配置语义移除该行与空表头。
+func applyCleanSecretLineEdit(content, section, field, defaultRef string) (string, bool) {
 	lines := splitLinesKeepNoTrailingEmpty(content)
 	curSection := ""
 	sectionStart := -1
-	removed := false
 
 	for i := 0; i < len(lines); i++ {
 		if sec, ok := parseSectionHeader(lines[i]); ok {
@@ -179,37 +179,86 @@ func applyUnsetLineEdit(content, section, field string) (string, bool) {
 		if curSection != section {
 			continue
 		}
-		if k, _, endIdx, ok := parseKeyAssignment(lines, i); ok {
-			if k == field {
-				lines = append(lines[:i], lines[endIdx+1:]...)
-				removed = true
-				break
-			}
+		k, trailingComment, endIdx, ok := parseKeyAssignment(lines, i)
+		if !ok {
+			continue
+		}
+		if k != field {
 			i = endIdx
+			continue
+		}
+
+		sectionEnd := findSectionEnd(lines, sectionStart)
+		restoreComment := defaultRef != "" && (trailingComment != "" || sectionHasBlockComment(lines, sectionStart, sectionEnd))
+		if restoreComment {
+			indent := leadingWhitespace(lines[i])
+			commentedLine := indent + "# " + field + " = " + strconv.Quote(defaultRef) + trailingComment
+			lines = replaceLineSpan(lines, i, endIdx, commentedLine)
+
+			if sectionStart >= 0 && !sectionHasActiveAssignment(lines, sectionStart) {
+				hdr := lines[sectionStart]
+				lines[sectionStart] = leadingWhitespace(hdr) + "# " + strings.TrimLeft(hdr, " \t")
+			}
+			return joinLinesWithNewline(lines), true
+		}
+
+		lines = append(lines[:i], lines[endIdx+1:]...)
+		if sectionStart >= 0 && sectionStart < len(lines) {
+			lines = pruneEmptySection(lines, sectionStart)
+		}
+		lines = trimBlankEdgesAndCollapse(lines)
+		if len(lines) == 0 {
+			return "", true
+		}
+		return joinLinesWithNewline(lines), true
+	}
+	return content, false
+}
+
+func findSectionEnd(lines []string, sectionStart int) int {
+	if sectionStart < 0 {
+		return len(lines)
+	}
+	for i := sectionStart + 1; i < len(lines); i++ {
+		if _, ok := parseSectionHeader(lines[i]); ok {
+			return i
 		}
 	}
-	if !removed {
-		return content, false
-	}
+	return len(lines)
+}
 
-	if sectionStart >= 0 && sectionStart < len(lines) {
-		lines = pruneEmptySection(lines, sectionStart)
+// sectionHasBlockComment 判断当前 section 紧贴块内（遇到首个空行之前）是否包含 '#' 注释行，
+// 避免将空行之后属于下一个 section 的前置注释误判为本段注释。
+func sectionHasBlockComment(lines []string, sectionStart, sectionEnd int) bool {
+	if sectionStart < 0 {
+		return false
 	}
-	lines = trimBlankEdgesAndCollapse(lines)
-	if len(lines) == 0 {
-		return "", true
+	for i := sectionStart + 1; i < sectionEnd; i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			return false
+		}
+		if strings.HasPrefix(trimmed, "#") {
+			return true
+		}
 	}
-	return joinLinesWithNewline(lines), true
+	return false
+}
+
+func sectionHasActiveAssignment(lines []string, sectionStart int) bool {
+	sectionEnd := findSectionEnd(lines, sectionStart)
+	for i := sectionStart + 1; i < sectionEnd; i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func pruneEmptySection(lines []string, sectionStart int) []string {
-	sectionEnd := len(lines)
-	for i := sectionStart + 1; i < len(lines); i++ {
-		if _, ok := parseSectionHeader(lines[i]); ok {
-			sectionEnd = i
-			break
-		}
-	}
+	sectionEnd := findSectionEnd(lines, sectionStart)
 	// 段内若仍有任何赋值行，或存在紧贴表头的段内注释，则保留表头。
 	seenBlank := false
 	for i := sectionStart + 1; i < sectionEnd; i++ {
@@ -278,21 +327,41 @@ func parseSectionHeader(line string) (string, bool) {
 	return sec, true
 }
 
+func replaceLineSpan(lines []string, startIdx, endIdx int, replacement string) []string {
+	out := make([]string, 0, len(lines)-(endIdx-startIdx))
+	out = append(out, lines[:startIdx]...)
+	out = append(out, replacement)
+	out = append(out, lines[endIdx+1:]...)
+	return out
+}
+
 func parseKeyAssignment(lines []string, startIdx int) (key, trailingComment string, endIdx int, ok bool) {
-	trimmed := strings.TrimSpace(lines[startIdx])
+	line := lines[startIdx]
+	trimmed := strings.TrimSpace(line)
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "[") {
 		return "", "", startIdx, false
 	}
-	eqIdx := strings.IndexByte(trimmed, '=')
-	if eqIdx <= 0 {
+	origEq := strings.IndexByte(line, '=')
+	if origEq <= 0 {
 		return "", "", startIdx, false
 	}
-	rawKey := strings.TrimSpace(trimmed[:eqIdx])
+	rawKey := strings.TrimSpace(line[:origEq])
 	if !isBareTOMLKey(rawKey) {
 		return "", "", startIdx, false
 	}
-	valPart := trimmed[eqIdx+1:]
-	depth, commentIdx := scanTOMLValueLine(valPart, 0)
+	afterEq := line[origEq+1:]
+	valTrim := strings.TrimLeft(afterEq, " \t")
+	if strings.HasPrefix(valTrim, `"""`) || strings.HasPrefix(valTrim, "'''") {
+		delim := valTrim[:3]
+		var closed bool
+		endIdx, trailingComment, closed = scanMultilineTOMLString(lines, startIdx, origEq+1, delim)
+		if !closed {
+			return "", "", startIdx, false
+		}
+		return rawKey, trailingComment, endIdx, true
+	}
+
+	depth, commentIdx := scanTOMLValueLine(afterEq, 0)
 	endIdx = startIdx
 	for depth > 0 && endIdx+1 < len(lines) {
 		endIdx++
@@ -300,20 +369,65 @@ func parseKeyAssignment(lines []string, startIdx int) (key, trailingComment stri
 	}
 	if endIdx == startIdx && commentIdx >= 0 {
 		// 保留原始赋值行上 '#' 之前的对齐空格与行尾注释。
-		origEq := strings.IndexByte(lines[startIdx], '=')
-		if origEq >= 0 {
-			afterEq := lines[startIdx][origEq+1:]
-			_, origCommentIdx := scanTOMLValueLine(afterEq, 0)
-			if origCommentIdx >= 0 {
-				prefixEnd := origCommentIdx
-				for prefixEnd > 0 && (afterEq[prefixEnd-1] == ' ' || afterEq[prefixEnd-1] == '\t') {
-					prefixEnd--
-				}
-				trailingComment = afterEq[prefixEnd:]
-			}
-		}
+		trailingComment = sliceTrailingComment(afterEq, commentIdx)
 	}
 	return rawKey, trailingComment, endIdx, true
+}
+
+func sliceTrailingComment(s string, commentIdx int) string {
+	prefixEnd := commentIdx
+	for prefixEnd > 0 && (s[prefixEnd-1] == ' ' || s[prefixEnd-1] == '\t') {
+		prefixEnd--
+	}
+	return s[prefixEnd:]
+}
+
+func scanMultilineTOMLString(lines []string, startIdx, valStart int, delim string) (int, string, bool) {
+	openOff := strings.Index(lines[startIdx][valStart:], delim)
+	if openOff < 0 {
+		return startIdx, "", false
+	}
+	col := valStart + openOff + len(delim)
+	for lineIdx := startIdx; lineIdx < len(lines); lineIdx++ {
+		end, closed := findMultilineStringClose(lines[lineIdx], col, delim)
+		if closed {
+			var comment string
+			if lineIdx == startIdx && end < len(lines[lineIdx]) {
+				rest := lines[lineIdx][end:]
+				if hashIdx := strings.IndexByte(rest, '#'); hashIdx >= 0 {
+					comment = sliceTrailingComment(rest, hashIdx)
+				}
+			}
+			return lineIdx, comment, true
+		}
+		col = 0
+	}
+	return startIdx, "", false
+}
+
+func findMultilineStringClose(line string, startCol int, delim string) (int, bool) {
+	quote := delim[0]
+	basic := quote == '"'
+	escaped := false
+	for j := startCol; j < len(line); j++ {
+		if basic && escaped {
+			escaped = false
+			continue
+		}
+		if basic && line[j] == '\\' {
+			escaped = true
+			continue
+		}
+		if strings.HasPrefix(line[j:], delim) {
+			end := j + len(delim)
+			// TOML 1.0 允许紧邻闭合三引号前额外存在 1～2 个同类引号，需一并消费。
+			for extra := 0; extra < 2 && end < len(line) && line[end] == quote; extra++ {
+				end++
+			}
+			return end, true
+		}
+	}
+	return -1, false
 }
 
 func leadingWhitespace(line string) string {

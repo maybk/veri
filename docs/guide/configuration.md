@@ -32,8 +32,9 @@
 
 ```bash
 # 凭据管理（无需 config.toml）
-veri key set deepseek                          # 交互隐藏输入并加密保存密钥
-printf '%s' "$EXA_API_KEY" | veri key set exa  # 从标准输入导入单个密钥
+veri key set deepseek                          # 交互隐藏输入并覆盖保存密钥（多把用逗号分隔）
+veri key set deepseek -a                       # 追加新密钥并自动去重（不覆盖原密钥）
+printf '%s' "$EXA_API_KEY" | veri key set exa  # 从标准输入保存密钥
 veri key import --from-config                  # 加密迁入 config.toml 明文密钥并清理明文
 veri key import .env                           # 从 .env 批量加密导入（`-` 表示标准输入）
 veri key list                                  # 查看各源凭据来源与加密状态
@@ -53,7 +54,7 @@ veri config init                               # 生成全注释参考模板（�
 veri config path                               # 输出生效的配置文件路径
 ```
 
-`config.toml` 启用严格键名与值校验；`veri config set` 禁止向 `api_key` / `token` 写入明文（仅允许 `env:VAR_NAME`），密钥请通过 `veri key set <provider>` 或 `veri key import` 加密保存。使用 `veri key import --from-config` 迁入明文密钥后会自动清理明文行，并保留注释、`env:` 引用与其他配置（支持 `--dry-run` 预览、`--overwrite` 覆盖冲突与 `--keep-config` 保留原文件）。
+`config.toml` 启用严格键名与值校验；`veri config set` 禁止向 `api_key` / `token` 写入明文（仅允许 `env:VAR_NAME`），密钥请通过 `veri key set <provider>` 或 `veri key import` 加密保存。`veri key import --from-config` 导入后会自动清理明文（模板注释段还原为默认注释，稀疏明文行直接移除），保留其他配置与 `env:` 引用，并支持 `--dry-run` 预览、`--overwrite` 覆盖冲突与 `--keep-config` 保留原文件。
 
 ## 核心配置字段
 

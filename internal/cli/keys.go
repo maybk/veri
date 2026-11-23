@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,66 +38,115 @@ func newKeyCmd(rt *runtimeEnv) *cobra.Command {
 }
 
 func newKeySetCmd(rt *runtimeEnv) *cobra.Command {
+	var appendMode bool
 	cmd := &cobra.Command{
 		Use:               "set <provider>",
 		Short:             rt.cat.T("key.set.short"),
 		Long:              rt.cat.T("key.set.long"),
 		Example:           rt.cat.T("key.set.example"),
 		ValidArgsFunction: completeCredentialProviderArg,
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return core.NewError(core.CodeInvalidArgument, "provider name is required").
-					WithMsgKey("err.missing_key_provider")
-			}
-			if len(args) > 1 {
-				// 严禁在错误消息中回显可能包含明文密钥的额外位置参数
-				return core.NewError(core.CodeInvalidArgument, "API key cannot be passed as a positional argument").
-					WithHint("Run `veri key set <provider>` interactively or pipe the key via stdin.").
-					WithI18n("err.key_positional_secret", "hint.key_positional_secret")
-			}
-			return nil
-		},
+		Args:              validateKeyProviderArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			provider, ok := spec.NormalizeCredentialProvider(args[0])
-			if !ok {
-				valid := strings.Join(spec.CredentialProviders(), ", ")
-				return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", args[0], valid)).
-					WithMsgKey("err.unsupported_provider").
-					WithParam("provider", args[0]).
-					WithParam("valid", valid)
-			}
-
-			prompt := rt.cat.T("key.set.prompt", "provider", provider)
-			secret, err := term.ReadSecret(cmd.Context(), rt.stdin, rt.stderr, prompt, false)
-			if err != nil {
-				if isInputInterrupted(err) {
-					return handledExitError{code: clikit.ExitInterrupted}
-				}
-				return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
-			}
-
-			if secret == "" {
-				return core.NewError(core.CodeInvalidArgument, "API key must not be empty").
-					WithHint("Paste a valid API key and press Enter, or press Ctrl+C to cancel.").
-					WithI18n("err.empty_api_key", "hint.empty_api_key")
-			}
-
-			cfgDir, err := config.ResolveDir(rt.flags.configPath, rt.getenv)
-			if err != nil {
-				return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
-			}
-			vault := credentials.NewVault(cfgDir)
-			if err := vault.Set(provider, secret); err != nil {
-				return core.WrapError(core.CodeInternal, err.Error(), err)
-			}
-			_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.set.done",
-				"provider", provider,
-				"path", vault.SecretsPath(),
-			))
-			return nil
+			return runKeySaveCmd(cmd, rt, args[0], appendMode)
 		},
 	}
+	cmd.Flags().BoolVarP(&appendMode, "append", "a", false, rt.cat.T("key.set.flag.append"))
 	return cmd
+}
+
+func validateKeyProviderArgs(_ *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return core.NewError(core.CodeInvalidArgument, "provider name is required").
+			WithMsgKey("err.missing_key_provider")
+	}
+	if len(args) > 1 {
+		// 严禁在错误消息中回显可能包含明文密钥的额外位置参数
+		return core.NewError(core.CodeInvalidArgument, "API key cannot be passed as a positional argument").
+			WithHint("Run `veri key set <provider>` interactively or pipe the key via stdin.").
+			WithI18n("err.key_positional_secret", "hint.key_positional_secret")
+	}
+	return nil
+}
+
+func normalizeCredentialProviderArg(raw string) (string, error) {
+	provider, ok := spec.NormalizeCredentialProvider(raw)
+	if !ok {
+		valid := strings.Join(spec.CredentialProviders(), ", ")
+		return "", core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", raw, valid)).
+			WithMsgKey("err.unsupported_provider").
+			WithParam("provider", raw).
+			WithParam("valid", valid)
+	}
+	return provider, nil
+}
+
+func runKeySaveCmd(cmd *cobra.Command, rt *runtimeEnv, rawProvider string, appendMode bool) error {
+	provider, err := normalizeCredentialProviderArg(rawProvider)
+	if err != nil {
+		return err
+	}
+
+	prompt := rt.cat.T("key.set.prompt", "provider", provider)
+	if appendMode {
+		prompt = rt.cat.T("key.set.append_prompt", "provider", provider)
+	}
+	secret, err := term.ReadSecret(cmd.Context(), rt.stdin, rt.stderr, prompt, false)
+	if err != nil {
+		if isInputInterrupted(err) {
+			return handledExitError{code: clikit.ExitInterrupted}
+		}
+		return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
+	}
+
+	cfgDir, err := config.ResolveDir(rt.flags.configPath, rt.getenv)
+	if err != nil {
+		return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
+	}
+	res, err := config.SaveVaultKey(cfgDir, provider, secret, appendMode)
+	if err != nil {
+		return err
+	}
+
+	if appendMode {
+		switch {
+		case !res.Changed:
+			_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.set.append_duplicate",
+				"provider", res.Provider,
+				"total", strconv.Itoa(res.Total),
+				"path", res.SecretsPath,
+			))
+		case res.Duplicates > 0:
+			_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.set.append_done_dedup",
+				"provider", res.Provider,
+				"added", strconv.Itoa(res.Added),
+				"skipped", strconv.Itoa(res.Duplicates),
+				"total", strconv.Itoa(res.Total),
+				"path", res.SecretsPath,
+			))
+		default:
+			_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.set.append_done",
+				"provider", res.Provider,
+				"added", strconv.Itoa(res.Added),
+				"total", strconv.Itoa(res.Total),
+				"path", res.SecretsPath,
+			))
+		}
+		return nil
+	}
+
+	if res.Total > 1 {
+		_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.set.done_multi",
+			"provider", res.Provider,
+			"total", strconv.Itoa(res.Total),
+			"path", res.SecretsPath,
+		))
+		return nil
+	}
+	_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.set.done",
+		"provider", res.Provider,
+		"path", res.SecretsPath,
+	))
+	return nil
 }
 
 func isInputInterrupted(err error) bool {
@@ -113,13 +163,9 @@ func newKeyUnsetCmd(rt *runtimeEnv) *cobra.Command {
 		ValidArgsFunction: completeCredentialProviderArg,
 		Args:              requireExactArgs(1, "err.missing_key_provider", ""),
 		RunE: func(_ *cobra.Command, args []string) error {
-			provider, ok := spec.NormalizeCredentialProvider(args[0])
-			if !ok {
-				valid := strings.Join(spec.CredentialProviders(), ", ")
-				return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", args[0], valid)).
-					WithMsgKey("err.unsupported_provider").
-					WithParam("provider", args[0]).
-					WithParam("valid", valid)
+			provider, err := normalizeCredentialProviderArg(args[0])
+			if err != nil {
+				return err
 			}
 			cfgDir, err := config.ResolveDir(rt.flags.configPath, rt.getenv)
 			if err != nil {

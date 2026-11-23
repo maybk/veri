@@ -51,8 +51,9 @@ veri fetch https://github.com/modelcontextprotocol/go-sdk/blob/main/README.md#L1
 推荐通过 `veri key set <provider>` 交互式写入密钥。命令会自动隐藏终端输入并将凭据加密保存在本机 `~/.config/veri/secrets.json`（Windows 为 `%USERPROFILE%\.config\veri\secrets.json`），CLI 与 `veri mcp` 自动共享，避免明文密钥残留在 Shell 历史或共享配置中：
 
 ```bash
-# 1. 交互式无回显保存密钥（按需替换为上表任意标识）
+# 1. 交互式无回显保存密钥（默认覆盖，多把用逗号分隔；追加加 -a / --append）
 veri key set deepseek
+veri key set deepseek -a                       # 追加密钥并自动去重（不覆盖原密钥）
 
 # 批量导入或从标准输入导入
 printf '%s' "$EXA_API_KEY" | veri key set exa

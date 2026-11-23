@@ -255,7 +255,8 @@ func prepareCleanedConfigTOML(path, normalized string, origCfg Config, origMeta 
 	edited := normalized
 	cleanedSet := make(map[string]bool, len(cleanEntries))
 	for _, entry := range cleanEntries {
-		next, removed := applyUnsetLineEdit(edited, entry.info.Section, entry.info.Field)
+		defaultRef := spec.DefaultEnvRef(entry.info.Provider)
+		next, removed := applyCleanSecretLineEdit(edited, entry.info.Section, entry.info.Field, defaultRef)
 		if !removed {
 			return "", manualEditError(entry.info.Key, path, "inline or dotted table syntax requires manual edit")
 		}
@@ -265,11 +266,11 @@ func prepareCleanedConfigTOML(path, normalized string, origCfg Config, origMeta 
 
 	rawCandidate, meta, err := decodeKnownTOML(path, edited)
 	if err != nil {
-		return "", err
+		return "", manualEditError(cleanEntries[0].info.Key, path, "complex table syntax requires manual edit")
 	}
 	validated := rawCandidate
 	if err := validateConfig(&validated); err != nil {
-		return "", err
+		return "", manualEditError(cleanEntries[0].info.Key, path, "edited config validation failed")
 	}
 	for _, entry := range cleanEntries {
 		if meta.IsDefined(strings.Split(entry.info.Key, ".")...) {
@@ -285,10 +286,7 @@ func prepareCleanedConfigTOML(path, normalized string, origCfg Config, origMeta 
 func loadVaultSecrets(vault *credentials.Vault, cfgDir string) (map[string]string, error) {
 	secrets, err := vault.LoadAll()
 	if err != nil {
-		return nil, core.WrapError(core.CodeAuthFailed, fmt.Sprintf("failed to load encrypted credentials in %q: %v", cfgDir, err), err).
-			WithHint("Check file permissions or re-save the damaged credential via `veri key set <provider>`.").
-			WithI18n("err.vault_decrypt_failed", "hint.vault_decrypt_failed").
-			WithParam("dir", cfgDir)
+		return nil, vaultDecryptError(cfgDir, err)
 	}
 	return secrets, nil
 }

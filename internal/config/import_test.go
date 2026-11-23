@@ -115,6 +115,7 @@ func TestImportKeysFromConfigLifecycleAndSafety(t *testing.T) {
 	}
 	for _, mustKeep := range []string{
 		"# user top comment",
+		`# api_key = "env:DEEPSEEK_API_KEY"  # multi-key pool`,
 		`timeout = "15s"`,
 		`api_key = "env:CUSTOM_ZHIHU_KEY"`,
 		`scope = "zhihu"`,
@@ -197,6 +198,118 @@ func TestImportKeysFromConfigKeepConfigAndEmptyRemoval(t *testing.T) {
 	}
 	if _, statErr := os.Stat(cfgPath); !os.IsNotExist(statErr) {
 		t.Fatalf("expected empty config.toml to be removed, stat err=%v", statErr)
+	}
+}
+
+func TestImportKeysFromConfigRestoresCommentedTemplate(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	if err := WriteTemplateForLocale(cfgPath, false, "zh-CN"); err != nil {
+		t.Fatalf("WriteTemplateForLocale: %v", err)
+	}
+	origTemplateBytes, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read template: %v", err)
+	}
+	origTemplate := string(origTemplateBytes)
+
+	// 模拟用户从 config init 模板取消注释并填入明文：
+	// - keenable 与 github 仅填写明文（段内无其他生效项，应连同表头完整还原回模板注释）
+	// - zhihu 同时启用 scope = "zhihu"（应保留 [providers.zhihu] 与 scope，仅将 api_key 还原为注释默认项）
+	edited := origTemplate
+	edited = strings.Replace(edited, "# [providers.keenable]\n# api_key = \"env:KEENABLE_API_KEY\"", "[providers.keenable]\napi_key = \"kn-template-secret-1111\"", 1)
+	edited = strings.Replace(edited, "# [providers.zhihu]\n# api_key = \"env:ZHIHU_API_KEY\"\n# scope = \"global\"", "[providers.zhihu]\napi_key = \"zh-template-secret-2222\"\nscope = \"zhihu\"", 1)
+	edited = strings.Replace(edited, "# [providers.github]\n# enabled = true\n# token = \"env:GITHUB_TOKEN\"", "[providers.github]\n# enabled = true\ntoken = \"ghp_template_token_3333\"", 1)
+	if edited == origTemplate {
+		t.Fatal("failed to patch template test fixture")
+	}
+	if err := os.WriteFile(cfgPath, []byte(edited), 0o600); err != nil {
+		t.Fatalf("write patched template: %v", err)
+	}
+
+	res, err := ImportKeysFromConfig(cfgPath, ImportOptions{})
+	if err != nil {
+		t.Fatalf("ImportKeysFromConfig on template: %v", err)
+	}
+	if res.ImportedCount != 3 || !res.ConfigUpdated || res.ConfigRemoved {
+		t.Fatalf("unexpected template import result: %+v", res)
+	}
+
+	afterBytes, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read restored template: %v", err)
+	}
+	afterText := string(afterBytes)
+	for _, leaked := range []string{"kn-template-secret-1111", "zh-template-secret-2222", "ghp_template_token_3333"} {
+		if strings.Contains(afterText, leaked) {
+			t.Fatalf("restored template leaked plaintext %q", leaked)
+		}
+	}
+	for _, wantSnippet := range []string{
+		"# [providers.keenable]\n# api_key = \"env:KEENABLE_API_KEY\"        # 默认留存查询与结果，敏感场景可设 enabled = false",
+		"[providers.zhihu]\n# api_key = \"env:ZHIHU_API_KEY\"\nscope = \"zhihu\"",
+		"# [providers.github]\n# enabled = true\n# token = \"env:GITHUB_TOKEN\"              # 可选：配置 GitHub Token 提高接口配额",
+	} {
+		if !strings.Contains(afterText, wantSnippet) {
+			t.Fatalf("expected restored template to contain:\n%s\ngot:\n%s", wantSnippet, afterText)
+		}
+	}
+
+	// 验证还原后的文件加载结果：仅剩 zhihu.scope 覆盖，3 个源凭据全部生效自 secrets.json，零明文。
+	loaded, err := LoadWithEnv(cfgPath, func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("LoadWithEnv after template restore: %v", err)
+	}
+	if len(loaded.PlaintextProviders) != 0 {
+		t.Fatalf("expected zero plaintext providers, got %v", loaded.PlaintextProviders)
+	}
+	if !loaded.DefinedKeys["providers.zhihu.scope"] || loaded.DefinedKeys["providers.keenable.api_key"] || loaded.DefinedKeys["providers.github.token"] {
+		t.Fatalf("unexpected DefinedKeys after template restore: %v", loaded.DefinedKeys)
+	}
+	for prov, wantKey := range map[string]string{
+		spec.ProviderKeenable: "kn-template-secret-1111",
+		spec.ProviderZhihu:    "zh-template-secret-2222",
+		spec.ProviderGitHub:   "ghp_template_token_3333",
+	} {
+		cred := loaded.Credentials[prov]
+		if cred.Source != spec.SecretsFileName || !slices.Equal(cred.Keys, []string{wantKey}) {
+			t.Fatalf("expected %s from secrets.json with %q, got %+v", prov, wantKey, cred)
+		}
+	}
+
+	// 验证空行之后的下一段前置注释不会被误判为当前段内注释（纯稀疏段依然彻底移除空表头）。
+	sparsePath := filepath.Join(t.TempDir(), "config.toml")
+	sparseRaw := "[providers.exa]\napi_key = \"exa-sparse-only-4444\"\n\n# zhihu custom section\n[providers.zhihu]\nscope = \"zhihu\"\n"
+	if err := os.WriteFile(sparsePath, []byte(sparseRaw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportKeysFromConfig(sparsePath, ImportOptions{}); err != nil {
+		t.Fatalf("sparse import with next-section comment: %v", err)
+	}
+	sparseAfter, _ := os.ReadFile(sparsePath)
+	wantSparse := "# zhihu custom section\n[providers.zhihu]\nscope = \"zhihu\"\n"
+	if string(sparseAfter) != wantSparse {
+		t.Fatalf("sparse cleanup broke next-section comment:\ngot:\n%s\nwant:\n%s", string(sparseAfter), wantSparse)
+	}
+
+	// 验证多行三引号密钥与 Windows CRLF 模板均能完整清理还原并保留 CRLF 行尾。
+	crlfDir := t.TempDir()
+	crlfPath := filepath.Join(crlfDir, "config.toml")
+	crlfRaw := "[providers.deepseek]\r\napi_key = \"\"\"\r\nsk-ml-1111,\r\nsk-ml-2222\r\n\"\"\"\r\n# timeout = \"10s\"\r\n"
+	if err := os.WriteFile(crlfPath, []byte(crlfRaw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	crlfRes, err := ImportKeysFromConfig(crlfPath, ImportOptions{})
+	if err != nil || crlfRes.ImportedCount != 1 {
+		t.Fatalf("multiline CRLF import = (%+v, %v)", crlfRes, err)
+	}
+	if got, _ := credentials.NewVault(crlfDir).Get(spec.ProviderDeepSeek); got != "sk-ml-1111,sk-ml-2222" {
+		t.Fatalf("unexpected multiline vault value: %q", got)
+	}
+	crlfAfter, _ := os.ReadFile(crlfPath)
+	wantCRLF := "# [providers.deepseek]\r\n# api_key = \"env:DEEPSEEK_API_KEY\"\r\n# timeout = \"10s\"\r\n"
+	if string(crlfAfter) != wantCRLF {
+		t.Fatalf("multiline CRLF template restore mismatch:\ngot:  %q\nwant: %q", string(crlfAfter), wantCRLF)
 	}
 }
 
