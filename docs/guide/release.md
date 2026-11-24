@@ -4,8 +4,8 @@
 
 ## 相关文件
 
-- [`ci.yml`](../../.github/workflows/ci.yml)：`main` 分支推送与 Pull Request 的格式检查、静态扫描、漏洞扫描、竞态测试与契约门禁，同时供发布工作流复用
-- [`release-assets.yml`](../../.github/workflows/release-assets.yml)：正式版与 Rolling 共用的三端六架构原生测试与静态归档构建流水线
+- [`ci.yml`](../../.github/workflows/ci.yml)：`main` 推送与 PR 的质量门禁（静态/漏洞扫描、契约测试、六架构交叉编译、三端 `-race` 测试与 Artifact 往返校验）；被发布工作流复用时自动跳过与 `release-assets.yml` 重复的矩阵
+- [`release-assets.yml`](../../.github/workflows/release-assets.yml)：正式版与 Rolling 共用的三端六架构原生测试（含 macOS、Linux 与 Windows `amd64` `-race`）、静态归档构建与条目完整性校验流水线
 - [`rolling.yml`](../../.github/workflows/rolling.yml)：每日定时或手动按需构建 `main` 分支未发布提交并更新 `v<version>-pre` 预发布
 - [`release.yml`](../../.github/workflows/release.yml)：`vMAJOR.MINOR.PATCH` 版本标签触发的正式 GitHub Release 发布与过期 Rolling 清理
 - [`extract_pending_version.sh`](../../scripts/extract_pending_version.sh)：读取并校验 `CHANGELOG.md` 顶部的待发布版本
@@ -33,7 +33,7 @@
   - `veri-<version>-windows-arm64.zip`
   - `SHA256SUMS.txt`（配置 `MINISIGN_SECRET_KEY` 时附带 `SHA256SUMS.txt.minisig`）
 - **Release 说明与下载表**：由 `render_release_notes.sh` 生成，展示更新内容与三端安装包下载徽章（`Windows` / `macOS` / `Linux`）；`SHA256SUMS.txt` 校验文件位于底部 `Assets`。
-- **草稿校验与清理**：正式版与 Rolling 均先生成并校验 `SHA256SUMS.txt`，再上传至 Draft Release 核验全部资产完整后公开；正式版公开后自动清理已被取代的 Rolling 预发布与标签。
+- **草稿校验与清理**：正式版与 Rolling 在跨 Job 下载产物时自动清理重试并校验 `SHA256SUMS.txt`，上传至 Draft Release 核验资产完整后再公开；正式版公开后自动清理已被取代的 Rolling 预发布与标签。
 
 ## 发布新版本
 

@@ -257,7 +257,24 @@ jobs:
           echo "should_replace=true" >> "$GITHUB_OUTPUT"
 
       - name: Download verified assets
+        id: download_assets
         if: steps.revalidate.outputs.should_replace == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release-files
+          merge-multiple: true
+
+      - name: Wait before retrying asset download
+        if: steps.revalidate.outputs.should_replace == 'true' && steps.download_assets.outcome == 'failure'
+        shell: bash
+        run: |
+          rm -rf release-files
+          sleep 5
+
+      - name: Retry downloading verified assets
+        if: steps.revalidate.outputs.should_replace == 'true' && steps.download_assets.outcome == 'failure'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-*

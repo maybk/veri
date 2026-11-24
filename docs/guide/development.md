@@ -6,7 +6,7 @@
 | --- | --- |
 | Go | `>= 1.27.4`，全程启用 `CGO_ENABLED=0` |
 | Task（可选） | `go-task` v3，用于执行 `Taskfile.yml` 开发、检查与跨平台打包任务 |
-| 静态与漏洞扫描（可选） | `golangci-lint` v2、`govulncheck`（未预装时 `task lint` / `task check` 自动通过 `go run` 按需执行） |
+| 静态与漏洞扫描（可选） | `golangci-lint` v2、`govulncheck`（未安装或版本不匹配时，`task lint` / `task check` 自动通过 `go run` 执行与 CI 一致的版本） |
 | Node.js（可选） | 仅在执行 `task dev` 启动 `@modelcontextprotocol/inspector` 调试面板时使用 |
 | 操作系统 | macOS、Windows `10/11` 或 Linux |
 
@@ -37,8 +37,8 @@ $env:CGO_ENABLED="0"; go build -trimpath -o bin/veri.exe .
 ```bash
 task fmt                        # 格式化全部 Go 源码
 task lint                       # 运行 go vet、golangci-lint 与 govulncheck
-task test                       # 运行全量单元测试与竞态检测
-task test:cover                 # 输出各包测试覆盖率
+task test                       # 运行全量单元测试（Unix 与 Windows amd64+gcc 自动启用 -race）
+task test:cover                 # 运行全量单元测试并输出各包覆盖率（-race 规则同上）
 task check                      # 运行完整质量门禁（格式、扫描、竞态单测、契约测试与空白检查）
 ```
 

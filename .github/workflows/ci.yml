@@ -31,6 +31,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -39,34 +40,31 @@ jobs:
           cache: true
 
       - name: Check Go formatting and static analysis
+        shell: bash
         run: |
+          set -euo pipefail
           unformatted="$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
           if [ -n "$unformatted" ]; then
             echo "Unformatted Go files:" >&2
             printf '%s\n' "$unformatted" >&2
             exit 1
           fi
-          for goos in linux darwin windows; do
-            GOOS="$goos" GOARCH=amd64 go vet ./...
+          for target in linux/amd64 darwin/arm64 windows/amd64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go vet ./...
           done
 
-      - name: Verify live test build tag and cross-platform compilation
+      - name: Verify live test build tag
         shell: bash
         run: |
           set -euo pipefail
           go test -tags live -c -o /dev/null ./internal/provider/providertest
-          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
-            goos="${target%/*}"
-            goarch="${target#*/}"
-            ext=""
-            [ "$goos" = "windows" ] && ext=".exe"
-            out="$RUNNER_TEMP/veri-${goos}-${goarch}${ext}"
-            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath -o "$out" .
-            test -s "$out"
-          done
 
       - name: Run build and release contract tests
+        shell: bash
         run: |
+          set -euo pipefail
           bash scripts/test_extract_pending_version.sh
           bash scripts/test_extract_release_notes.sh
           bash scripts/test_prepare_release.sh
@@ -83,8 +81,47 @@ jobs:
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 
+  cross-build:
+    name: Cross-compile all 6 targets
+    if: github.workflow == 'CI'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify 6-target static cross-compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            ext=""
+            [ "$goos" = "windows" ] && ext=".exe"
+            out="$RUNNER_TEMP/veri-${goos}-${goarch}${ext}"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath -o "$out" .
+            test -s "$out"
+            meta="$(go version -m "$out")"
+            grep -Fq "GOOS=$goos" <<<"$meta"
+            grep -Fq "GOARCH=$goarch" <<<"$meta"
+            grep -Fq "CGO_ENABLED=0" <<<"$meta"
+          done
+
   test:
     name: Test & Smoke (${{ matrix.os }})
+    if: github.workflow == 'CI'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -98,6 +135,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -105,15 +143,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run tests with race detector (Unix)
-        if: matrix.os != 'windows-latest'
+      - name: Run tests with race detector
         env:
           CGO_ENABLED: "1"
         run: go test -race ./...
-
-      - name: Run tests (Windows CGO_ENABLED=0)
-        if: matrix.os == 'windows-latest'
-        run: go test ./...
 
       - name: Build static binary and run cross-platform smoke checks
         shell: bash
@@ -122,6 +155,8 @@ jobs:
           ext="$(go env GOEXE)"
           bin_path="bin/veri${ext}"
           go build -trimpath -o "$bin_path" .
+          meta="$(go version -m "$bin_path")"
+          grep -Fq "CGO_ENABLED=0" <<<"$meta"
           "./$bin_path" version
           "./$bin_path" providers --json >/dev/null
           "./$bin_path" --help >/dev/null
@@ -178,12 +213,14 @@ jobs:
           path: ${{ runner.temp }}/artifact-download
 
       - name: Wait before retrying artifact download
-        if: steps.download.outcome != 'success'
+        if: steps.download.outcome == 'failure'
         shell: bash
-        run: sleep 5
+        run: |
+          rm -rf "$RUNNER_TEMP/artifact-download"
+          sleep 5
 
       - name: Retry artifact download
-        if: steps.download.outcome != 'success'
+        if: steps.download.outcome == 'failure'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-artifact-roundtrip
