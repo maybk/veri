@@ -141,8 +141,8 @@ jobs:
             exit 1
           }
 
-  artifact-roundtrip:
-    name: Verify artifact upload and download
+  artifact-upload:
+    name: Upload CI artifact payload
     needs: lint
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -161,8 +161,29 @@ jobs:
           path: ${{ runner.temp }}/artifact-source/payload.txt
           if-no-files-found: error
           retention-days: 1
+          overwrite: true
 
+  artifact-roundtrip:
+    name: Verify artifact upload and download
+    needs: artifact-upload
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
       - name: Download artifact payload
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ci-artifact-roundtrip
+          path: ${{ runner.temp }}/artifact-download
+
+      - name: Wait before retrying artifact download
+        if: steps.download.outcome != 'success'
+        shell: bash
+        run: sleep 5
+
+      - name: Retry artifact download
+        if: steps.download.outcome != 'success'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-artifact-roundtrip
@@ -170,7 +191,7 @@ jobs:
 
       - name: Verify artifact payload
         shell: bash
-        run: >-
-          cmp --silent
-          "$RUNNER_TEMP/artifact-source/payload.txt"
-          "$RUNNER_TEMP/artifact-download/payload.txt"
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'veri-ci-artifact-roundtrip' > "$RUNNER_TEMP/expected.txt"
+          cmp --silent "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/artifact-download/payload.txt"

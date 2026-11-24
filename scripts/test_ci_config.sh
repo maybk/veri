@@ -68,8 +68,10 @@ for required_ci in \
   'go-version-file: go.mod' \
   'go test -race ./...' \
   'CGO_ENABLED: "1"' \
+  'artifact-upload:' \
   'artifact-roundtrip:' \
   'if-no-files-found: error' \
+  'overwrite: true' \
   'cmp --silent'; do
   if ! grep -Fq "$required_ci" "$ci_workflow"; then
     echo "ci.yml is missing required gate: $required_ci" >&2
