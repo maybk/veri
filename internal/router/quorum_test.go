@@ -145,10 +145,28 @@ func TestSearchEmptyFallbackQuorum(t *testing.T) {
 		FallbackOnEmpty: true,
 	}, []core.Provider{s1, s2, s3, s4})
 
-	env, err := r.Search(context.Background(), &core.SearchRequest{
+	// auto 模式优先原生 Sites 源：native_a 与 native_b 连续 2 次 empty 即达法定数停止，跳过 emulated_src 与 native_c
+	envAuto, err := r.Search(context.Background(), &core.SearchRequest{
 		Query:   "nonexistent_token",
 		Count:   3,
 		Filters: core.Filters{Sites: []string{"rare.example"}},
+	})
+	if err != nil || !envAuto.OK {
+		t.Fatalf("unexpected auto error: %v", err)
+	}
+	if len(envAuto.Meta.Providers) != 2 || envAuto.Meta.Providers[0].Name != "native_a" || envAuto.Meta.Providers[1].Name != "native_b" {
+		t.Fatalf("expected auto to hit 2 native empties directly before emulated/native_c, got %+v", envAuto.Meta.Providers)
+	}
+	if len(envAuto.Results) != 0 {
+		t.Fatalf("expected 0 results after native quorum, got %+v", envAuto.Results)
+	}
+
+	// 显式指定顺序（-p）时 emulated_src 排首位但不计入原生否定法定数，需再经 2 家原生源空结果才在 native_c 前停止
+	env, err := r.Search(context.Background(), &core.SearchRequest{
+		Query:     "nonexistent_token",
+		Count:     3,
+		Providers: []string{"emulated_src", "native_a", "native_b", "native_c"},
+		Filters:   core.Filters{Sites: []string{"rare.example"}},
 	})
 	if err != nil || !env.OK {
 		t.Fatalf("unexpected error: %v", err)

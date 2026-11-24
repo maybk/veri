@@ -15,6 +15,7 @@ type fusedCluster struct {
 	firstChainIdx int
 	providers     []string
 	seenBranches  map[int]struct{}
+	groupScores   map[string]float64
 	members       []clusterMember
 	anchorCK      resultContentKey
 	merged        core.Result
@@ -25,9 +26,10 @@ func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limi
 	var clusters []*fusedCluster
 	contentDeduped := 0
 
-	// 阶段 1：精确 URL + 内容指纹双阶段聚簇与同分支单票 RRF 计分
+	// 阶段 1：精确 URL + 内容指纹双阶段聚簇与同凭据组最大池化 RRF 计分
 	for _, br := range branches {
 		w := weightFn(br.name)
+		group := providerGroup(br.name)
 		for idx, item := range br.results {
 			rank := idx + 1
 			rrfTerm := w / float64(k+rank)
@@ -58,6 +60,7 @@ func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limi
 				result:   item.Clone(),
 				urlKey:   uKey,
 				branchID: br.chainIdx,
+				group:    group,
 				rank:     rank,
 			}
 
@@ -67,6 +70,7 @@ func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limi
 					firstChainIdx: br.chainIdx,
 					providers:     []string{br.name},
 					seenBranches:  map[int]struct{}{br.chainIdx: {}},
+					groupScores:   map[string]float64{group: rrfTerm},
 					members:       []clusterMember{member},
 					anchorCK:      ck,
 				}
@@ -77,11 +81,17 @@ func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limi
 				continue
 			}
 
-			// 同一检索分支在同一内容聚类中最多贡献一次 RRF 计分，防止同分支多条转载放大权重并污染 providers[]。
+			// 同一检索分支最多记录一次来源；同一凭据组（如 zhihu 与 zhihu_web）取组内最大 RRF 贡献，防止高相关同源双票放大。
 			if _, scored := cl.seenBranches[br.chainIdx]; !scored {
 				cl.seenBranches[br.chainIdx] = struct{}{}
-				cl.score += rrfTerm
 				cl.providers = append(cl.providers, br.name)
+				if prev, ok := cl.groupScores[group]; !ok {
+					cl.groupScores[group] = rrfTerm
+					cl.score += rrfTerm
+				} else if rrfTerm > prev {
+					cl.score += rrfTerm - prev
+					cl.groupScores[group] = rrfTerm
+				}
 			}
 			cl.members = append(cl.members, member)
 			upgradeAnchorKey(&cl.anchorCK, ck)
@@ -105,7 +115,7 @@ func fuseRRF(branches []branchResult, k int, weightFn func(string) float64, limi
 			relB = *b.merged.Relevance
 		}
 		return cmp.Or(
-			cmp.Compare(len(b.merged.Providers), len(a.merged.Providers)),
+			cmp.Compare(len(b.groupScores), len(a.groupScores)),
 			cmp.Compare(relB, relA),
 			cmp.Compare(a.firstChainIdx, b.firstChainIdx),
 		)

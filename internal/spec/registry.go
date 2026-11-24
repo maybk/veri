@@ -253,8 +253,7 @@ func DefaultEnvRef(provider string) string {
 	return "env:" + vars[0]
 }
 
-// DefaultSearchProviders 返回内置默认检索路由链的独立副本
-// （中文与中英混合查询默认序列；单源 auto 通用搜自动将全网源排在单站垂直源之前，-F 融合按序取前 3）。
+// DefaultSearchProviders 返回中文及中英混合查询的默认检索顺序（副本）。
 func DefaultSearchProviders() []string {
 	return []string{
 		ProviderDeepSeek,

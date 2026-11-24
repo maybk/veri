@@ -145,8 +145,7 @@ func (r *Router) selectSearchChain(req *core.SearchRequest) ([]core.Searcher, co
 	}
 
 	if !explicit && strategy == core.StrategyAuto {
-		chain = orderByScopeForAuto(chain, req)
-		chain = orderByHealth(r.health, chain)
+		chain = orderAutoSearchers(chain, r.health, req)
 	}
 	return chain, strategy, nil
 }
@@ -180,7 +179,7 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 	var costs []*core.Cost
 	var notes []string
 	var lastErr *core.Error
-	nativeEmptyCount := 0
+	var nativeEmptyGroups map[string]struct{}
 	hadEmptySuccess := false
 	hadFallbackErr := false
 
@@ -274,10 +273,13 @@ func (r *Router) searchChain(ctx context.Context, req *core.SearchRequest, chain
 
 		emptyQuorumReached := false
 		if len(results) == 0 && len(plan.degraded) == 0 {
-			nativeEmptyCount++
-			if nativeEmptyCount >= searchEmptyQuorum && idx < len(chain)-1 && strategy != core.StrategySingle && r.opts.FallbackOnEmpty {
+			if nativeEmptyGroups == nil {
+				nativeEmptyGroups = make(map[string]struct{}, searchEmptyQuorum)
+			}
+			nativeEmptyGroups[providerGroup(s.Name())] = struct{}{}
+			if len(nativeEmptyGroups) >= searchEmptyQuorum && idx < len(chain)-1 && strategy != core.StrategySingle && r.opts.FallbackOnEmpty {
 				emptyQuorumReached = true
-				notes = append(notes, fmt.Sprintf("stopped empty fallback after %d native-filter providers returned 0 results", nativeEmptyCount))
+				notes = append(notes, fmt.Sprintf("stopped empty fallback after %d native-filter providers returned 0 results", len(nativeEmptyGroups)))
 			}
 		}
 

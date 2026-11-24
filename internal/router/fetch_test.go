@@ -279,7 +279,7 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 		t.Fatalf("expected ActiveFusionChain=[exa] without unlisted providers, got %v", got)
 	}
 
-	// 3. Lang=false 检索源（如修正后的 deepseek）在 --lang en --strict 时自动跳过，非严格时标记 lang:ignored
+	// 3. Lang=false 与 Lang=true 并存时：--strict 跳过 Lang=false；非严格 auto 优先原生 Lang=true，仅显式指定或无原生源时降级为 lang:ignored
 	noLang := &fakeSearcher{
 		name: spec.ProviderDeepSeek,
 		caps: core.Capabilities{MaxCount: 50, Lang: false},
@@ -303,12 +303,20 @@ func TestGlobalFetchChainExplicitOverrideAndStrictLangSkip(t *testing.T) {
 	if err != nil || len(strictEnv.Results) != 1 || strictEnv.Results[0].URL != "https://docs.python.org/3/" {
 		t.Fatalf("expected strict --lang en to skip Lang=false provider and hit tavily, got env=%+v err=%v", strictEnv, err)
 	}
-	nonStrictEnv, err := rSearch.Search(context.Background(), &core.SearchRequest{
+	nonStrictAutoEnv, err := rSearch.Search(context.Background(), &core.SearchRequest{
+		Query:   "asyncio TaskGroup",
+		Filters: core.Filters{Lang: []string{"en"}},
+	})
+	if err != nil || len(nonStrictAutoEnv.Meta.Providers) != 1 || nonStrictAutoEnv.Meta.Providers[0].Name != spec.ProviderTavily || len(nonStrictAutoEnv.Meta.Providers[0].Degraded) != 0 {
+		t.Fatalf("expected non-strict auto --lang en to prefer native Lang=true tavily, got %+v err=%v", nonStrictAutoEnv.Meta.Providers, err)
+	}
+	rNoLangOnly := New(Options{SearchProviders: []string{spec.ProviderDeepSeek}}, []core.Provider{noLang})
+	nonStrictEnv, err := rNoLangOnly.Search(context.Background(), &core.SearchRequest{
 		Query:   "asyncio TaskGroup",
 		Filters: core.Filters{Lang: []string{"en"}},
 	})
 	if err != nil || len(nonStrictEnv.Meta.Providers) != 1 || !strings.Contains(strings.Join(nonStrictEnv.Meta.Providers[0].Degraded, ","), "lang:ignored") {
-		t.Fatalf("expected non-strict --lang en on Lang=false provider to record lang:ignored, got %+v err=%v", nonStrictEnv.Meta.Providers, err)
+		t.Fatalf("expected non-strict --lang en on Lang=false-only chain to record lang:ignored, got %+v err=%v", nonStrictEnv.Meta.Providers, err)
 	}
 }
 

@@ -137,7 +137,7 @@ func (r *Router) EnabledSearchers() []string {
 	for _, name := range extras {
 		chain = append(chain, r.searchers[name])
 	}
-	return searcherNames(orderByScopeForAuto(chain, nil))
+	return searcherNames(orderAutoSearchers(chain, nil, nil))
 }
 
 // EnabledFetchers 按当前生效 FetchStrategy 的优先级顺序返回可用 Fetcher 名称列表。
@@ -260,49 +260,38 @@ func (r *Router) ActiveSearchChainGlobal() []string {
 	return global
 }
 
-// resolveFusionPoolCandidates 返回融合模式候选检索源及是否属于自动推导池（自动池支持健康重排与能力递补，显式池保持精确配置）。
-func (r *Router) resolveFusionPoolCandidates(nonChinese bool) (chain []core.Searcher, autoDerived bool) {
+// resolveFusionPoolCandidates 返回融合模式候选检索源、是否属于自动推导池以及是否命中独立非中文分池。
+func (r *Router) resolveFusionPoolCandidates(nonChinese bool) (chain []core.Searcher, autoDerived bool, useGlobalPool bool) {
 	if nonChinese {
 		if len(r.opts.FusionProvidersGlobal) > 0 {
 			if global, _ := r.resolveSearchers(r.opts.FusionProvidersGlobal, false); len(global) > 0 {
-				return global, false
+				return global, false, true
 			}
 		} else if !r.opts.FusionProvidersGlobalExplicit && len(r.opts.FusionProviders) == 0 && len(r.opts.SearchProvidersGlobal) > 0 {
 			if global, _ := r.resolveSearchers(r.opts.SearchProvidersGlobal, false); len(global) > 0 {
-				return global, true
+				return global, true, true
 			}
 		}
 	}
 	if len(r.opts.FusionProviders) > 0 {
 		primary, _ := r.resolveSearchers(r.opts.FusionProviders, false)
-		return primary, false
+		return primary, false, false
 	}
 	primary, _ := r.resolveSearchers(r.opts.SearchProviders, false)
-	return primary, true
+	return primary, true, false
 }
 
-// resolveFusionChain 解析生效的融合检索链；req 为 nil 时返回静态诊断视图，非 nil 时对自动推导池执行健康排序与能力递补后再截断默认并发上限。
+// resolveFusionChain 解析生效的融合检索链；req 为 nil 时返回与运行时口径一致的静态诊断视图。
 func (r *Router) resolveFusionChain(nonChinese bool, req *core.SearchRequest) []core.Searcher {
-	candidates, autoDerived := r.resolveFusionPoolCandidates(nonChinese)
+	candidates, autoDerived, useGlobalPool := r.resolveFusionPoolCandidates(nonChinese)
 	if !autoDerived || len(candidates) == 0 {
 		return candidates
 	}
+	var health *healthTracker
 	if req != nil {
-		candidates = orderByHealth(r.health, candidates)
-		compatible := make([]core.Searcher, 0, len(candidates))
-		for _, s := range candidates {
-			if matchCapabilities(resolveCapabilities(s, req), req, req.StrictFilters).unsupportedReason == "" {
-				compatible = append(compatible, s)
-			}
-		}
-		if len(compatible) > 0 {
-			candidates = compatible
-		}
+		health = r.health
 	}
-	if len(candidates) > spec.DefaultFusionAutoLimit {
-		candidates = candidates[:spec.DefaultFusionAutoLimit]
-	}
-	return candidates
+	return selectAutoFusionPool(candidates, health, useGlobalPool, req, spec.DefaultFusionAutoLimit)
 }
 
 func searcherNames(chain []core.Searcher) []string {
@@ -318,7 +307,7 @@ func searcherNames(chain []core.Searcher) []string {
 
 func (r *Router) filterEnabledSearchers(candidates []string) []string {
 	chain, _ := r.resolveSearchers(candidates, false)
-	return searcherNames(orderByScopeForAuto(chain, nil))
+	return searcherNames(orderAutoSearchers(chain, nil, nil))
 }
 
 func (r *Router) weightFor(name string) float64 {

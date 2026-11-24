@@ -28,6 +28,7 @@ type clusterMember struct {
 	result   core.Result
 	urlKey   string
 	branchID int
+	group    string
 	rank     int
 }
 
@@ -137,19 +138,23 @@ func resolveClusterResult(members []clusterMember, providers []string, singleEng
 	var urlVotes map[string]int
 	if !singleEngine {
 		urlVotes = make(map[string]int, len(members))
-		branchVotes := make(map[string]map[int]struct{}, len(members))
+		groupVotes := make(map[string]map[string]struct{}, len(members))
 		for _, m := range members {
 			if m.urlKey == "" {
 				continue
 			}
 			urlSet[m.urlKey] = struct{}{}
-			seen := branchVotes[m.urlKey]
-			if seen == nil {
-				seen = make(map[int]struct{}, 2)
-				branchVotes[m.urlKey] = seen
+			voter := m.group
+			if voter == "" {
+				voter = fmt.Sprintf("#%d", m.branchID)
 			}
-			if _, dup := seen[m.branchID]; !dup {
-				seen[m.branchID] = struct{}{}
+			seen := groupVotes[m.urlKey]
+			if seen == nil {
+				seen = make(map[string]struct{}, 2)
+				groupVotes[m.urlKey] = seen
+			}
+			if _, dup := seen[voter]; !dup {
+				seen[voter] = struct{}{}
 				urlVotes[m.urlKey]++
 			}
 		}

@@ -29,12 +29,18 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 	fusionCtx, cancelFusion := context.WithCancel(ctx)
 	defer cancelFusion()
 
+	groupSet := make(map[string]struct{}, len(chain))
+	for _, s := range chain {
+		groupSet[providerGroup(s.Name())] = struct{}{}
+	}
+	totalGroups := len(groupSet)
+
 	var (
-		g            errgroup.Group
-		graceMu      sync.Mutex
-		graceTimer   *time.Timer
-		nonEmptyDone int
-		quorum       = max(2, len(chain)-1)
+		g              errgroup.Group
+		graceMu        sync.Mutex
+		graceTimer     *time.Timer
+		nonEmptyGroups = make(map[string]struct{}, totalGroups)
+		quorum         = max(2, totalGroups-1)
 	)
 
 	branchBaseReq := *req
@@ -108,10 +114,11 @@ func (r *Router) searchFusion(ctx context.Context, req *core.SearchRequest, chai
 
 			r.health.recordSuccess(s.Name())
 			filtered, emuNotes := applyEmulation(plan, out.Results)
-			if len(filtered) > 0 && len(chain) >= 2 {
+			if len(filtered) > 0 && totalGroups >= 2 {
+				group := providerGroup(s.Name())
 				graceMu.Lock()
-				nonEmptyDone++
-				if nonEmptyDone >= quorum && graceTimer == nil {
+				nonEmptyGroups[group] = struct{}{}
+				if len(nonEmptyGroups) >= quorum && graceTimer == nil {
 					grace := r.stragglerGrace
 					if grace <= 0 {
 						grace = defaultFusionStragglerGrace

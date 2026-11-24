@@ -444,20 +444,20 @@ func TestZhihuSplitAndDomainScopeRouting(t *testing.T) {
 		t.Fatalf("default fusion chain (all) = %v, want %v", got, wantFusionFull)
 	}
 
-	// 2 把 Key（deepseek + zhihu 共享组）：auto 通用搜为 deepseek -> zhihu_web -> zhihu（超长词跳 deepseek 后走全网 zhihu_web），-F 为 deepseek + zhihu + zhihu_web
+	// 2 把 Key（deepseek + zhihu）：auto 为 deepseek -> zhihu_web -> zhihu；-F 去重同组并保底全网为 [deepseek zhihu_web]
 	rTwoKeys := New(Options{}, []core.Provider{ds, zw, zh})
 	if got := rTwoKeys.EnabledSearchers(); !slices.Equal(got, []string{spec.ProviderDeepSeek, spec.ProviderZhihuWeb, spec.ProviderZhihu}) {
 		t.Fatalf("2-key auto chain = %v", got)
 	}
-	if got := rTwoKeys.ActiveFusionChain(); !slices.Equal(got, []string{spec.ProviderDeepSeek, spec.ProviderZhihu, spec.ProviderZhihuWeb}) {
+	if got := rTwoKeys.ActiveFusionChain(); !slices.Equal(got, []string{spec.ProviderDeepSeek, spec.ProviderZhihuWeb}) {
 		t.Fatalf("2-key fusion chain = %v", got)
 	}
 	longAutoEnv, err := rTwoKeys.Search(t.Context(), &core.SearchRequest{Query: strings.Repeat("并发模型", 40)})
-	if err != nil || !longAutoEnv.OK || len(longAutoEnv.Meta.Providers) < 2 || longAutoEnv.Meta.Providers[1].Name != spec.ProviderZhihuWeb {
-		t.Fatalf("long auto query skipping deepseek should fall back to general-web zhihu_web, got env=%+v err=%v", longAutoEnv, err)
+	if err != nil || !longAutoEnv.OK || len(longAutoEnv.Meta.Providers) != 1 || longAutoEnv.Meta.Providers[0].Name != spec.ProviderZhihuWeb {
+		t.Fatalf("long auto query skipping deepseek should route directly to general-web zhihu_web, got env=%+v err=%v", longAutoEnv, err)
 	}
 
-	// 仅 1 把 Key（仅 ZHIHU_API_KEY）：auto 优先全网 zhihu_web（且与非中文 auto 顺序一致故 Global 诊断返回 nil），-F 同时启用 zhihu + zhihu_web
+	// 仅 1 把 Key（仅 ZHIHU_API_KEY）：auto 优先全网 zhihu_web，中文 -F 为 [zhihu_web zhihu]，非中文 -F 抑制垂直源为 [zhihu_web]
 	rZhihuOnly := New(Options{}, []core.Provider{zw, zh})
 	if got := rZhihuOnly.EnabledSearchers(); !slices.Equal(got, []string{spec.ProviderZhihuWeb, spec.ProviderZhihu}) {
 		t.Fatalf("zhihu-only auto chain = %v", got)
@@ -465,8 +465,11 @@ func TestZhihuSplitAndDomainScopeRouting(t *testing.T) {
 	if got := rZhihuOnly.ActiveSearchChainGlobal(); got != nil {
 		t.Fatalf("expected nil ActiveSearchChainGlobal when auto order matches global, got %v", got)
 	}
-	if got := rZhihuOnly.ActiveFusionChain(); !slices.Equal(got, []string{spec.ProviderZhihu, spec.ProviderZhihuWeb}) {
+	if got := rZhihuOnly.ActiveFusionChain(); !slices.Equal(got, []string{spec.ProviderZhihuWeb, spec.ProviderZhihu}) {
 		t.Fatalf("zhihu-only fusion chain = %v", got)
+	}
+	if got := rZhihuOnly.ActiveFusionChainGlobal(); !slices.Equal(got, []string{spec.ProviderZhihuWeb}) {
+		t.Fatalf("zhihu-only global fusion chain = %v", got)
 	}
 	weatherEnv, err := rZhihuOnly.Search(t.Context(), &core.SearchRequest{Query: "北京今日天气"})
 	if err != nil || !weatherEnv.OK || weatherEnv.Meta.Providers[0].Name != spec.ProviderZhihuWeb {
@@ -549,7 +552,7 @@ func TestZhihuSplitAndDomainScopeRouting(t *testing.T) {
 		t.Fatalf("strict -s go.dev failed: names=%v err=%v", ranNames(envGoStrict), err)
 	}
 
-	// 5. -F --strict -s zhihu.com：zhihu 原生满足作用域（零 sites:emulated），保留 [deepseek keenable zhihu]
+	// 5. -F --strict -s zhihu.com：zhihu 原生满足作用域并置顶为 [zhihu deepseek keenable]
 	zwBefore := zw.calls.Load()
 	envZhihuSite, err := rAll.Search(t.Context(), &core.SearchRequest{
 		Query:         "Go 并发",
@@ -557,7 +560,7 @@ func TestZhihuSplitAndDomainScopeRouting(t *testing.T) {
 		StrictFilters: true,
 		Filters:       core.Filters{Sites: []string{"zhihu.com"}},
 	})
-	if err != nil || !envZhihuSite.OK || zw.calls.Load() != zwBefore || !slices.Equal(ranNames(envZhihuSite), []string{spec.ProviderDeepSeek, spec.ProviderKeenable, spec.ProviderZhihu}) {
+	if err != nil || !envZhihuSite.OK || zw.calls.Load() != zwBefore || !slices.Equal(ranNames(envZhihuSite), []string{spec.ProviderZhihu, spec.ProviderDeepSeek, spec.ProviderKeenable}) {
 		t.Fatalf("strict -s zhihu.com failed: names=%v zwCalls=%d->%d err=%v", ranNames(envZhihuSite), zwBefore, zw.calls.Load(), err)
 	}
 	for _, rep := range envZhihuSite.Meta.Providers {

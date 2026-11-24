@@ -99,8 +99,21 @@ func TestSearchAutoFallbackLanguageRoutingAndEmulation(t *testing.T) {
 		FallbackOnEmpty:       true,
 	}, []core.Provider{ds, wsa, exa})
 
-	// 1. 中文查询走默认链：deepseek 402 失败 -> 自动回退 tencent_wsa；且 2 个站点在 SiteSingle 上触发本地模拟后过滤！
-	env, err := r.Search(context.Background(), &core.SearchRequest{
+	// 1. 中文多站点查询：deepseek 402 失败后，原生 SiteMulti 的 exa 优先于需模拟的 tencent_wsa；仅剩 SiteSingle 时仍优雅后过滤与 CountSteps 向上取整
+	envNative, err := r.Search(context.Background(), &core.SearchRequest{
+		Query:   "Go 并发编程",
+		Count:   5,
+		Filters: core.Filters{Sites: []string{"go.dev", "github.com"}},
+	})
+	if err != nil || !envNative.OK || !envNative.Meta.FallbackUsed || len(envNative.Meta.Providers) != 2 || envNative.Meta.Providers[1].Name != "exa" {
+		t.Fatalf("expected multi-site fallback to prefer native SiteMulti exa: env=%+v err=%v", envNative, err)
+	}
+
+	rNoExa := New(Options{
+		SearchProviders: []string{"deepseek", "tencent_wsa"},
+		FallbackOnEmpty: true,
+	}, []core.Provider{ds, wsa})
+	env, err := rNoExa.Search(context.Background(), &core.SearchRequest{
 		Query:   "Go 并发编程",
 		Count:   5,
 		Filters: core.Filters{Sites: []string{"go.dev", "github.com"}},

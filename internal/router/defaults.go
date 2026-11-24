@@ -5,6 +5,7 @@ import "time"
 // 路由引擎内部融合、软降权熔断、独立否定法定数与上下文切片调优阈值。
 const (
 	defaultFusionFetchFloor        = 10
+	defaultFusionMinGeneralGroups  = 2
 	defaultFusionStragglerGrace    = 3 * time.Second
 	defaultCircuitFailureThreshold = 3
 	defaultCircuitCooldown         = 45 * time.Second
