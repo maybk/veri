@@ -83,3 +83,19 @@ func SleepContext(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
+
+// HasNoStoreCacheControl 判断 HTTP 响应头中的 Cache-Control 是否包含 RFC 9111 no-store 禁止缓存指令。
+func HasNoStoreCacheControl(h http.Header) bool {
+	if h == nil {
+		return false
+	}
+	for _, raw := range h.Values("Cache-Control") {
+		for part := range strings.SplitSeq(raw, ",") {
+			token, _, _ := strings.Cut(strings.TrimSpace(part), "=")
+			if strings.EqualFold(strings.TrimSpace(token), "no-store") {
+				return true
+			}
+		}
+	}
+	return false
+}

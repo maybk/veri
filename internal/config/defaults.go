@@ -36,14 +36,24 @@ func Default() Config {
 			UserAgent:       spec.UserAgentBrowserMode,
 			MaxChars:        0,
 		},
+		Cache: CacheConfig{
+			Enabled:   true,
+			Dir:       "",
+			FetchTTL:  Duration{spec.DefaultCacheFetchTTL},
+			SearchTTL: Duration{spec.DefaultCacheSearchTTL},
+			MaxBytes:  ByteSize(spec.DefaultCacheMaxBytes),
+			CLI:       CacheCLIConfig{},
+			MCP: CacheMCPConfig{
+				SearchTTL:  new(Duration{spec.DefaultCacheMCPSearchTTL}),
+				MaxEntries: spec.DefaultCacheMCPMaxEntries,
+			},
+		},
 		MCP: MCPConfig{
 			TextFormat:      spec.TextFormatMarkdown,
 			SearchMaxChars:  spec.DefaultMCPSearchMaxChars,
 			FetchMaxChars:   spec.DefaultMCPFetchMaxChars,
 			ContentMaxChars: spec.DefaultMCPContentMaxChars,
 			MaxCount:        spec.DefaultMCPMaxCount,
-			CacheTTL:        Duration{spec.DefaultMCPCacheTTL},
-			CacheSize:       spec.DefaultMCPCacheSize,
 		},
 		Network: NetworkConfig{
 			Proxy:        "",

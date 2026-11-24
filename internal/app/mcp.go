@@ -18,18 +18,28 @@ func (a *App) ensureMCP() {
 		// MCP 抓取路由强制不设路由级截断，完整正文交由 fetchCache 缓存后在 FetchMCP 按请求动态切片分页。
 		mcpOpts.FetchMaxChars = 0
 
-		searchCap := cfg.MCP.CacheSize
-		searchTTL := cfg.MCP.CacheTTL.Duration
-		fetchCap := 0
-		if searchCap > 0 {
-			fetchCap = max(searchCap/4, 16)
+		policy := cfg.Cache.EffectiveMCP()
+		var searchCap, fetchCap int
+		var searchTTL, fetchTTL time.Duration
+		if policy.Enabled && policy.MaxEntries > 0 {
+			searchCap = policy.MaxEntries
+			fetchCap = max(policy.MaxEntries/4, 16)
+			searchTTL = policy.SearchTTL
+			fetchTTL = policy.FetchTTL
 		}
-		fetchTTL := searchTTL * 3
 
 		a.mcpRouter = router.New(mcpOpts, a.enabledProviders)
 		a.searchCache = newTTLLRU[*core.Envelope](searchCap, searchTTL)
 		a.fetchCache = newBoundedTTLLRU[*core.Envelope](fetchCap, defaultMaxCachedFetchRunes, fetchTTL, envelopeContentRunes)
 	})
+}
+
+func (a *App) runMCPSearch(ctx context.Context, req *core.SearchRequest) (*core.Envelope, error) {
+	env, err := a.mcpRouter.Search(ctx, req)
+	a.scrubEnvelopeSecrets(env)
+	err = a.scrubError(err)
+	a.logEnvelope("mcp.search", env)
+	return env, err
 }
 
 // SearchMCP 执行带 TTL-LRU 缓存、调用方超时隔离与引用计数合并的 MCP 检索。
@@ -39,7 +49,16 @@ func (a *App) SearchMCP(ctx context.Context, req *core.SearchRequest) (*core.Env
 	}
 	a.ensureMCP()
 
-	cacheKey := buildSearchCacheKey(req, a.loaded.Config.Search, a.loaded.Config.MCP.SearchMaxChars)
+	if req.NoCache {
+		return a.runMCPSearch(ctx, req)
+	}
+
+	normReq, valErr := a.mcpRouter.ValidateSearchRequest(req)
+	if valErr != nil {
+		return a.runMCPSearch(ctx, req)
+	}
+
+	cacheKey := a.searchCacheKey(&normReq, a.loaded.Config.MCP.SearchMaxChars)
 	if cached, ok := a.searchCache.Get(cacheKey); ok {
 		return cloneCachedSearchEnvelope(cached), nil
 	}
@@ -56,11 +75,8 @@ func (a *App) SearchMCP(ctx context.Context, req *core.SearchRequest) (*core.Env
 		if sharedReq.Timeout > 0 && sharedReq.Timeout < a.baseRouterOpts.SearchTimeout {
 			sharedReq.Timeout = 0
 		}
-		env, err := a.mcpRouter.Search(sharedCtx, &sharedReq)
-		a.scrubEnvelopeSecrets(env)
-		err = a.scrubError(err)
-		a.logEnvelope("mcp.search", env)
-		if err == nil && env != nil && env.OK && len(env.Results) > 0 {
+		env, err := a.runMCPSearch(sharedCtx, &sharedReq)
+		if err == nil && isCacheableSearchEnvelope(env) {
 			a.searchCache.Set(cacheKey, env.Clone())
 		}
 		return env, err
@@ -84,18 +100,23 @@ func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envel
 	}
 	a.ensureMCP()
 
-	maxChars := req.MaxChars
+	normReq, _, valErr := a.mcpRouter.ValidateFetchRequest(req)
+	if valErr != nil {
+		env, err := a.mcpRouter.Fetch(ctx, req)
+		a.scrubEnvelopeSecrets(env)
+		err = a.scrubError(err)
+		a.logEnvelope("mcp.fetch", env)
+		return env, err
+	}
+
+	maxChars := normReq.MaxChars
 	if maxChars <= 0 {
 		maxChars = a.loaded.Config.MCP.FetchMaxChars
 	}
-	strategy := req.Strategy
-	if strategy == "" {
-		strategy = core.FetchStrategy(a.loaded.Config.Fetch.Strategy)
-	}
-	cacheKey := buildFetchCacheKey(req.URL, strategy, req.Providers, req.Options)
-	bypassCacheRead := req.Offset == 0 && isFreshFetchBypass(req.Options)
+	cacheKey := a.fetchCacheKey(normReq.URL, normReq.Strategy, normReq.Providers, normReq.Options)
+	bypassCacheRead := normReq.Offset == 0 && isFreshFetchBypass(normReq.Options)
 
-	viewReq := *req
+	viewReq := normReq
 	viewReq.MaxChars = maxChars
 
 	if !bypassCacheRead {
@@ -131,7 +152,7 @@ func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envel
 		a.scrubEnvelopeSecrets(env)
 		err = a.scrubError(err)
 		a.logEnvelope("mcp.fetch", env)
-		if err == nil && env != nil && env.OK && env.Page != nil && env.Page.Content != "" {
+		if err == nil && isCacheableFetchEnvelope(env, false) {
 			a.fetchCache.Set(cacheKey, env.Clone())
 		}
 		return env, err
@@ -187,12 +208,7 @@ func (a *App) buildViewedFetchEnvelope(full *core.Envelope, viewReq *core.FetchR
 	}
 	cp.Meta.Truncated = cp.Page != nil && cp.Page.NextOffset != nil
 	if cached {
-		cp.Meta.Cached = true
-		cp.Meta.Cost = []core.Cost{}
-		cp.Meta.DurationMS = 0
-		for i := range cp.Meta.Providers {
-			cp.Meta.Providers[i].Cost = nil
-		}
+		markMetaCached(&cp.Meta)
 	}
 	return cp
 }

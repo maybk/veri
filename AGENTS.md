@@ -23,7 +23,7 @@
 - `internal/config`：`~/.config/veri/` 配置加载、TOML 未知键校验，以及环境变量、加密凭据库与配置文件合并。
 - `internal/provider/<name>`：单一检索或提取源适配器，只负责单次请求组装、响应映射与错误分类，互不导入。
 - `internal/router`：链式自动回退、语种分链选路、并发 RRF 融合、本地提取质量闸门升档、过滤条件后置模拟与字符预算裁剪。
-- `internal/app`：显式 Provider 注册装配、MCP 进程内缓存、并发相同请求合并与 `doctor` 健康诊断。
+- `internal/app`：显式 Provider 注册装配、CLI 磁盘缓存、MCP 进程内内存缓存、并发相同请求合并与 `doctor` 健康诊断。
 - `internal/update`：官方 GitHub Releases 版本检查、SHA-256 完整性校验、包管理器托管识别与跨平台原子自更新。
 - `internal/render`：Markdown、JSON、JSONL、URL 列表格式化渲染与外部网页不可信内容标签包裹。
 - `internal/cli` 与 `internal/mcpserver`：Cobra 命令行入口（含双语词表 `locales/`）与基于官方 Go SDK 的 stdio MCP 服务端。

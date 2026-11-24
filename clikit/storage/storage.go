@@ -64,6 +64,37 @@ func ResolveConfigDir(appDirName, fileName, explicitConfigPath, envVarName strin
 	return filepath.Dir(cfgPath), nil
 }
 
+// ResolveCacheDir 按三端（macOS / Windows / Linux）统一优先级解析应用缓存目录绝对路径：
+//  1. explicitDir（显式指定目录，如已完成合并的配置/参数路径）
+//  2. envVarName 指定的环境变量（非空时）
+//  3. $XDG_CACHE_HOME/<appDirName>（显式设置 XDG_CACHE_HOME 时）
+//  4. ~/.cache/<appDirName>（Windows 为 %USERPROFILE%\.cache\<appDirName>）
+func ResolveCacheDir(appDirName, explicitDir, envVarName string, getenv func(string) string) (string, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if p := strings.TrimSpace(explicitDir); p != "" {
+		return ExpandHome(p)
+	}
+	if envVarName != "" {
+		if p := strings.TrimSpace(getenv(envVarName)); p != "" {
+			return ExpandHome(p)
+		}
+	}
+	if xdg := strings.TrimSpace(getenv("XDG_CACHE_HOME")); xdg != "" {
+		expanded, err := ExpandHome(xdg)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(expanded, appDirName), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine user home directory: %w", err)
+	}
+	return filepath.Join(home, ".cache", appDirName), nil
+}
+
 // WriteFileAtomic 在目标文件同级目录创建临时文件、设置权限、落盘同步后原子重命名替换目标文件。
 func WriteFileAtomic(path string, data []byte, dirPerm, filePerm os.FileMode) error {
 	dir := filepath.Dir(path)

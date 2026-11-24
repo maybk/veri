@@ -6,6 +6,7 @@ package config
 import (
 	"reflect"
 	"strings"
+	"time"
 )
 
 // Config 是 veri 的完整生效配置树。
@@ -13,6 +14,7 @@ type Config struct {
 	UI        UIConfig        `toml:"ui" json:"ui"`
 	Search    SearchConfig    `toml:"search" json:"search"`
 	Fetch     FetchConfig     `toml:"fetch" json:"fetch"`
+	Cache     CacheConfig     `toml:"cache" json:"cache"`
 	MCP       MCPConfig       `toml:"mcp" json:"mcp"`
 	Network   NetworkConfig   `toml:"network" json:"network"`
 	Providers ProvidersConfig `toml:"providers" json:"providers"`
@@ -54,15 +56,86 @@ type FetchConfig struct {
 	MaxChars        int      `toml:"max_chars" json:"max_chars"`
 }
 
-// MCPConfig 控制 MCP Server 工具输出格式、上下文预算与进程内缓存。
+// CacheConfig 控制统一缓存默认策略、磁盘缓存参数以及 CLI / MCP 分域覆写。
+type CacheConfig struct {
+	Enabled   bool           `toml:"enabled" json:"enabled"`
+	Dir       string         `toml:"dir" json:"dir"`
+	FetchTTL  Duration       `toml:"fetch_ttl" json:"fetch_ttl"`
+	SearchTTL Duration       `toml:"search_ttl" json:"search_ttl"`
+	MaxBytes  ByteSize       `toml:"max_bytes" json:"max_bytes"`
+	CLI       CacheCLIConfig `toml:"cli" json:"cli"`
+	MCP       CacheMCPConfig `toml:"mcp" json:"mcp"`
+}
+
+// CacheCLIConfig 控制 CLI 磁盘缓存的可选独立覆写（未设置字段自动继承 [cache] 全局策略）。
+type CacheCLIConfig struct {
+	Enabled   *bool     `toml:"enabled,omitempty" json:"enabled,omitempty"`
+	FetchTTL  *Duration `toml:"fetch_ttl,omitempty" json:"fetch_ttl,omitempty"`
+	SearchTTL *Duration `toml:"search_ttl,omitempty" json:"search_ttl,omitempty"`
+}
+
+// CacheMCPConfig 控制 MCP 进程内内存缓存的可选独立覆写与容量上限（未设置字段自动继承 [cache] 全局策略）。
+type CacheMCPConfig struct {
+	Enabled    *bool     `toml:"enabled,omitempty" json:"enabled,omitempty"`
+	FetchTTL   *Duration `toml:"fetch_ttl,omitempty" json:"fetch_ttl,omitempty"`
+	SearchTTL  *Duration `toml:"search_ttl,omitempty" json:"search_ttl,omitempty"`
+	MaxEntries int       `toml:"max_entries" json:"max_entries"`
+}
+
+// EffectiveCachePolicy 描述 CLI 或 MCP 经父子继承合并后的最终生效缓存策略。
+type EffectiveCachePolicy struct {
+	Enabled    bool
+	FetchTTL   time.Duration
+	SearchTTL  time.Duration
+	MaxEntries int
+}
+
+// EffectiveCLI 计算 CLI 磁盘缓存的最终生效策略（子域显式字段优先，未设置项继承顶层 [cache]）。
+func (c CacheConfig) EffectiveCLI() EffectiveCachePolicy {
+	p := EffectiveCachePolicy{
+		Enabled:   c.Enabled,
+		FetchTTL:  c.FetchTTL.Duration,
+		SearchTTL: c.SearchTTL.Duration,
+	}
+	if c.CLI.Enabled != nil {
+		p.Enabled = *c.CLI.Enabled
+	}
+	if c.CLI.FetchTTL != nil {
+		p.FetchTTL = c.CLI.FetchTTL.Duration
+	}
+	if c.CLI.SearchTTL != nil {
+		p.SearchTTL = c.CLI.SearchTTL.Duration
+	}
+	return p
+}
+
+// EffectiveMCP 计算 MCP 进程内内存缓存的最终生效策略（子域显式字段优先，未设置项继承顶层 [cache]）。
+func (c CacheConfig) EffectiveMCP() EffectiveCachePolicy {
+	p := EffectiveCachePolicy{
+		Enabled:    c.Enabled,
+		FetchTTL:   c.FetchTTL.Duration,
+		SearchTTL:  c.SearchTTL.Duration,
+		MaxEntries: c.MCP.MaxEntries,
+	}
+	if c.MCP.Enabled != nil {
+		p.Enabled = *c.MCP.Enabled
+	}
+	if c.MCP.FetchTTL != nil {
+		p.FetchTTL = c.MCP.FetchTTL.Duration
+	}
+	if c.MCP.SearchTTL != nil {
+		p.SearchTTL = c.MCP.SearchTTL.Duration
+	}
+	return p
+}
+
+// MCPConfig 控制 MCP Server 工具输出格式与上下文预算。
 type MCPConfig struct {
-	TextFormat      string   `toml:"text_format" json:"text_format"`
-	SearchMaxChars  int      `toml:"search_max_chars" json:"search_max_chars"`
-	FetchMaxChars   int      `toml:"fetch_max_chars" json:"fetch_max_chars"`
-	ContentMaxChars int      `toml:"content_max_chars" json:"content_max_chars"`
-	MaxCount        int      `toml:"max_count" json:"max_count"`
-	CacheTTL        Duration `toml:"cache_ttl" json:"cache_ttl"`
-	CacheSize       int      `toml:"cache_size" json:"cache_size"`
+	TextFormat      string `toml:"text_format" json:"text_format"`
+	SearchMaxChars  int    `toml:"search_max_chars" json:"search_max_chars"`
+	FetchMaxChars   int    `toml:"fetch_max_chars" json:"fetch_max_chars"`
+	ContentMaxChars int    `toml:"content_max_chars" json:"content_max_chars"`
+	MaxCount        int    `toml:"max_count" json:"max_count"`
 }
 
 // NetworkConfig 控制外部代理、TUN Fake-IP 放行网段与内网抓取开关。

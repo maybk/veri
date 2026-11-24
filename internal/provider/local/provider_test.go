@@ -314,3 +314,32 @@ func TestLocalHelpersAndRobotsWildcards(t *testing.T) {
 		t.Fatalf("blank text must not look like markdown")
 	}
 }
+
+func TestLocalNoStorePropagation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/nostore":
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Cache-Control", "private, no-store, max-age=0")
+			_, _ = w.Write([]byte(strings.Repeat("Sensitive plain text documentation content. ", 12)))
+		default:
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Cache-Control", "public, max-age=300")
+			_, _ = w.Write([]byte(strings.Repeat("Public plain text documentation content. ", 12)))
+		}
+	}))
+	defer srv.Close()
+
+	p, enabled, err := New(Options{MinContentChars: 50}, providertest.NewTestFetchClient(t))
+	if err != nil || !enabled {
+		t.Fatalf("New: enabled=%v err=%v", enabled, err)
+	}
+	outNoStore, err := p.Fetch(context.Background(), &core.FetchRequest{URL: srv.URL + "/nostore"})
+	if err != nil || outNoStore == nil || !outNoStore.NoStore {
+		t.Fatalf("expected NoStore=true for no-store response, got out=%+v err=%v", outNoStore, err)
+	}
+	outPub, err := p.Fetch(context.Background(), &core.FetchRequest{URL: srv.URL + "/public"})
+	if err != nil || outPub == nil || outPub.NoStore {
+		t.Fatalf("expected NoStore=false for public response, got out=%+v err=%v", outPub, err)
+	}
+}

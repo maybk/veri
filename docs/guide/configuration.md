@@ -28,6 +28,8 @@
 | XDG 覆盖 | `XDG_CONFIG_HOME/veri/config.toml`（显式设置了 `XDG_CONFIG_HOME` 时） |
 | 默认路径（macOS / Windows / Linux） | `~/.config/veri/config.toml` |
 
+CLI 磁盘缓存三端统一存放在 `~/.cache/veri/`（Windows 为 `%USERPROFILE%\.cache\veri\`），优先级：`VERI_CACHE_DIR` > `cache.dir` > `XDG_CACHE_HOME/veri` > `~/.cache/veri`；可用 `veri cache info` / `veri cache clear` 查看或清理。
+
 常用配置与密钥管理命令：
 
 ```bash
@@ -87,7 +89,26 @@ veri config path                               # 输出生效的配置文件路�
 | `fetch.user_agent` | `"browser"` | 本地抓取 User-Agent：`browser`、`veri` 或自定义字符串 |
 | `fetch.max_chars` | `0` | CLI 网页提取默认返回字符上限（`0` 表示返回全文） |
 
-### 2. MCP 服务端、网络与单源参数
+### 2. 缓存配置
+
+缓存统一归口 `[cache]`：CLI 使用本地磁盘缓存，MCP 使用进程内内存缓存（退出即释放）；`[cache.cli]` 与 `[cache.mcp]` 未设置项自动继承 `[cache]`，显式设为 `"0s"` 或 `false` 仅关闭对应一端。
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `cache.enabled` | `true` | 缓存总开关（`false` 同时关闭 CLI 与 MCP） |
+| `cache.dir` | `""` | 磁盘缓存目录（留空使用 `~/.cache/veri`） |
+| `cache.fetch_ttl` | `"15m"` | 默认网页正文缓存有效期（CLI 与 MCP 共享） |
+| `cache.search_ttl` | `"0s"` | 默认检索缓存有效期（CLI 默认关闭以保持实时） |
+| `cache.max_bytes` | `"32MB"` | 磁盘缓存体积上限（超限按最近访问淘汰） |
+| `cache.cli.enabled` | 继承 `cache.enabled` | 可选覆写：仅开关 CLI 磁盘缓存 |
+| `cache.cli.fetch_ttl` | 继承 `cache.fetch_ttl` | 可选覆写：设为 `"0s"` 仅关闭 CLI 抓取缓存 |
+| `cache.cli.search_ttl` | 继承 `cache.search_ttl` | 可选覆写：如设 `"2m"` 开启 CLI 检索缓存 |
+| `cache.mcp.enabled` | 继承 `cache.enabled` | 可选覆写：仅开关 MCP 内存缓存 |
+| `cache.mcp.fetch_ttl` | 继承 `cache.fetch_ttl` | 可选覆写：设为 `"0s"` 仅关闭 MCP 抓取缓存 |
+| `cache.mcp.search_ttl` | `"5m"` | MCP 进程内检索缓存有效期（与 `fetch_ttl` 独立） |
+| `cache.mcp.max_entries` | `256` | MCP 内存缓存最大条目数（`0` 关闭） |
+
+### 3. MCP 服务端、网络与单源参数
 
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -96,8 +117,6 @@ veri config path                               # 输出生效的配置文件路�
 | `mcp.fetch_max_chars` | `30000` | `web_fetch` 默认字符预算上限 |
 | `mcp.content_max_chars` | `3000` | MCP 检索单条结果 `content` 最大字符数 |
 | `mcp.max_count` | `20` | `web_search` 单次最大返回条数 |
-| `mcp.cache_ttl` | `"5m"` | MCP 进程内相同请求缓存有效期（设为 `"0s"` 关闭） |
-| `mcp.cache_size` | `256` | MCP 进程内 LRU 缓存最大条目数（设为 `0` 关闭） |
 | `network.proxy` | `""` | 显式 HTTP/SOCKS5 代理地址；为空时遵循 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` |
 | `network.fake_ip_cidrs` | `["198.18.0.0/15"]` | 透明代理 TUN Fake-IP 网段（仅放行域名解析返回的该网段地址） |
 | `network.allow_private` | `false` | 是否允许本地提取器访问回环或内网地址（默认拦截以防御 SSRF） |
@@ -130,6 +149,10 @@ veri config path                               # 输出生效的配置文件路�
 | `VERI_FETCH_PROVIDERS` | — | 覆盖 `fetch.providers`（逗号分隔） |
 | `VERI_FETCH_STRATEGY` | — | 覆盖 `fetch.strategy` |
 | `VERI_TIMEOUT` | — | 覆盖 `search.timeout` |
+| `VERI_CACHE_DIR` | — | 覆盖磁盘缓存目录（优先于 `cache.dir`） |
+| `VERI_CACHE_FETCH_TTL` | — | 同时覆盖 CLI 与 MCP 的网页抓取缓存有效期（支持 `"0s"` 关闭） |
+| `VERI_CACHE_SEARCH_TTL` | — | 同时覆盖 CLI 与 MCP 的检索缓存有效期（如 `"2m"` 临时开启 CLI 搜索缓存） |
+| `VERI_NO_CACHE` | — | 设为 `1` / `true` 时禁用本次进程全部缓存 |
 | `VERI_LOG_LEVEL` | — | 诊断日志级别：`debug` / `info` / `warn`（默认）/ `error` |
 | `VERI_LOG_FORMAT` | — | 诊断日志格式：`text`（默认）/ `json` |
 | `VERI_UPDATE_MIRROR` | — | `veri update` 与安装脚本的 HTTPS 归档下载镜像前缀（可选） |
@@ -141,3 +164,4 @@ veri config path                               # 输出生效的配置文件路�
 2. **计费安全重试与冷却轮换**：请求发出后若发生读超时或连接中断，客户端禁止自动重放以防重复扣费；仅对明确未扣费的 `408 / 429 / 500 / 502 / 503 / 504` 或池内备用密钥最多重试 1 次，并按限流、欠费、鉴权失败分级冷却隔离。
 3. **全链路凭据脱敏与权限审计**：`veri config show`（含 `--overrides`）、`veri config get`、错误提示与诊断日志自动遮蔽已知密钥、认证头、代理密码与敏感查询参数；`veri config set` 拒绝写入明文 `api_key` / `token`；Unix 下若手工写入的配置文件含明文密钥或凭据库权限宽于 `0600`，启动与 `veri doctor` 均会告警。
 4. **外部网页内容隔离与隐形注入清洗**：MCP 文本输出默认包裹在带单次随机边界标识的 `<untrusted_web_content id="...">` 标签内并转义内嵌同名标签以防伪造提前闭合；同时剥离不可见格式控制符/变体选择符与零可见度 CSS 隐藏节点，降低间接提示注入风险。
+5. **缓存安全边界**：磁盘缓存按 `0700`/`0600` 原子写入且以哈希命名；拒绝缓存内网/回环目标、低质保底页、不完整融合结果与 `Cache-Control: no-store` 响应；GitHub 抓取键按活跃令牌指纹隔离；`veri cache clear` 仅清理受管缓存文件。

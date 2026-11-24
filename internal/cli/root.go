@@ -247,7 +247,7 @@ func inferCommandKind(args []string) string {
 			return spec.KindUpdate
 		case "search":
 			return spec.KindSearch
-		case "doctor", "providers", "config", "version", "mcp", "skill", "completion":
+		case "doctor", "providers", "config", "cache", "version", "mcp", "skill", "completion":
 			return lower
 		case "key", "keys":
 			return "key"
@@ -349,6 +349,7 @@ func newRootCmd(rt *runtimeEnv) *cobra.Command {
 		newFetchCmd(rt),
 		newKeyCmd(rt),
 		newConfigCmd(rt),
+		newCacheCmd(rt),
 		newProvidersCmd(rt),
 		newDoctorCmd(rt),
 		newVersionCmd(rt),

@@ -4,6 +4,16 @@
 
 ## [0.2.6] - 未发布
 
+### 新增
+
+- 为 CLI 新增本地抓取缓存（默认 15 分钟），支持 `veri fetch` 分段续读免重复抓取，并可按需开启 CLI 搜索缓存。
+- 新增 `veri search --no-cache` 与 MCP `web_search` 的 `no_cache` 参数，用于单次跳过搜索缓存。
+- 新增 `veri cache info` 与 `veri cache clear` 命令，用于查看状态和清理本地缓存。
+
+### 变更
+
+- 缓存配置统一迁至 `[cache]`，支持按 `[cache.cli]` 与 `[cache.mcp]` 分别调整，移除旧的 `mcp.cache_ttl` 与 `mcp.cache_size`。
+
 ## [0.2.5] - 2026-11-24
 
 ### 变更

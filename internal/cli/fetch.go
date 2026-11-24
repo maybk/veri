@@ -111,6 +111,9 @@ func newFetchCmd(rt *runtimeEnv) *cobra.Command {
 			}
 
 			if !rt.flags.quiet {
+				if outFormat != spec.FormatJSON && env.Meta.Cached {
+					_, _ = fmt.Fprintln(rt.stderr, rt.cat.T("note.fetch_cached"))
+				}
 				emitStderrNotes(rt, env)
 				if outFormat != spec.FormatJSON && env.Page != nil && env.Page.NextOffset != nil {
 					shown := strconv.Itoa(textnorm.RuneCount(env.Page.Content))

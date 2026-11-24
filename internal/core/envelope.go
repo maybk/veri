@@ -19,6 +19,9 @@ type Envelope struct {
 	Pages   []Page     `json:"pages,omitempty" jsonschema:"Extracted multi-page payload for batch fetch"`
 	Meta    Meta       `json:"meta" jsonschema:"Execution telemetry, provider reports, and cost"`
 	Error   *ErrorInfo `json:"error,omitempty" jsonschema:"Structured error details when ok=false"`
+
+	// NoCacheStore 标识上游响应包含 Cache-Control: no-store 等禁止缓存指令（仅进程内流转，不输出到 JSON）。
+	NoCacheStore bool `json:"-"`
 }
 
 // MarshalJSONTo 使用 Go 1.27 encoding/json/v2 流式写出信封，确保成功检索零命中时稳定输出 `"results": []`。
@@ -94,7 +97,7 @@ type Meta struct {
 	Notes        []string         `json:"notes,omitempty" jsonschema:"Diagnostic degradation or truncation notes"`
 	Cost         []Cost           `json:"cost" jsonschema:"Aggregated cost per currency"`
 	DurationMS   int64            `json:"duration_ms" jsonschema:"Total execution duration in milliseconds"`
-	Cached       bool             `json:"cached" jsonschema:"True when served from in-process cache"`
+	Cached       bool             `json:"cached" jsonschema:"True when served from cache"`
 }
 
 // Clone 返回 Meta 的完整深拷贝。

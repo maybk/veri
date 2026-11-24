@@ -15,10 +15,12 @@ import (
 	"veri/internal/core"
 	"veri/internal/httpx"
 	"veri/internal/router"
+	"veri/internal/spec"
+	"veri/internal/urlnorm"
 )
 
 // App 是 veri 的核心应用门面，为 CLI 与 MCP Server 提供同构的检索、抓取与诊断服务。
-// MCP 专属路由与缓存采用按需懒加载，确保单次 CLI 执行保持零额外缓存分配。
+// CLI 按统一 [cache] 策略按需使用轻量磁盘缓存；MCP 专属路由与内存缓存采用按需懒加载。
 type App struct {
 	version          string
 	loaded           *config.Loaded
@@ -26,6 +28,7 @@ type App struct {
 	enabledProviders []core.Provider
 	baseRouterOpts   router.Options
 	cliRouter        *router.Router
+	diskCache        *diskCache
 
 	mcpOnce     sync.Once
 	mcpRouter   *router.Router
@@ -131,13 +134,18 @@ func NewWithStderr(loaded *config.Loaded, version string, stderr io.Writer) (*Ap
 		Logger:                        logger,
 	}
 
+	cliOpts := baseOpts
+	// CLI 抓取路由不设路由级截断，完整正文由 App.Fetch 落盘缓存后再按 fetch.max_chars / 请求参数统一切片。
+	cliOpts.FetchMaxChars = 0
+
 	return &App{
 		version:          version,
 		loaded:           loaded,
 		statuses:         statuses,
 		enabledProviders: enabledProviders,
 		baseRouterOpts:   baseOpts,
-		cliRouter:        router.New(baseOpts, enabledProviders),
+		cliRouter:        router.New(cliOpts, enabledProviders),
+		diskCache:        newDiskCache(loaded.CacheDir, int64(cfg.Cache.MaxBytes), logger),
 		scrubber:         scrubber,
 		logger:           logger,
 	}, nil
@@ -145,6 +153,16 @@ func NewWithStderr(loaded *config.Loaded, version string, stderr io.Writer) (*Ap
 
 // Config 返回已加载的配置包装对象。
 func (a *App) Config() *config.Loaded { return a.loaded }
+
+// CacheInfo 返回当前统一缓存策略与磁盘缓存占用统计。
+func (a *App) CacheInfo() (CacheInfoResult, error) {
+	return InspectCache(a.loaded)
+}
+
+// ClearCache 安全清空当前生效目录中的本地磁盘缓存文件。
+func (a *App) ClearCache() (CacheClearResult, error) {
+	return ClearDiskCache(a.loaded.CacheDir)
+}
 
 // ProviderStatuses 返回全部内置 Provider 的状态描述表。
 func (a *App) ProviderStatuses() []ProviderStatus {
@@ -159,11 +177,93 @@ func (a *App) EnabledSearchers() []string { return a.cliRouter.EnabledSearchers(
 // EnabledFetchers 返回当前已启用的 Fetcher 名称列表。
 func (a *App) EnabledFetchers() []string { return a.cliRouter.EnabledFetchers() }
 
-// Search 执行 CLI 单次检索（CLI 模式不启用进程内缓存）。
+// Search 执行 CLI 单次检索，按统一 [cache] / [cache.cli] 策略支持可选本地磁盘缓存与 --no-cache 绕过。
 func (a *App) Search(ctx context.Context, req *core.SearchRequest) (*core.Envelope, error) {
 	if a.logger != nil && req != nil {
 		a.logger.DebugContext(ctx, "search_start", "query", req.Query, "count", req.Count, "strategy", string(req.Strategy))
 	}
+	policy := a.loaded.Config.Cache.EffectiveCLI()
+	useDiskCache := a.diskCache != nil && policy.Enabled && policy.SearchTTL > 0 && req != nil && !req.NoCache
+	var cacheKey string
+	if useDiskCache {
+		normReq, err := a.cliRouter.ValidateSearchRequest(req)
+		if err != nil {
+			return a.runCLISearch(ctx, req)
+		}
+		cacheKey = a.searchCacheKey(&normReq, a.loaded.Config.Search.MaxChars)
+		if cached, ok := a.diskCache.Get(diskCacheKindSearch, cacheKey); ok {
+			if a.logger != nil {
+				a.logger.DebugContext(ctx, "search_cache_hit", "query", normReq.Query)
+			}
+			return cloneCachedSearchEnvelope(cached), nil
+		}
+	}
+
+	env, err := a.runCLISearch(ctx, req)
+	if useDiskCache && err == nil && isCacheableSearchEnvelope(env) {
+		a.diskCache.Set(diskCacheKindSearch, cacheKey, env, policy.SearchTTL)
+	}
+	return env, err
+}
+
+// Fetch 执行 CLI 单次网页抓取；启用磁盘缓存时始终缓存未截断整页并在本地按请求视图参数动态切片分页。
+func (a *App) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Envelope, error) {
+	if a.logger != nil && req != nil {
+		a.logger.DebugContext(ctx, "fetch_start", "url", req.URL, "strategy", string(req.Strategy))
+	}
+	if req == nil {
+		return a.runCLIFetch(ctx, nil)
+	}
+
+	normReq, parsedURL, valErr := a.cliRouter.ValidateFetchRequest(req)
+	if valErr != nil {
+		return a.runCLIFetch(ctx, req)
+	}
+
+	effectiveMaxChars := normReq.MaxChars
+	if effectiveMaxChars == 0 {
+		effectiveMaxChars = a.loaded.Config.Fetch.MaxChars
+	}
+
+	policy := a.loaded.Config.Cache.EffectiveCLI()
+	useDiskCache := a.diskCache != nil && policy.Enabled && policy.FetchTTL > 0 && !urlnorm.IsLocalOrPrivateTarget(parsedURL)
+	if !useDiskCache {
+		runReq := *req
+		if runReq.MaxChars == 0 {
+			runReq.MaxChars = effectiveMaxChars
+		}
+		return a.runCLIFetch(ctx, &runReq)
+	}
+
+	viewReq := normReq
+	viewReq.MaxChars = effectiveMaxChars
+	cacheKey := a.fetchCacheKey(normReq.URL, normReq.Strategy, normReq.Providers, normReq.Options)
+	bypassRead := normReq.Offset == 0 && isFreshFetchBypass(normReq.Options)
+	if !bypassRead {
+		if cachedFull, ok := a.diskCache.Get(diskCacheKindFetch, cacheKey); ok {
+			if a.logger != nil {
+				a.logger.DebugContext(ctx, "fetch_cache_hit", "url", normReq.URL)
+			}
+			return a.buildViewedFetchEnvelope(cachedFull, &viewReq, true), nil
+		}
+	}
+
+	fullReq := *req
+	fullReq.Offset = 0
+	fullReq.MaxChars = 0
+	fullReq.Section = ""
+	fullReq.Match = ""
+	fullEnv, err := a.runCLIFetch(ctx, &fullReq)
+	if err != nil || fullEnv == nil || !fullEnv.OK || fullEnv.Page == nil {
+		return fullEnv, err
+	}
+	if isCacheableFetchEnvelope(fullEnv, true) {
+		a.diskCache.Set(diskCacheKindFetch, cacheKey, fullEnv, policy.FetchTTL)
+	}
+	return a.buildViewedFetchEnvelope(fullEnv, &viewReq, false), nil
+}
+
+func (a *App) runCLISearch(ctx context.Context, req *core.SearchRequest) (*core.Envelope, error) {
 	env, err := a.cliRouter.Search(ctx, req)
 	a.scrubEnvelopeSecrets(env)
 	err = a.scrubError(err)
@@ -171,16 +271,41 @@ func (a *App) Search(ctx context.Context, req *core.SearchRequest) (*core.Envelo
 	return env, err
 }
 
-// Fetch 执行 CLI 单次网页抓取。
-func (a *App) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Envelope, error) {
-	if a.logger != nil && req != nil {
-		a.logger.DebugContext(ctx, "fetch_start", "url", req.URL, "strategy", string(req.Strategy))
-	}
+func (a *App) runCLIFetch(ctx context.Context, req *core.FetchRequest) (*core.Envelope, error) {
 	env, err := a.cliRouter.Fetch(ctx, req)
 	a.scrubEnvelopeSecrets(env)
 	err = a.scrubError(err)
 	a.logEnvelope("fetch", env)
 	return env, err
+}
+
+func (a *App) fetchCacheKey(rawURL string, strategy core.FetchStrategy, providers []string, options map[string]string) string {
+	ghCred := a.loaded.CredentialFor(spec.ProviderGitHub)
+	scope := hashScopeParts(
+		a.EnabledFetchers(),
+		a.loaded.Config.Fetch.Providers,
+		a.loaded.Config.Fetch.ProvidersGlobal,
+		ghCred.Keys,
+	)
+	return buildFetchCacheKeyWithScope(rawURL, strategy, providers, options, scope)
+}
+
+func (a *App) searchCacheKey(req *core.SearchRequest, defaultMaxChars int) string {
+	sCfg := a.loaded.Config.Search
+	scope := hashScopeParts(
+		a.EnabledSearchers(),
+		sCfg.Providers,
+		sCfg.ProvidersGlobal,
+		sCfg.FusionProviders,
+		sCfg.FusionProvidersGlobal,
+		sCfg.FallbackOnEmpty,
+		sCfg.FusionK,
+		sCfg.SummaryMaxChars,
+		sCfg.ContentMaxChars,
+		a.loaded.SearchProvidersExplicit,
+		a.loaded.FusionProvidersGlobalExplicit,
+	)
+	return buildSearchCacheKeyWithScope(req, sCfg, defaultMaxChars, scope)
 }
 
 func (a *App) logEnvelope(op string, env *core.Envelope) {

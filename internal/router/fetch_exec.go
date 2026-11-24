@@ -20,6 +20,7 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 	var lowQualityFallback *core.Page
 	var lowQualityFallbackProvider string
 	var lowQualityReason string
+	var lowQualityNoStore bool
 	var lastWallProvider string
 	var lastWallReason string
 	notFoundCount := 0
@@ -154,6 +155,7 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 				lowQualityFallback = out.Page.Clone()
 				lowQualityFallbackProvider = f.Name()
 				lowQualityReason = out.QualityMsg
+				lowQualityNoStore = out.NoStore
 			}
 
 			if idx < len(seq)-1 {
@@ -170,7 +172,9 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 
 			if lowQualityFallback != nil {
 				notes = append(notes, formatLowQualityFallbackNote(lowQualityFallbackProvider, lowQualityReason, policy.strategyLabel, idx > 0))
-				return buildFetchSuccessEnvelope(lowQualityFallback, &workReq, policy.strategyLabel, reports, idx > 0, notes, costs, start), nil
+				env := buildFetchSuccessEnvelope(lowQualityFallback, &workReq, policy.strategyLabel, reports, idx > 0, notes, costs, start)
+				env.NoCacheStore = lowQualityNoStore
+				return env, nil
 			}
 			se := buildWallExhaustedError(lastWallProvider, lastWallReason, len(seq) > 1, policy.strategyLabel)
 			return buildFetchErrorEnvelope(req.URL, policy.strategyLabel, reports, idx > 0, costs, start, se), se
@@ -185,12 +189,16 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 			Warnings:  buildFetchReportWarnings(out.LowQuality, out.QualityMsg, out.Warnings),
 			RequestID: out.RequestID,
 		})
-		return buildFetchSuccessEnvelope(out.Page, &workReq, policy.strategyLabel, reports, idx > 0, notes, costs, start), nil
+		env := buildFetchSuccessEnvelope(out.Page, &workReq, policy.strategyLabel, reports, idx > 0, notes, costs, start)
+		env.NoCacheStore = out.NoStore
+		return env, nil
 	}
 
 	if lowQualityFallback != nil {
 		notes = append(notes, formatLowQualityFallbackNote(lowQualityFallbackProvider, lowQualityReason, policy.strategyLabel, true))
-		return buildFetchSuccessEnvelope(lowQualityFallback, &workReq, policy.strategyLabel, reports, true, notes, costs, start), nil
+		env := buildFetchSuccessEnvelope(lowQualityFallback, &workReq, policy.strategyLabel, reports, true, notes, costs, start)
+		env.NoCacheStore = lowQualityNoStore
+		return env, nil
 	}
 
 	if lastErr == nil && lastWallProvider != "" {

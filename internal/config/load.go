@@ -23,6 +23,7 @@ type Loaded struct {
 	Config                        Config
 	Path                          string
 	Dir                           string
+	CacheDir                      string
 	FileExists                    bool
 	FileMode                      os.FileMode
 	DefinedKeys                   map[string]bool   // config.toml 中显式定义的键路径集合
@@ -79,6 +80,11 @@ func ResolvePath(explicitPath string, getenv func(string) string) (string, error
 // ResolveDir 返回当前生效的配置与加密凭据目录（默认 ~/.config/veri）。
 func ResolveDir(explicitConfigPath string, getenv func(string) string) (string, error) {
 	return storage.ResolveConfigDir(spec.ConfigDirName, spec.ConfigFileName, explicitConfigPath, spec.EnvConfig, getenv)
+}
+
+// ResolveCacheDir 按三端统一优先级解析磁盘缓存目录（默认 ~/.cache/veri）。
+func ResolveCacheDir(explicitDir string, getenv func(string) string) (string, error) {
+	return storage.ResolveCacheDir(spec.ConfigDirName, explicitDir, spec.EnvCacheDir, getenv)
 }
 
 // Load 加载、合并并严格校验配置（内置默认 <- config.toml <- secrets.json <- 环境变量）。
@@ -163,6 +169,11 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
 	}
+	cacheDir, err := ResolveCacheDir(cfg.Cache.Dir, getenv)
+	if err != nil {
+		return nil, core.WrapError(core.CodeInvalidArgument, err.Error(), err)
+	}
+	out.CacheDir = cacheDir
 
 	vaultSecrets, err := loadVaultSecrets(credentials.NewVault(cfgDir), cfgDir)
 	if err != nil {
@@ -305,7 +316,77 @@ func applyBehaviorEnv(cfg *Config, loaded *Loaded, getenv func(string) string) e
 		cfg.Search.Timeout = Duration{d}
 		recordEnv("search.timeout", spec.EnvTimeout)
 	}
+	if v := strings.TrimSpace(getenv(spec.EnvCacheDir)); v != "" {
+		cfg.Cache.Dir = v
+		recordEnv("cache.dir", spec.EnvCacheDir)
+	}
+	if d, set, err := parseNonNegDurationEnv(spec.EnvCacheFetchTTL, getenv(spec.EnvCacheFetchTTL)); err != nil {
+		return err
+	} else if set {
+		cfg.Cache.FetchTTL = Duration{d}
+		cfg.Cache.CLI.FetchTTL = nil
+		cfg.Cache.MCP.FetchTTL = nil
+		recordEnv("cache.fetch_ttl", spec.EnvCacheFetchTTL)
+		recordEnv("cache.cli.fetch_ttl", spec.EnvCacheFetchTTL)
+		recordEnv("cache.mcp.fetch_ttl", spec.EnvCacheFetchTTL)
+	}
+	if d, set, err := parseNonNegDurationEnv(spec.EnvCacheSearchTTL, getenv(spec.EnvCacheSearchTTL)); err != nil {
+		return err
+	} else if set {
+		cfg.Cache.SearchTTL = Duration{d}
+		cfg.Cache.CLI.SearchTTL = nil
+		cfg.Cache.MCP.SearchTTL = nil
+		recordEnv("cache.search_ttl", spec.EnvCacheSearchTTL)
+		recordEnv("cache.cli.search_ttl", spec.EnvCacheSearchTTL)
+		recordEnv("cache.mcp.search_ttl", spec.EnvCacheSearchTTL)
+	}
+	if v := strings.TrimSpace(getenv(spec.EnvNoCache)); v != "" {
+		disable, ok := parseEnvBool(v)
+		if !ok {
+			return invalidEnvValueError(spec.EnvNoCache, v, "1 | 0 | true | false")
+		}
+		if disable {
+			cfg.Cache.Enabled = false
+			cfg.Cache.CLI.Enabled = nil
+			cfg.Cache.MCP.Enabled = nil
+			recordEnv("cache.enabled", spec.EnvNoCache)
+			recordEnv("cache.cli.enabled", spec.EnvNoCache)
+			recordEnv("cache.mcp.enabled", spec.EnvNoCache)
+		}
+	}
 	return nil
+}
+
+func parseNonNegDurationEnv(envName, raw string) (time.Duration, bool, error) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return 0, false, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return 0, false, invalidEnvValueError(envName, v, "duration (e.g. 15m, 0s)")
+	}
+	return d, true, nil
+}
+
+func invalidEnvValueError(envName, value, expected string) *core.Error {
+	safeVal := scrubConfigScalar(value)
+	return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("invalid %s %q: expected %s", envName, safeVal, expected)).
+		WithMsgKey("err.invalid_env_value").
+		WithParam("env", envName).
+		WithParam("value", safeVal).
+		WithParam("expected", expected)
+}
+
+func parseEnvBool(raw string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func splitEnvList(raw string) []string {

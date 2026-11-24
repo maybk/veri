@@ -111,6 +111,7 @@ type SearchRequest struct {
 	IncludeExtra  bool              // 为 true 时保留站点 Icon 与 Extra 中的厂商特有扩展元数据
 	MaxChars      int               // 整次检索响应字符预算，0 表示使用场景默认值或不限
 	Timeout       time.Duration     // 可选单次检索超时覆盖，0 表示使用路由默认超时
+	NoCache       bool              // 为 true 时跳过本地缓存读取且不写入缓存（CLI 磁盘缓存与 MCP 内存缓存均生效）
 	Options       map[string]string // 厂商专属参数，键格式为 "<provider>.<key>"
 }
 

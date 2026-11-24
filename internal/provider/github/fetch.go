@@ -56,17 +56,23 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 	}
 }
 
+type ghResponse struct {
+	body    []byte
+	reqID   string
+	noStore bool
+}
+
 func (p *Provider) fetchReadme(ctx context.Context, origURL string, rt parsedRoute) (*core.FetchOutcome, error) {
 	endpoint := fmt.Sprintf("%s/repos/%s/%s/readme", p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo))
-	body, reqID, err := p.doGitHubGET(ctx, p.apiClient, endpoint, "application/vnd.github.raw+json")
+	res, err := p.doGitHubGET(ctx, p.apiClient, endpoint, "application/vnd.github.raw+json")
 	if err != nil {
 		return nil, err
 	}
-	content := textnorm.CleanPlainText(string(body))
+	content := textnorm.CleanPlainText(string(res.body))
 	if content == "" {
 		return nil, core.NewError(core.CodeContentUnavailable, "repository README is empty").WithProvider(ProviderName)
 	}
-	return newOutcome(origURL, fmt.Sprintf("%s/%s README", rt.owner, rt.repo), nil, content, core.SourceGitHubReadme, reqID), nil
+	return newOutcome(origURL, fmt.Sprintf("%s/%s README", rt.owner, rt.repo), nil, content, core.SourceGitHubReadme, res.reqID, res.noStore), nil
 }
 
 func (p *Provider) fetchBlob(ctx context.Context, origURL string, rt parsedRoute) (*core.FetchOutcome, error) {
@@ -81,16 +87,16 @@ func (p *Provider) fetchBlob(ctx context.Context, origURL string, rt parsedRoute
 		url.PathEscape(rt.ref),
 		strings.Join(escapedSegs, "/"),
 	)
-	body, reqID, err := p.doGitHubGET(ctx, p.rawClient, endpoint, "text/plain")
+	res, err := p.doGitHubGET(ctx, p.rawClient, endpoint, "text/plain")
 	if err != nil {
 		return nil, err
 	}
-	if bytes.IndexByte(body, 0) >= 0 || !utf8.Valid(body) {
+	if bytes.IndexByte(res.body, 0) >= 0 || !utf8.Valid(res.body) {
 		return nil, core.NewError(core.CodeContentUnavailable, "GitHub file is binary or non-UTF-8").
 			WithProvider(ProviderName)
 	}
 
-	rawText := textnorm.CleanPlainText(string(body))
+	rawText := textnorm.CleanPlainText(string(res.body))
 	if rawText == "" {
 		return nil, core.NewError(core.CodeContentUnavailable, "GitHub file is empty").WithProvider(ProviderName)
 	}
@@ -113,7 +119,7 @@ func (p *Provider) fetchBlob(ctx context.Context, origURL string, rt parsedRoute
 	if rt.startLine > 0 || (ext != "md" && ext != "markdown" && ext != "mdx") {
 		content = fmt.Sprintf("```%s\n%s\n```", ext, rawText)
 	}
-	return newOutcome(origURL, title, nil, content, core.SourceGitHubFile, reqID), nil
+	return newOutcome(origURL, title, nil, content, core.SourceGitHubFile, res.reqID, res.noStore), nil
 }
 
 func sliceLines(text string, startLine, endLine int) string {
@@ -127,12 +133,12 @@ func sliceLines(text string, startLine, endLine int) string {
 
 func (p *Provider) fetchIssue(ctx context.Context, origURL string, rt parsedRoute) (*core.FetchOutcome, error) {
 	issueURL := fmt.Sprintf("%s/repos/%s/%s/issues/%d", p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo), rt.number)
-	body, reqID, err := p.doGitHubGET(ctx, p.apiClient, issueURL, "application/vnd.github+json")
+	res, err := p.doGitHubGET(ctx, p.apiClient, issueURL, "application/vnd.github+json")
 	if err != nil {
 		return nil, err
 	}
 	var issue issueWire
-	if err := json.Unmarshal(body, &issue); err != nil {
+	if err := json.Unmarshal(res.body, &issue); err != nil {
 		return nil, core.WrapError(core.CodeUpstreamBadResponse, "failed to decode GitHub issue JSON", err).WithProvider(ProviderName)
 	}
 	var labels []string
@@ -141,7 +147,7 @@ func (p *Provider) fetchIssue(ctx context.Context, origURL string, rt parsedRout
 			labels = append(labels, l.Name)
 		}
 	}
-	return p.renderThreadOutcome(ctx, origURL, rt, core.SourceGitHubIssue, reqID, discussionDoc{
+	return p.renderThreadOutcome(ctx, origURL, rt, core.SourceGitHubIssue, res.reqID, res.noStore, discussionDoc{
 		title:     issue.Title,
 		state:     issue.State,
 		author:    issue.User.Login,
@@ -153,12 +159,12 @@ func (p *Provider) fetchIssue(ctx context.Context, origURL string, rt parsedRout
 
 func (p *Provider) fetchPR(ctx context.Context, origURL string, rt parsedRoute) (*core.FetchOutcome, error) {
 	pullURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo), rt.number)
-	body, reqID, err := p.doGitHubGET(ctx, p.apiClient, pullURL, "application/vnd.github+json")
+	res, err := p.doGitHubGET(ctx, p.apiClient, pullURL, "application/vnd.github+json")
 	if err != nil {
 		return nil, err
 	}
 	var pr pullWire
-	if err := json.Unmarshal(body, &pr); err != nil {
+	if err := json.Unmarshal(res.body, &pr); err != nil {
 		return nil, core.WrapError(core.CodeUpstreamBadResponse, "failed to decode GitHub pull request JSON", err).WithProvider(ProviderName)
 	}
 	state := pr.State
@@ -178,7 +184,7 @@ func (p *Provider) fetchPR(ctx context.Context, origURL string, rt parsedRoute) 
 	if pr.Head.Ref != "" && pr.Base.Ref != "" {
 		branches = pr.Head.Ref + " -> " + pr.Base.Ref
 	}
-	return p.renderThreadOutcome(ctx, origURL, rt, core.SourceGitHubPR, reqID, discussionDoc{
+	return p.renderThreadOutcome(ctx, origURL, rt, core.SourceGitHubPR, res.reqID, res.noStore, discussionDoc{
 		title:     pr.Title,
 		state:     state,
 		branches:  branches,
@@ -194,12 +200,12 @@ func (p *Provider) fetchRelease(ctx context.Context, origURL string, rt parsedRo
 	if rt.kind == routeReleaseLatest {
 		endpoint = fmt.Sprintf("%s/repos/%s/%s/releases/latest", p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo))
 	}
-	body, reqID, err := p.doGitHubGET(ctx, p.apiClient, endpoint, "application/vnd.github+json")
+	res, err := p.doGitHubGET(ctx, p.apiClient, endpoint, "application/vnd.github+json")
 	if err != nil {
 		return nil, err
 	}
 	var rel releaseWire
-	if err := json.Unmarshal(body, &rel); err != nil {
+	if err := json.Unmarshal(res.body, &rel); err != nil {
 		return nil, core.WrapError(core.CodeUpstreamBadResponse, "failed to decode GitHub release JSON", err).WithProvider(ProviderName)
 	}
 
@@ -220,10 +226,10 @@ func (p *Provider) fetchRelease(ctx context.Context, origURL string, rt parsedRo
 	b.WriteString(textnorm.CleanPlainText(rel.Body))
 
 	pub := textnorm.ParseFlexibleTime(rel.PublishedAt, time.UTC)
-	return newOutcome(origURL, fmt.Sprintf("%s/%s %s", rt.owner, rt.repo, heading), pub, strings.TrimSpace(b.String()), core.SourceGitHubRelease, reqID), nil
+	return newOutcome(origURL, fmt.Sprintf("%s/%s %s", rt.owner, rt.repo, heading), pub, strings.TrimSpace(b.String()), core.SourceGitHubRelease, res.reqID, res.noStore), nil
 }
 
-func (p *Provider) doGitHubGET(ctx context.Context, client *httpx.Client, targetURL, accept string) ([]byte, string, error) {
+func (p *Provider) doGitHubGET(ctx context.Context, client *httpx.Client, targetURL, accept string) (ghResponse, error) {
 	if p.pool == nil || p.pool.Size() == 0 {
 		return p.execSingleGET(ctx, client, targetURL, accept, keypool.Lease{}, false)
 	}
@@ -231,48 +237,48 @@ func (p *Provider) doGitHubGET(ctx context.Context, client *httpx.Client, target
 	lease, hasToken := p.pool.Acquire(-1)
 	if !hasToken {
 		if p.pool.DiagnoseExhaustion() == keypool.ExhaustRateLimited {
-			return nil, "", core.NewError(core.CodeRateLimited, "all GitHub tokens are rate-limited and cooling down").WithProvider(ProviderName)
+			return ghResponse{}, core.NewError(core.CodeRateLimited, "all GitHub tokens are rate-limited and cooling down").WithProvider(ProviderName)
 		}
 		return p.execSingleGET(ctx, client, targetURL, accept, keypool.Lease{}, false)
 	}
 
-	body, reqID, err := p.execSingleGET(ctx, client, targetURL, accept, lease, true)
+	res, err := p.execSingleGET(ctx, client, targetURL, accept, lease, true)
 	if err == nil {
-		return body, reqID, nil
+		return res, nil
 	}
 
 	se := core.AsError(err)
 	if se.Code != core.CodeAuthFailed && se.Code != core.CodeRateLimited {
-		return nil, reqID, err
+		return ghResponse{reqID: res.reqID}, err
 	}
 
 	// 遵循计费与配额安全规范：同池存在其他健康令牌时最多切换重试 1 次。
 	if nextLease, more := p.pool.Acquire(lease.ID); more {
-		body2, reqID2, err2 := p.execSingleGET(ctx, client, targetURL, accept, nextLease, true)
+		res2, err2 := p.execSingleGET(ctx, client, targetURL, accept, nextLease, true)
 		if err2 == nil {
-			return body2, reqID2, nil
+			return res2, nil
 		}
-		reqID = reqID2
+		res = res2
 		err = err2
 		se = core.AsError(err2)
 	}
 
 	// 若令牌因 401 鉴权失败且池中已无可用令牌，对公开仓库尝试 1 次匿名读取；若匿名也失败则保留原始 401 报错避免误报私有库 404。
 	if se.Code == core.CodeAuthFailed && p.pool.DiagnoseExhaustion() == keypool.ExhaustAuthFailed {
-		if anonBody, anonReqID, anonErr := p.execSingleGET(ctx, client, targetURL, accept, keypool.Lease{}, false); anonErr == nil {
-			return anonBody, anonReqID, nil
+		if anonRes, anonErr := p.execSingleGET(ctx, client, targetURL, accept, keypool.Lease{}, false); anonErr == nil {
+			return anonRes, nil
 		}
 	}
-	return nil, reqID, err
+	return ghResponse{reqID: res.reqID}, err
 }
 
-func (p *Provider) execSingleGET(ctx context.Context, client *httpx.Client, targetURL, accept string, lease keypool.Lease, hasToken bool) ([]byte, string, error) {
+func (p *Provider) execSingleGET(ctx context.Context, client *httpx.Client, targetURL, accept string, lease keypool.Lease, hasToken bool) (ghResponse, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, targetURL, nil)
 	if err != nil {
-		return nil, "", core.WrapError(core.CodeInvalidArgument, "invalid GitHub request URL", err).WithProvider(ProviderName)
+		return ghResponse{}, core.WrapError(core.CodeInvalidArgument, "invalid GitHub request URL", err).WithProvider(ProviderName)
 	}
 	req.Header.Set("Accept", accept)
 	req.Header.Set("X-GitHub-Api-Version", apiVersion)
@@ -283,12 +289,12 @@ func (p *Provider) execSingleGET(ctx context.Context, client *httpx.Client, targ
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", core.AsError(err).WithProvider(ProviderName)
+		return ghResponse{}, core.AsError(err).WithProvider(ProviderName)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, readErr := httpx.ReadBodyLimited(resp, p.maxBytes)
 	if readErr != nil {
-		return nil, "", core.AsError(readErr).WithProvider(ProviderName)
+		return ghResponse{}, core.AsError(readErr).WithProvider(ProviderName)
 	}
 	reqID := strings.TrimSpace(resp.Header.Get("X-GitHub-Request-Id"))
 
@@ -296,7 +302,11 @@ func (p *Provider) execSingleGET(ctx context.Context, client *httpx.Client, targ
 		if hasToken {
 			p.pool.ReportSuccess(lease.ID)
 		}
-		return body, reqID, nil
+		return ghResponse{
+			body:    body,
+			reqID:   reqID,
+			noStore: httpx.HasNoStoreCacheControl(resp.Header),
+		}, nil
 	}
 
 	classified := classifyGitHubError(resp.StatusCode, resp.Header, body)
@@ -309,10 +319,10 @@ func (p *Provider) execSingleGET(ctx context.Context, client *httpx.Client, targ
 			p.pool.ReportAuthFailed(lease.ID)
 		}
 	}
-	return nil, reqID, classified
+	return ghResponse{reqID: reqID}, classified
 }
 
-func newOutcome(origURL, title string, pub *time.Time, content, sourceType, reqID string) *core.FetchOutcome {
+func newOutcome(origURL, title string, pub *time.Time, content, sourceType, reqID string, noStore bool) *core.FetchOutcome {
 	return &core.FetchOutcome{
 		Page: &core.Page{
 			URL:        origURL,
@@ -323,6 +333,7 @@ func newOutcome(origURL, title string, pub *time.Time, content, sourceType, reqI
 			Provider:   ProviderName,
 			SourceType: sourceType,
 		},
+		NoStore:   noStore,
 		RequestID: reqID,
 	}
 }

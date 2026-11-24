@@ -70,3 +70,50 @@ func TestWriteFileAtomicAndPermissions(t *testing.T) {
 		t.Fatal("expected 0644 to report broad permissions on Unix")
 	}
 }
+
+func TestResolveCacheDirPrecedence(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome)
+
+	defDir, err := ResolveCacheDir("demoapp", "", "DEMO_CACHE_DIR", func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("ResolveCacheDir default failed: %v", err)
+	}
+	wantDef := filepath.Join(tmpHome, ".cache", "demoapp")
+	if defDir != wantDef {
+		t.Fatalf("default cache dir = %q, want %q", defDir, wantDef)
+	}
+
+	xdgDir := filepath.Join(tmpHome, "xdg-cache")
+	gotXDG, err := ResolveCacheDir("demoapp", "", "DEMO_CACHE_DIR", func(k string) string {
+		if k == "XDG_CACHE_HOME" {
+			return xdgDir
+		}
+		return ""
+	})
+	if err != nil || gotXDG != filepath.Join(xdgDir, "demoapp") {
+		t.Fatalf("XDG cache dir = (%q, %v)", gotXDG, err)
+	}
+
+	gotEnv, err := ResolveCacheDir("demoapp", "", "DEMO_CACHE_DIR", func(k string) string {
+		switch k {
+		case "DEMO_CACHE_DIR":
+			return "~/env-cache"
+		case "XDG_CACHE_HOME":
+			return xdgDir
+		default:
+			return ""
+		}
+	})
+	if err != nil || gotEnv != filepath.Join(tmpHome, "env-cache") {
+		t.Fatalf("env cache dir = (%q, %v)", gotEnv, err)
+	}
+
+	gotExplicit, err := ResolveCacheDir("demoapp", "~/explicit-cache", "DEMO_CACHE_DIR", func(string) string {
+		return "~/ignored-cache"
+	})
+	if err != nil || gotExplicit != filepath.Join(tmpHome, "explicit-cache") {
+		t.Fatalf("explicit cache dir = (%q, %v)", gotExplicit, err)
+	}
+}

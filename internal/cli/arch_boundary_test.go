@@ -331,7 +331,7 @@ func checkImportBoundary(t *testing.T, relFile, pkgDir, impPath, modulePrefix st
 			t.Errorf("%s in internal/update imports forbidden package %q", relFile, sub)
 		}
 	case pkgDir == "internal/app":
-		allowed := []string{"clikit/buildinfo", "clikit/redact", "internal/router", "internal/config", "internal/httpx", "internal/urlnorm", "internal/core", "internal/spec", "internal/textnorm"}
+		allowed := []string{"clikit/buildinfo", "clikit/redact", "clikit/storage", "internal/router", "internal/config", "internal/httpx", "internal/urlnorm", "internal/core", "internal/spec", "internal/textnorm"}
 		if !slices.Contains(allowed, sub) && !strings.HasPrefix(sub, "internal/provider/") {
 			t.Errorf("%s in internal/app imports forbidden package %q", relFile, sub)
 		}

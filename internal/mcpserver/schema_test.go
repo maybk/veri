@@ -31,8 +31,12 @@ func TestMCPSchemaDynamicOptionsFiltering(t *testing.T) {
 	if !strings.Contains(fusionDesc, "breaking news") || !strings.Contains(fusionDesc, "open research") {
 		t.Fatalf("expected fusion description to give clear usage guidance, got %q", fusionDesc)
 	}
-	if !strings.Contains(serverInstructions, "multi-source") || !strings.Contains(webSearchDescription, "breaking news") {
-		t.Fatalf("expected MCP prompts to highlight multi-source RRF fusion and breaking news")
+	if !strings.Contains(serverInstructions, "multi-source") || !strings.Contains(serverInstructions, "no_cache=true") || !strings.Contains(webSearchDescription, "breaking news") {
+		t.Fatalf("expected MCP prompts to highlight multi-source RRF fusion, breaking news, and no_cache")
+	}
+	noCacheDesc := fullSearchSchema["properties"].(map[string]any)["no_cache"].(map[string]any)["description"].(string)
+	if !strings.Contains(noCacheDesc, "omit by default") {
+		t.Fatalf("expected no_cache description to guide default omission, got %q", noCacheDesc)
 	}
 	for _, want := range []string{
 		spec.OptExaSearchType,

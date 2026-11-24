@@ -123,6 +123,11 @@ func (r *Router) fetchLocalPinned(ctx context.Context, req *core.FetchRequest, p
 	}, start)
 }
 
+// ValidateFetchRequest 校验并归一化单页抓取请求（不执行上游调用，供应用层查缓存前复核参数合法性）。
+func (r *Router) ValidateFetchRequest(rawReq *core.FetchRequest) (core.FetchRequest, *url.URL, error) {
+	return r.normalizeFetchRequest(rawReq)
+}
+
 func (r *Router) normalizeFetchRequest(rawReq *core.FetchRequest) (core.FetchRequest, *url.URL, error) {
 	if rawReq == nil {
 		return core.FetchRequest{}, nil, core.NewError(core.CodeInvalidArgument, "fetch request must not be nil")

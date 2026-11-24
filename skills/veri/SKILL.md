@@ -8,7 +8,7 @@ description: Multi-source web search and clean Markdown page extraction via the 
 ## When to use
 - Current information after your knowledge cutoff: release notes, API references, technical docs, breaking news, cross-verified research, or bug investigations.
 - Reading full text or targeted sections of web pages and GitHub repositories/files/issues/PRs/repo discussions/commits/releases (`veri fetch`).
-- Prefer `veri` MCP tools (`web_search`, `web_fetch`) when mounted in your session to reuse in-process caching; use the CLI when MCP is unavailable or for `providers`/`doctor`/`config`.
+- Prefer `veri` MCP tools (`web_search`, `web_fetch`) when mounted for in-process caching and coalescing; CLI `veri fetch` also caches full pages locally (`~/.cache/veri`, 15m TTL) for zero-cost `--section`/`--match`/`--offset` slicing. Use CLI when MCP is unavailable or for `providers`/`doctor`/`config`/`cache`.
 
 ## Core recipes
 ```bash
@@ -24,7 +24,9 @@ veri fetch -q --json --section "Authentication" -- "<url>"              # read a
 veri fetch -q --json --match "Retry-After" -- "<url>"                   # extract matching passages or compact line windows in large code files
 veri fetch -q --json -p exa,local -- "<url>"                            # explicit fetch chain (single value disables fallback; conflicts with --strategy)
 veri fetch -q --json -- "<url1>" "<url2>"                               # concurrent ordered batch fetch (or pipe via '-')
-veri fetch -q --json --fresh -- "<url>"                                 # force live upstream extraction (bypasses MCP cache; CLI has no disk cache)
+veri fetch -q --json --fresh -- "<url>"                                 # bypass caches, fetch live, and refresh local cache
+veri search -q --json --no-cache -- "<query>"                           # bypass local search cache (when enabled)
+veri cache info --json                                                  # inspect cache settings and disk usage (`veri cache clear` clears disk cache)
 ```
 
 ## Reading JSON envelopes

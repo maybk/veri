@@ -15,7 +15,7 @@
 - `provider/`：各上游检索源与本地/GitHub 网页正文提取器的正交实现集合。
 - `router/`：链式故障回退、并发 RRF 融合、正文质量闸门升档、过滤条件模拟与字符预算裁剪。
 - `config/`：`~/.config/veri/` 配置加载、TOML 未知键拦截与三级凭据合并。
-- `app/`：显式 Provider 注册装配、进程内缓存、并发请求合并与健康诊断。
+- `app/`：显式 Provider 注册装配、CLI 磁盘缓存、MCP 进程内内存缓存、并发请求合并与健康诊断。
 - `update/`：官方 GitHub Releases 版本检查、SHA-256 校验、安装形态识别与跨平台原子自更新引擎。
 - `render/`：检索结果与网页正文的 Markdown / JSON / JSONL / URL 渲染及外部内容标签包裹。
 - `cli/`：Cobra 命令行入口、双语词表与全仓架构合规测试。

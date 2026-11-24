@@ -51,6 +51,11 @@ func (r *Router) Search(ctx context.Context, rawReq *core.SearchRequest) (*core.
 	}
 }
 
+// ValidateSearchRequest 校验并归一化检索请求（不执行上游调用，供应用层查缓存前复核参数合法性）。
+func (r *Router) ValidateSearchRequest(rawReq *core.SearchRequest) (core.SearchRequest, error) {
+	return r.normalizeSearchRequest(rawReq)
+}
+
 func (r *Router) normalizeSearchRequest(rawReq *core.SearchRequest) (core.SearchRequest, error) {
 	if rawReq == nil {
 		return core.SearchRequest{}, core.NewError(core.CodeInvalidArgument, "search request must not be nil")

@@ -25,6 +25,7 @@ type rawFetchPayload struct {
 	body       []byte
 	finalURL   *url.URL
 	finalURLSt string
+	noStore    bool
 }
 
 // Fetch 经 SSRF 安全客户端拉取目标 URL，按 Content-Type 提取 Markdown 并执行质量闸门检查。
@@ -52,18 +53,26 @@ func (p *Provider) Fetch(ctx context.Context, req *core.FetchRequest) (*core.Fet
 		return nil, err
 	}
 
+	var out *core.FetchOutcome
 	switch {
 	case payload.mediaType == "text/html" || payload.mediaType == "application/xhtml+xml" || (payload.mediaType == "" && looksLikeHTML(payload.body)):
-		return p.extractHTML(reqCtx, targetURL.String(), payload.finalURL, payload.finalURLSt, payload.rawCT, payload.body)
+		out, err = p.extractHTML(reqCtx, targetURL.String(), payload.finalURL, payload.finalURLSt, payload.rawCT, payload.body)
 	case payload.mediaType == "text/markdown" || payload.mediaType == "text/x-markdown":
-		return p.extractMarkdown(reqCtx, targetURL, payload)
+		out, err = p.extractMarkdown(reqCtx, targetURL, payload)
 	case payload.mediaType == "text/plain":
-		return p.extractPlainText(reqCtx, targetURL, payload)
+		out, err = p.extractPlainText(reqCtx, targetURL, payload)
 	case payload.mediaType == "application/json" || strings.HasSuffix(payload.mediaType, "+json"):
-		return p.extractJSON(targetURL, payload)
+		out, err = p.extractJSON(targetURL, payload)
 	default:
 		return nil, unsupportedMediaTypeError(payload.mediaType)
 	}
+	if err != nil {
+		return nil, err
+	}
+	if out != nil && payload.noStore {
+		out.NoStore = true
+	}
+	return out, nil
 }
 
 func (p *Provider) fetchPayload(reqCtx context.Context, targetURL *url.URL, accept string) (*rawFetchPayload, error) {
@@ -112,6 +121,7 @@ func (p *Provider) fetchPayload(reqCtx context.Context, targetURL *url.URL, acce
 		body:       body,
 		finalURL:   finalURL,
 		finalURLSt: finalURLStr,
+		noStore:    httpx.HasNoStoreCacheControl(resp.Header),
 	}, nil
 }
 

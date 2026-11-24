@@ -20,6 +20,7 @@ import (
 	"veri/clikit"
 	"veri/clikit/i18n"
 	"veri/internal/core"
+	"veri/internal/spec"
 )
 
 var headerElapsedRe = regexp.MustCompile(`· \d+\.\d{2}s`)
@@ -59,6 +60,7 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	cfgPath := filepath.Join(tmpDir, "config.toml")
+	cacheDir := filepath.Join(tmpDir, "cache")
 	repoFS := os.DirFS(filepath.Join("..", ".."))
 	buildInfo := BuildInfo{
 		Version:   "1.0.0",
@@ -78,7 +80,15 @@ func TestCLIEndToEndExitCodesI18nAndGolden(t *testing.T) {
 			strings.NewReader(stdin),
 			&outBuf,
 			&errBuf,
-			func(k string) string { return envMap[k] },
+			func(k string) string {
+				if v, ok := envMap[k]; ok {
+					return v
+				}
+				if k == spec.EnvCacheDir {
+					return cacheDir
+				}
+				return ""
+			},
 		)
 		return code, outBuf.String(), errBuf.String()
 	}

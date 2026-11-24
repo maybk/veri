@@ -25,7 +25,9 @@ func newTestAppWithServer(t *testing.T, extraTOML string, handler http.HandlerFu
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "config.toml")
+	cacheDir := filepath.Join(tmp, "cache")
 	cfgBody := fmt.Sprintf(`
 [search]
 providers = ["deepseek"]
@@ -48,7 +50,12 @@ allow_private = true
 	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := config.LoadWithEnv(cfgPath, func(string) string { return "" })
+	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
+		if k == spec.EnvCacheDir {
+			return cacheDir
+		}
+		return ""
+	})
 	if err != nil {
 		t.Fatalf("LoadWithEnv: %v", err)
 	}
@@ -239,11 +246,16 @@ func (f *panicAwareFetcher) Fetch(_ context.Context, req *core.FetchRequest) (*c
 
 func TestBatchFetchPanicRecoveryAndMCPDoubleCheckCache(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "batch-panic.toml")
+	cacheDir := t.TempDir()
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == "DEEPSEEK_API_KEY" {
+		switch k {
+		case "DEEPSEEK_API_KEY":
 			return "sk-batch-secret-9999"
+		case "VERI_CACHE_DIR":
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +289,7 @@ func TestBatchFetchPanicRecoveryAndMCPDoubleCheckCache(t *testing.T) {
 
 	// 2. FetchMCP 共享航班 double-check 命中缓存时，必须标 cached=true 且清零 Cost/DurationMS，同时不破坏原缓存页
 	targetURL := "https://ok.example.com/double-check"
-	cacheKey := buildFetchCacheKey(targetURL, core.FetchAPIOnly, nil, nil)
+	cacheKey := application.fetchCacheKey(targetURL, core.FetchAPIOnly, nil, nil)
 	orig := &core.Envelope{
 		Schema: spec.SchemaVersion,
 		OK:     true,
@@ -292,7 +304,7 @@ func TestBatchFetchPanicRecoveryAndMCPDoubleCheckCache(t *testing.T) {
 		},
 		Meta: core.Meta{
 			Strategy:   string(core.FetchAPIOnly),
-			Providers:  []core.ProviderReport{{Name: spec.ProviderDeepSeek, Status: core.ProviderStatusOK, Results: 1, Cost: &core.Cost{Currency: core.CurrencyUSD, Micros: 1000}}},
+			Providers:  []core.ProviderReport{{Name: spec.ProviderDeepSeek, Status: core.ProviderStatusOK, Results: 1, LatencyMS: 320, Cost: &core.Cost{Currency: core.CurrencyUSD, Micros: 1000}}},
 			Cost:       []core.Cost{{Currency: core.CurrencyUSD, Micros: 1000}},
 			DurationMS: 420,
 		},
@@ -301,15 +313,39 @@ func TestBatchFetchPanicRecoveryAndMCPDoubleCheckCache(t *testing.T) {
 	application.fetchCache.Set(cacheKey, orig)
 	// 模拟进入 sfFetch 回调后的 double-check 路径
 	viewed := application.buildViewedFetchEnvelope(orig, &core.FetchRequest{URL: targetURL, MaxChars: 100}, true)
-	if !viewed.Meta.Cached || len(viewed.Meta.Cost) != 0 || viewed.Meta.DurationMS != 0 || viewed.Meta.Providers[0].Cost != nil {
-		t.Fatalf("expected cached view to zero cost/duration and mark cached=true, got %+v", viewed.Meta)
+	if !viewed.Meta.Cached || len(viewed.Meta.Cost) != 0 || viewed.Meta.DurationMS != 0 || viewed.Meta.Providers[0].Cost != nil || viewed.Meta.Providers[0].LatencyMS != 0 {
+		t.Fatalf("expected cached view to zero cost/duration/provider latency and mark cached=true, got %+v", viewed.Meta)
 	}
-	if orig.Meta.Cached || len(orig.Meta.Cost) != 1 || orig.Meta.DurationMS != 420 {
+	if orig.Meta.Cached || len(orig.Meta.Cost) != 1 || orig.Meta.DurationMS != 420 || orig.Meta.Providers[0].LatencyMS != 320 {
 		t.Fatalf("cached view mutated original cached envelope: %+v", orig.Meta)
 	}
 	// 再次直接走 FetchMCP 验证 double-check 与缓存命中路径一致
 	dcEnv, dcErr := application.FetchMCP(t.Context(), &core.FetchRequest{URL: targetURL, MaxChars: 120})
 	if dcErr != nil || !dcEnv.OK || !dcEnv.Meta.Cached || len(dcEnv.Meta.Cost) != 0 || dcEnv.Meta.DurationMS != 0 {
 		t.Fatalf("expected FetchMCP cache hit with cached=true and zero cost, got meta=%+v err=%v", dcEnv.Meta, dcErr)
+	}
+
+	// 3. 批量全热命中（MCP 内存缓存与 CLI 磁盘缓存）均须与单页口径一致：cached=true 且 DurationMS/Cost/Providers[].LatencyMS 归零
+	hotMCP, hotMCPErr := application.FetchBatchMCP(t.Context(), []string{"https://ok.example.com/a", targetURL}, nil)
+	if hotMCPErr != nil || !hotMCP.OK || !hotMCP.Meta.Cached || hotMCP.Meta.DurationMS != 0 || len(hotMCP.Meta.Cost) != 0 {
+		t.Fatalf("expected all-hot MCP batch to zero duration/cost and mark cached=true, got meta=%+v err=%v", hotMCP.Meta, hotMCPErr)
+	}
+	for _, rep := range hotMCP.Meta.Providers {
+		if rep.LatencyMS != 0 || rep.Cost != nil {
+			t.Fatalf("expected all-hot MCP batch provider telemetry zeroed, got %+v", rep)
+		}
+	}
+	cliBatchURLs := []string{"https://ok.example.com/cli-a", "https://ok.example.com/cli-b"}
+	if coldCLI, coldErr := application.FetchBatch(t.Context(), cliBatchURLs, nil); coldErr != nil || !coldCLI.OK || coldCLI.Meta.Cached {
+		t.Fatalf("expected initial CLI batch cold miss, got cached=%v err=%v", coldCLI != nil && coldCLI.Meta.Cached, coldErr)
+	}
+	hotCLI, hotCLIErr := application.FetchBatch(t.Context(), cliBatchURLs, nil)
+	if hotCLIErr != nil || !hotCLI.OK || !hotCLI.Meta.Cached || hotCLI.Meta.DurationMS != 0 || len(hotCLI.Meta.Cost) != 0 {
+		t.Fatalf("expected all-hot CLI batch to zero duration/cost and mark cached=true, got meta=%+v err=%v", hotCLI.Meta, hotCLIErr)
+	}
+	for _, rep := range hotCLI.Meta.Providers {
+		if rep.LatencyMS != 0 || rep.Cost != nil {
+			t.Fatalf("expected all-hot CLI batch provider telemetry zeroed, got %+v", rep)
+		}
 	}
 }

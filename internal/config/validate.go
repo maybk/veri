@@ -101,11 +101,15 @@ func validateConfig(cfg *Config) error {
 		return err
 	}
 
+	if err := validateCache(&cfg.Cache); err != nil {
+		return err
+	}
+
 	if err := validateEnumValue("mcp.text_format", cfg.MCP.TextFormat); err != nil {
 		return err
 	}
-	if cfg.MCP.SearchMaxChars < 0 || cfg.MCP.FetchMaxChars < 0 || cfg.MCP.ContentMaxChars < 0 || cfg.MCP.MaxCount < 0 || cfg.MCP.CacheSize < 0 {
-		return core.NewError(core.CodeInvalidArgument, "mcp budget, max_count, and cache_size settings must be >= 0")
+	if cfg.MCP.SearchMaxChars < 0 || cfg.MCP.FetchMaxChars < 0 || cfg.MCP.ContentMaxChars < 0 || cfg.MCP.MaxCount < 0 {
+		return core.NewError(core.CodeInvalidArgument, "mcp budget and max_count settings must be >= 0")
 	}
 
 	if err := validateNetwork(&cfg.Network); err != nil {
@@ -146,6 +150,25 @@ func isValidUILangSetting(raw string) bool {
 	cleaned = strings.ReplaceAll(cleaned, "_", "-")
 	base, _, _ := strings.Cut(cleaned, "-")
 	return base == "zh" || base == "en"
+}
+
+func validateCache(c *CacheConfig) error {
+	if c.MaxBytes <= 0 {
+		return core.NewError(core.CodeInvalidArgument, "cache.max_bytes must be > 0")
+	}
+	if c.FetchTTL.Duration < 0 || c.SearchTTL.Duration < 0 {
+		return core.NewError(core.CodeInvalidArgument, "cache TTL settings must be >= 0")
+	}
+	if (c.CLI.FetchTTL != nil && c.CLI.FetchTTL.Duration < 0) || (c.CLI.SearchTTL != nil && c.CLI.SearchTTL.Duration < 0) {
+		return core.NewError(core.CodeInvalidArgument, "cache.cli TTL settings must be >= 0")
+	}
+	if (c.MCP.FetchTTL != nil && c.MCP.FetchTTL.Duration < 0) || (c.MCP.SearchTTL != nil && c.MCP.SearchTTL.Duration < 0) {
+		return core.NewError(core.CodeInvalidArgument, "cache.mcp TTL settings must be >= 0")
+	}
+	if c.MCP.MaxEntries < 0 {
+		return core.NewError(core.CodeInvalidArgument, "cache.mcp.max_entries must be >= 0")
+	}
+	return nil
 }
 
 func validateNetwork(netCfg *NetworkConfig) error {

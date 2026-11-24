@@ -78,6 +78,7 @@ func (p *Provider) buildMarkdownOutcome(reqCtx context.Context, targetURL *url.U
 			(htmlPayload.mediaType == "text/html" || htmlPayload.mediaType == "application/xhtml+xml") {
 			if htmlOut, exErr := p.extractHTML(reqCtx, targetURL.String(), htmlPayload.finalURL, htmlPayload.finalURLSt, htmlPayload.rawCT, htmlPayload.body); exErr == nil && htmlOut != nil && htmlOut.Page != nil {
 				if !htmlOut.LowQuality || htmlOut.Page.TotalChars > mdOut.Page.TotalChars {
+					htmlOut.NoStore = htmlPayload.noStore || payload.noStore
 					return htmlOut, nil
 				}
 			}

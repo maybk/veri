@@ -165,3 +165,33 @@ func TestGitHubPathTraversalAndTokenFailover(t *testing.T) {
 		t.Fatalf("expected 4-token rate-limited pool to stop after 1 spare retry with CodeRateLimited, err=%v seen=%v", err, seenAuth)
 	}
 }
+
+func TestGitHubNoStorePropagation(t *testing.T) {
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/org/secret/readme":
+			w.Header().Set("Cache-Control", "private, no-store")
+			_, _ = w.Write([]byte("# Secret README"))
+		default:
+			w.Header().Set("Cache-Control", "private, max-age=60")
+			_, _ = w.Write([]byte("# Public README"))
+		}
+	}))
+	defer apiSrv.Close()
+
+	p, _, err := New(Options{
+		APIBaseURL: apiSrv.URL,
+		RawBaseURL: apiSrv.URL,
+	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	outNoStore, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://github.com/org/secret"})
+	if err != nil || outNoStore == nil || !outNoStore.NoStore {
+		t.Fatalf("expected NoStore=true for GitHub no-store response, got out=%+v err=%v", outNoStore, err)
+	}
+	outNormal, err := p.Fetch(context.Background(), &core.FetchRequest{URL: "https://github.com/org/public"})
+	if err != nil || outNormal == nil || outNormal.NoStore {
+		t.Fatalf("expected NoStore=false for private max-age=60 response, got out=%+v err=%v", outNormal, err)
+	}
+}

@@ -455,9 +455,16 @@ func valuesEqual(vt ValueType, got, expected any) bool {
 
 func activeShadowingEnv(info KeyInfo, getenv func(string) string) string {
 	for _, ev := range info.EnvVars {
-		if strings.TrimSpace(getenv(ev)) != "" {
-			return ev
+		v := strings.TrimSpace(getenv(ev))
+		if v == "" {
+			continue
 		}
+		if ev == spec.EnvNoCache {
+			if disable, ok := parseEnvBool(v); !ok || !disable {
+				continue
+			}
+		}
+		return ev
 	}
 	return ""
 }

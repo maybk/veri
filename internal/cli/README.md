@@ -10,10 +10,11 @@
 - `help.go`：双语 Help/Usage 渲染器、首屏渐进式披露、子命令排序与参数占位符及默认值注解。
 - `args.go`：本地化位置参数校验器（`requireNoArgs` / `requireExactArgs` / `requireMinArgs`）、分组子命令拦截与拼写纠错。
 - `root.go`：根命令装配、裸查询防误触守卫、全局标志绑定与进程退出码映射。
-- `search.go`：`veri search` 子命令、过滤标志解析与结果输出。
-- `fetch.go`：`veri fetch` 子命令（支持单页、多 URL 并发与 `stdin` 批量输入）、章节/关键词定位与分段偏移提示。
+- `search.go`：`veri search` 子命令、过滤标志、本地缓存绕过（`--no-cache`）与结果输出。
+- `fetch.go`：`veri fetch` 子命令（支持单页、多 URL 并发与 `stdin` 批量输入）、章节/关键词定位、缓存命中提示与分段偏移提示。
 - `admin.go`：`veri providers` 与 `veri doctor` 子命令。
 - `config_cmd.go`：`veri config` 配置项读写、查看、模板生成与补全子命令。
+- `cache_cmd.go`：`veri cache info / clear` 统一缓存策略查看与本地磁盘缓存清理子命令。
 - `update.go`：`veri update` 检查更新与跨平台安全自更新子命令。
 - `keys.go`：`veri key` 本地加密密钥设置（含追加）、查看与移除子命令。
 - `key_import.go`：`veri key import` 批量加密导入与配置明文迁移子命令。

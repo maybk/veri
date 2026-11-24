@@ -35,6 +35,7 @@ type searchFlags struct {
 	timeout      time.Duration
 	extra        bool
 	strict       bool
+	noCache      bool
 }
 
 func bindSearchFlags(fs *pflag.FlagSet, sf *searchFlags, cat i18n.Catalog) {
@@ -52,6 +53,7 @@ func bindSearchFlags(fs *pflag.FlagSet, sf *searchFlags, cat i18n.Catalog) {
 	fs.BoolVar(&sf.jsonOut, "json", false, cat.T("search.flag.json"))
 	fs.IntVar(&sf.maxChars, "max-chars", 0, cat.T("search.flag.max_chars"))
 	fs.BoolVar(&sf.extra, "extra", false, cat.T("search.flag.extra"))
+	fs.BoolVar(&sf.noCache, "no-cache", false, cat.T("search.flag.no_cache"))
 	fs.StringArrayVarP(&sf.opts, "opt", "o", nil, cat.T("search.flag.opt"))
 	fs.DurationVar(&sf.timeout, "timeout", 0, cat.T("search.flag.timeout"))
 
@@ -145,6 +147,7 @@ func runSearchCommand(ctx context.Context, fs *pflag.FlagSet, rt *runtimeEnv, sf
 		IncludeExtra:  sf.extra,
 		MaxChars:      sf.maxChars,
 		Timeout:       sf.timeout,
+		NoCache:       sf.noCache,
 		Options:       optMap,
 		Filters: core.Filters{
 			Sites:        cleanList(sf.sites),
@@ -163,6 +166,9 @@ func runSearchCommand(ctx context.Context, fs *pflag.FlagSet, rt *runtimeEnv, sf
 	}
 
 	if !rt.flags.quiet {
+		if outFormat != spec.FormatJSON && env.Meta.Cached {
+			_, _ = fmt.Fprintln(rt.stderr, rt.cat.T("note.search_cached"))
+		}
 		emitStderrNotes(rt, env)
 	}
 

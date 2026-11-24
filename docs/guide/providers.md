@@ -64,7 +64,7 @@
 | `parallel.mode` | `parallel_mode` | `parallel`（检索） | `turbo`（仅英/日文且不支持路径前缀）、`fast`（默认）、`basic`、`advanced` |
 | `parallel.location` | `parallel_location` | `parallel`（检索） | 2 位 ISO 国家码（如 `us`、`gb`、`jp`、`cn`） |
 | `firecrawl.category` | `firecrawl_category` | `firecrawl`（检索） | `research`、`pdf`、`developer`、`gov`（`developer` 与 `gov` 均不可与其他类别混用） |
-| `fresh` | CLI `--fresh` | `tinyfish` / `exa` / `keenable` / `parallel` / `firecrawl` / MCP 缓存（提取） | `true` / `1`：绕过 MCP 本地缓存并要求支持该能力的上游强制实时抓取 |
+| `fresh` | CLI `--fresh` | `tinyfish` / `exa` / `keenable` / `parallel` / `firecrawl` / CLI 与 MCP 缓存（提取） | `true` / `1`：绕过 CLI/MCP 缓存与上游缓存，强制实时抓取并刷新缓存 |
 | `tavily.extract_depth` | `tavily_extract_depth` | `tavily`（提取） | `basic`、`advanced`（未显式指定且因反爬或 JS 拦截页升档时自动切换为 `advanced`） |
 | `tinyfish.ttl` | `tinyfish_ttl` | `tinyfish`（提取） | 非负整数秒数；`0` 表示强制实时渲染抓取 |
 | `exa.max_age_hours` | `exa_max_age_hours` | `exa`（提取） | `-1`–`720` 整数小时；`0` 强制实时抓取，`-1` 仅读取索引缓存 |

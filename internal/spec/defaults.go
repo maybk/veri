@@ -18,8 +18,9 @@ const (
 	DefaultMCPSearchMaxChars           = 24000
 	DefaultMCPFetchMaxChars            = 30000
 	DefaultMCPContentMaxChars          = 3000
-	DefaultMCPCacheSize                = 256
 	MinMCPFetchMaxChars                = 1000
+	DefaultCacheMCPMaxEntries          = 256
+	DefaultCacheMaxBytes         int64 = 32 << 20
 	DefaultMinContentChars             = 300
 	DefaultProviderConcurrency         = 4
 	DefaultFirecrawlConcurrency        = 2
@@ -37,7 +38,9 @@ const (
 	DefaultDeepSeekFetchTimeout   = 10 * time.Second
 	DefaultFirecrawlFetchTimeout  = 45 * time.Second
 	DefaultSmartLocalProbeTimeout = 8 * time.Second
-	DefaultMCPCacheTTL            = 5 * time.Minute
+	DefaultCacheFetchTTL          = 15 * time.Minute
+	DefaultCacheSearchTTL         = time.Duration(0)
+	DefaultCacheMCPSearchTTL      = 5 * time.Minute
 )
 
 // DefaultFakeIPCIDRs 返回默认放行的 TUN Fake-IP 网段列表副本。

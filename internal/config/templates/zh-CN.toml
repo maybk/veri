@@ -30,14 +30,30 @@
 # respect_robots = false
 # user_agent = "browser"                  # browser | veri | 自定义字符串
 
+# [cache]
+# enabled = true                          # 缓存总开关（false 关闭 CLI 与 MCP 全部缓存）
+# dir = ""                                # 磁盘缓存目录（留空使用 ~/.cache/veri）
+# fetch_ttl = "15m"                       # 默认网页正文缓存有效期（CLI 与 MCP 共享）
+# search_ttl = "0s"                       # 默认检索缓存有效期（CLI 默认不缓存）
+# max_bytes = "32MB"                      # 磁盘缓存容量上限
+
+# [cache.cli]
+## enabled = true                         # 可选覆写：仅开关 CLI 磁盘缓存
+## fetch_ttl = "15m"                      # 可选覆写："0s" 仅关闭 CLI 抓取缓存
+## search_ttl = "0s"                      # 可选覆写：如设 "2m" 开启 CLI 检索缓存
+
+# [cache.mcp]
+## enabled = true                         # 可选覆写：仅开关 MCP 内存缓存
+## fetch_ttl = "15m"                      # 可选覆写：未设时继承 cache.fetch_ttl
+# search_ttl = "5m"                       # MCP 进程内检索缓存有效期
+# max_entries = 256                       # MCP 内存缓存条目上限（0 关闭）
+
 # [mcp]
 # text_format = "markdown"                # markdown | json
 # search_max_chars = 24000
 # fetch_max_chars = 30000
 # content_max_chars = 3000                # 单条结果正文上限
 # max_count = 20
-# cache_ttl = "5m"                        # 设为 "0s" 可禁用 MCP 进程内缓存
-# cache_size = 256
 
 # [network]
 # proxy = ""                              # 为空时遵循 HTTPS_PROXY / HTTP_PROXY / NO_PROXY

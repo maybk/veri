@@ -133,6 +133,7 @@ type FetchOutcome struct {
 	Page       *Page
 	LowQuality bool   // 拿到部分文本但未通过正文质量闸门或命中反爬/软 404 盾页
 	QualityMsg string // 未过质量闸门的具体原因（如 "too_short"、"bot_or_js_wall"）
+	NoStore    bool   // 上游 HTTP 响应包含 Cache-Control: no-store 等禁止缓存指令
 	Cost       *Cost
 	RequestID  string
 	Warnings   []string

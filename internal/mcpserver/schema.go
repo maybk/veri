@@ -33,6 +33,7 @@ type SearchInput struct {
 	Fusion       *bool             `json:"fusion,omitempty"`
 	Strict       bool              `json:"strict,omitzero"`
 	IncludeExtra bool              `json:"extra,omitzero"`
+	NoCache      bool              `json:"no_cache,omitzero"`
 	TimeoutMS    int               `json:"timeout_ms,omitzero"`
 	Options      map[string]string `json:"options,omitempty"`
 }
@@ -141,6 +142,10 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		"extra": map[string]any{
 			"type":        "boolean",
 			"description": "Include site icon and provider-specific metadata under results[].extra.",
+		},
+		"no_cache": map[string]any{
+			"type":        "boolean",
+			"description": "Bypass MCP in-process search cache for this call; omit by default and set true only when re-checking live or breaking updates.",
 		},
 		"timeout_ms": map[string]any{
 			"type":        "integer",

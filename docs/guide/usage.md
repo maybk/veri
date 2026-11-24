@@ -110,12 +110,16 @@ veri search "raft leader lease" -F -p deepseek,exa,parallel,brave
 # 输出结构化格式，便于脚本与管道联动（支持 md / json / jsonl / urls）
 veri search "go 1.27" -n 5 --json
 veri search "go 1.27" -n 3 --format urls
+
+# 若开启了 CLI 搜索缓存，单次跳过缓存请加 --no-cache
+veri search "go 1.27" --no-cache
 ```
 
 ### 网页与 GitHub 正文提取
 
 ```bash
 # 基础抓取（优先 GitHub 读取器与已配置的云端提取源，未配置或失败时自动回退本地提取）
+# CLI 默认缓存整页 15 分钟（~/.cache/veri），后续 --section / --match / --offset 续读不重复抓网
 veri fetch https://example.com/article
 
 # 长文按标题章节截取，或按关键词定位相关段落与代码行窗口（两者可组合使用）
@@ -130,13 +134,17 @@ veri fetch https://example.com/long-doc --max-chars 12000 --offset 12000
 # 显式指定提取源顺序（单值禁用回退；与 --strategy 互斥）
 veri fetch https://example.com/article -p exa,local
 
-# 要求上游强制实时抓取（CLI 无本地磁盘缓存，MCP 模式下同时绕过进程内缓存），或仅本地直连
+# 绕过缓存强制实时抓取并刷新本地缓存，或仅本地直连
 veri fetch https://example.com/status --fresh
 veri fetch https://example.com/article --strategy local_only
 
 # 批量并发抓取（单次最多 10 个 URL；支持多参数或通过 '-' 从标准输入逐行读取）
 veri fetch https://go.dev/doc/go1.27 https://github.com/modelcontextprotocol/go-sdk
 veri search "go 1.27 release" -n 3 --format urls | veri fetch -
+
+# 查看缓存状态与清理本地缓存
+veri cache info
+veri cache clear
 ```
 
 ## 接入 AI Agent

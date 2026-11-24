@@ -252,7 +252,13 @@ func envelopeContentRunes(env *core.Envelope) int {
 }
 
 func buildSearchCacheKey(req *core.SearchRequest, searchCfg config.SearchConfig, defaultMaxChars int) string {
+	return buildSearchCacheKeyWithScope(req, searchCfg, defaultMaxChars, "")
+}
+
+func buildSearchCacheKeyWithScope(req *core.SearchRequest, searchCfg config.SearchConfig, defaultMaxChars int, envScope string) string {
 	type canonical struct {
+		Schema       string            `json:"schema,omitempty"`
+		Scope        string            `json:"scope,omitempty"`
 		Query        string            `json:"q"`
 		Question     string            `json:"question,omitempty"`
 		Count        int               `json:"count"`
@@ -301,6 +307,8 @@ func buildSearchCacheKey(req *core.SearchRequest, searchCfg config.SearchConfig,
 		freshN = f.N
 	}
 	raw, _ := json.Marshal(canonical{
+		Schema:       spec.SchemaVersion,
+		Scope:        envScope,
 		Query:        strings.TrimSpace(req.Query),
 		Question:     strings.TrimSpace(req.Question),
 		Count:        count,
@@ -324,13 +332,21 @@ func buildSearchCacheKey(req *core.SearchRequest, searchCfg config.SearchConfig,
 }
 
 func buildFetchCacheKey(rawURL string, strategy core.FetchStrategy, providers []string, options map[string]string) string {
+	return buildFetchCacheKeyWithScope(rawURL, strategy, providers, options, "")
+}
+
+func buildFetchCacheKeyWithScope(rawURL string, strategy core.FetchStrategy, providers []string, options map[string]string, envScope string) string {
 	type canonical struct {
+		Schema    string            `json:"schema,omitempty"`
+		Scope     string            `json:"scope,omitempty"`
 		URL       string            `json:"u"`
 		Strategy  string            `json:"s"`
 		Providers []string          `json:"p,omitempty"`
 		Options   map[string]string `json:"o,omitempty"`
 	}
 	raw, _ := json.Marshal(canonical{
+		Schema:    spec.SchemaVersion,
+		Scope:     envScope,
 		URL:       canonicalFetchTargetKey(rawURL),
 		Strategy:  strings.ToLower(strings.TrimSpace(string(strategy))),
 		Providers: normalizeCacheProviders(providers),
@@ -385,13 +401,60 @@ func normalizeCacheProviders(items []string) []string {
 	return out
 }
 
+func markMetaCached(meta *core.Meta) {
+	meta.Cached = true
+	meta.Cost = []core.Cost{}
+	meta.DurationMS = 0
+	for i := range meta.Providers {
+		meta.Providers[i].Cost = nil
+		meta.Providers[i].LatencyMS = 0
+	}
+}
+
 func cloneCachedSearchEnvelope(src *core.Envelope) *core.Envelope {
 	cp := src.Clone()
-	cp.Meta.Cached = true
-	cp.Meta.Cost = []core.Cost{}
-	cp.Meta.DurationMS = 0
-	for i := range cp.Meta.Providers {
-		cp.Meta.Providers[i].Cost = nil
-	}
+	markMetaCached(&cp.Meta)
 	return cp
+}
+
+func isCacheableSearchEnvelope(env *core.Envelope) bool {
+	return env != nil && env.OK && !env.Meta.Partial && len(env.Results) > 0
+}
+
+func isCacheableFetchEnvelope(env *core.Envelope, rejectPrivate bool) bool {
+	if env == nil || !env.OK || env.NoCacheStore || env.Page == nil || env.Page.Content == "" {
+		return false
+	}
+	if !hasOKProviderReport(env) {
+		return false
+	}
+	if rejectPrivate {
+		for _, raw := range []string{env.Page.URL, env.Page.FinalURL} {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			if u, err := url.Parse(raw); err == nil && urlnorm.IsLocalOrPrivateTarget(u) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func hasOKProviderReport(env *core.Envelope) bool {
+	if env == nil {
+		return false
+	}
+	for _, rep := range env.Meta.Providers {
+		if rep.Status == core.ProviderStatusOK {
+			return true
+		}
+	}
+	return false
+}
+
+func hashScopeParts(parts ...any) string {
+	raw, _ := json.Marshal(parts, json.Deterministic(true))
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:16])
 }

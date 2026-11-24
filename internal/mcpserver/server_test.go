@@ -269,7 +269,13 @@ base_url = %q
 	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := config.LoadWithEnv(cfgPath, func(string) string { return "" })
+	cacheDir := t.TempDir()
+	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
+		if k == "VERI_CACHE_DIR" {
+			return cacheDir
+		}
+		return ""
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,7 +450,13 @@ base_url = %q
 	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := config.LoadWithEnv(cfgPath, func(string) string { return "" })
+	cacheDir := t.TempDir()
+	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
+		if k == "VERI_CACHE_DIR" {
+			return cacheDir
+		}
+		return ""
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,4 +555,76 @@ base_url = %q
 			t.Fatalf("expected rotated MCP fusion providers [deepseek keenable tencent_wsa], got %v", rotatedProvs)
 		}
 	})
+}
+
+func TestMCPSearchNoCacheBypass(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/tools/search" {
+			n := hits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"results":[{"title":"Rev %d","url":"https://example.com/%d","snippet":"s","summary":"sum %d"}]}`, n, n, n)
+		}
+	}))
+	defer srv.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cfgBody := fmt.Sprintf("[search]\nproviders = [\"deepseek\"]\n[providers.deepseek]\napi_key = \"sk-mcp-nocache-test\"\nbase_url = %q\n", srv.URL)
+	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cacheDir := t.TempDir()
+	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
+		if k == "VERI_CACHE_DIR" {
+			return cacheDir
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := app.New(loaded, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mcpSrv := New(application, "1.0.0")
+	t1, t2 := mcp.NewInMemoryTransports()
+	ctx := t.Context()
+	go func() { _ = mcpSrv.Run(ctx, t1) }()
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "nocache-test", Version: "1.0"}, nil).Connect(ctx, t2, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	// 1. 首次搜索写入 5m 进程内缓存，第二次命中缓存不回源。
+	r1, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "web_search", Arguments: map[string]any{"query": "live breaking"}})
+	if err != nil || r1.IsError || hits.Load() != 1 {
+		t.Fatalf("first web_search failed: res=%+v hits=%d err=%v", r1, hits.Load(), err)
+	}
+	r2, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "web_search", Arguments: map[string]any{"query": "live breaking"}})
+	if err != nil || r2.IsError || hits.Load() != 1 {
+		t.Fatalf("expected cached web_search hit: res=%+v hits=%d err=%v", r2, hits.Load(), err)
+	}
+
+	// 2. 传 no_cache=true 绕过读写缓存直接回源拿最新 Rev 2；后续常规请求仍读原缓存 Rev 1（不污染原槽位）。
+	rLive, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "web_search",
+		Arguments: map[string]any{"query": "live breaking", "no_cache": true},
+	})
+	if err != nil || rLive.IsError || hits.Load() != 2 {
+		t.Fatalf("expected no_cache=true to bypass MCP search cache: res=%+v hits=%d err=%v", rLive, hits.Load(), err)
+	}
+	if txt := rLive.Content[0].(*mcp.TextContent).Text; !strings.Contains(txt, "Rev 2") {
+		t.Fatalf("expected fresh Rev 2 from no_cache=true, got:\n%s", txt)
+	}
+	rAfter, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "web_search", Arguments: map[string]any{"query": "live breaking"}})
+	if err != nil || rAfter.IsError || hits.Load() != 2 {
+		t.Fatalf("expected cache entry preserved after no_cache call: hits=%d err=%v", hits.Load(), err)
+	}
+	if txt := rAfter.Content[0].(*mcp.TextContent).Text; !strings.Contains(txt, "Rev 1") {
+		t.Fatalf("expected preserved Rev 1 from cache after no_cache call, got:\n%s", txt)
+	}
 }

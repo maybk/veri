@@ -170,6 +170,7 @@ func handleWebSearch(ctx context.Context, application *app.App, textFormat strin
 		Strategy:      strategy,
 		StrictFilters: in.Strict,
 		IncludeExtra:  in.IncludeExtra,
+		NoCache:       in.NoCache,
 		Timeout:       timeout,
 		Options:       in.Options,
 		Filters: core.Filters{

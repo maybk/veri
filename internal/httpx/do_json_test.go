@@ -305,3 +305,30 @@ func TestReadBodyLimitedDecompressionBombAndErrors(t *testing.T) {
 		t.Fatal("expected broken body reader to fail")
 	}
 }
+
+func TestHasNoStoreCacheControl(t *testing.T) {
+	cases := []struct {
+		name   string
+		values []string
+		want   bool
+	}{
+		{name: "empty", values: nil, want: false},
+		{name: "private_max_age", values: []string{"private, max-age=60"}, want: false},
+		{name: "no_cache_only", values: []string{"no-cache, must-revalidate"}, want: false},
+		{name: "single_no_store", values: []string{"no-store"}, want: true},
+		{name: "mixed_case_multi_header", values: []string{"private, max-age=0", "public, NO-STORE"}, want: true},
+		{name: "substring_not_token", values: []string{"x-no-store, no-store-extra"}, want: false},
+	}
+	for _, tc := range cases {
+		h := http.Header{}
+		for _, v := range tc.values {
+			h.Add("Cache-Control", v)
+		}
+		if got := HasNoStoreCacheControl(h); got != tc.want {
+			t.Errorf("%s: HasNoStoreCacheControl(%v) = %v, want %v", tc.name, tc.values, got, tc.want)
+		}
+	}
+	if HasNoStoreCacheControl(nil) {
+		t.Error("expected nil header to return false")
+	}
+}

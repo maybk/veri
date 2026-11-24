@@ -168,6 +168,11 @@ func (a *App) runBatchFetch(ctx context.Context, rawURLs []string, baseReq *core
 	if reports == nil {
 		reports = []core.ProviderReport{}
 	}
+	batchCached := anyOK && allCached
+	durationMS := time.Since(start).Milliseconds()
+	if batchCached {
+		durationMS = 0
+	}
 	env := &core.Envelope{
 		Schema: spec.SchemaVersion,
 		OK:     anyOK,
@@ -181,8 +186,8 @@ func (a *App) runBatchFetch(ctx context.Context, rawURLs []string, baseReq *core
 			Truncated:    truncated,
 			Notes:        dedupStrings(notes),
 			Cost:         core.SumCosts(costs),
-			DurationMS:   time.Since(start).Milliseconds(),
-			Cached:       anyOK && allCached,
+			DurationMS:   durationMS,
+			Cached:       batchCached,
 		},
 	}
 	if !anyOK {

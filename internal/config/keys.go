@@ -128,6 +128,9 @@ func collectStructKeys(t reflect.Type, path []string, fieldIndex []int, provider
 }
 
 func classifyReflectType(t reflect.Type) (ValueType, bool) {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
 	switch t {
 	case durationReflectType:
 		return TypeDuration, true
@@ -165,6 +168,14 @@ func keyEnvVars(fullKey, provider, fieldTag string) []string {
 		return []string{spec.EnvFetchProviders}
 	case "fetch.strategy":
 		return []string{spec.EnvFetchStrategy}
+	case "cache.dir":
+		return []string{spec.EnvCacheDir}
+	case "cache.enabled", "cache.cli.enabled", "cache.mcp.enabled":
+		return []string{spec.EnvNoCache}
+	case "cache.fetch_ttl", "cache.cli.fetch_ttl", "cache.mcp.fetch_ttl":
+		return []string{spec.EnvCacheFetchTTL}
+	case "cache.search_ttl", "cache.cli.search_ttl", "cache.mcp.search_ttl":
+		return []string{spec.EnvCacheSearchTTL}
 	default:
 		return nil
 	}
@@ -259,7 +270,7 @@ func unknownKeyError(raw string) *core.Error {
 		WithParam("key", trimmed)
 }
 
-// GetValue 读取单个配置项的脱敏生效值及生效来源（env / vault / config / default）。
+// GetValue 读取单个配置项的脱敏生效值及生效来源（env / vault / config / inherited / default）。
 func GetValue(loaded *Loaded, rawKey string) (ValueResult, error) {
 	entry, ok := lookupKeyEntry(rawKey)
 	if !ok {
@@ -271,12 +282,24 @@ func GetValue(loaded *Loaded, rawKey string) (ValueResult, error) {
 
 	info := entry.info
 	redacted := loaded.RedactedConfig()
+	inherited := false
 	val, formatted, ok := readConfigEntry(&redacted, entry)
+	if !ok {
+		if parentKey := inheritedParentKey(info.Key); parentKey != "" {
+			if parentEntry, pFound := lookupKeyEntry(parentKey); pFound {
+				val, formatted, ok = readConfigEntry(&redacted, parentEntry)
+				inherited = ok
+			}
+		}
+	}
 	if !ok {
 		return ValueResult{}, core.NewError(core.CodeInternal, fmt.Sprintf("failed to read configuration key %q", info.Key))
 	}
 
 	source := "default"
+	if inherited {
+		source = "inherited"
+	}
 	envVar := ""
 	if info.Secret && info.Provider != "" {
 		cred := loaded.Credentials[info.Provider]
@@ -359,12 +382,31 @@ func forEachOverride(loaded *Loaded, fn func(KeyInfo, any)) {
 	}
 }
 
+func inheritedParentKey(key string) string {
+	switch key {
+	case "cache.cli.enabled", "cache.mcp.enabled":
+		return "cache.enabled"
+	case "cache.cli.fetch_ttl", "cache.mcp.fetch_ttl":
+		return "cache.fetch_ttl"
+	case "cache.cli.search_ttl", "cache.mcp.search_ttl":
+		return "cache.search_ttl"
+	default:
+		return ""
+	}
+}
+
 func readConfigEntry(cfg *Config, entry keyEntry) (any, string, bool) {
 	rv := reflect.ValueOf(cfg).Elem().FieldByIndex(entry.fieldIndex)
 	return exportReflectValue(entry.info.Type, rv)
 }
 
 func exportReflectValue(vt ValueType, rv reflect.Value) (any, string, bool) {
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil, "", false
+		}
+		rv = rv.Elem()
+	}
 	switch vt {
 	case TypeString:
 		s := rv.String()

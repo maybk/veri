@@ -30,7 +30,7 @@ type discussionDoc struct {
 	body      string
 }
 
-func (p *Provider) renderThreadOutcome(ctx context.Context, origURL string, rt parsedRoute, sourceType, reqID string, doc discussionDoc) (*core.FetchOutcome, error) {
+func (p *Provider) renderThreadOutcome(ctx context.Context, origURL string, rt parsedRoute, sourceType, reqID string, noStore bool, doc discussionDoc) (*core.FetchOutcome, error) {
 	commentsEndpoint := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments?per_page=%d",
 		p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo), rt.number, maxCommentsPerThread+1)
 	if sourceType == core.SourceGitHubDiscussion {
@@ -39,8 +39,11 @@ func (p *Provider) renderThreadOutcome(ctx context.Context, origURL string, rt p
 	}
 
 	var comments []commentWire
-	if cBody, _, cErr := p.doGitHubGET(ctx, p.apiClient, commentsEndpoint, "application/vnd.github+json"); cErr == nil {
-		_ = json.Unmarshal(cBody, &comments)
+	if cRes, cErr := p.doGitHubGET(ctx, p.apiClient, commentsEndpoint, "application/vnd.github+json"); cErr == nil {
+		if cRes.noStore {
+			noStore = true
+		}
+		_ = json.Unmarshal(cRes.body, &comments)
 	}
 	moreComments := len(comments) > maxCommentsPerThread
 	if moreComments {
@@ -52,8 +55,11 @@ func (p *Provider) renderThreadOutcome(ctx context.Context, origURL string, rt p
 	if sourceType == core.SourceGitHubPR {
 		rcURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/comments?per_page=%d",
 			p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo), rt.number, maxCommentsPerThread+1)
-		if rcBody, _, rcErr := p.doGitHubGET(ctx, p.apiClient, rcURL, "application/vnd.github+json"); rcErr == nil {
-			_ = json.Unmarshal(rcBody, &reviewComments)
+		if rcRes, rcErr := p.doGitHubGET(ctx, p.apiClient, rcURL, "application/vnd.github+json"); rcErr == nil {
+			if rcRes.noStore {
+				noStore = true
+			}
+			_ = json.Unmarshal(rcRes.body, &reviewComments)
 		}
 		if len(reviewComments) > maxCommentsPerThread {
 			moreReviews = true
@@ -130,7 +136,7 @@ func (p *Provider) renderThreadOutcome(ctx context.Context, origURL string, rt p
 
 	pub := textnorm.ParseFlexibleTime(doc.createdAt, time.UTC)
 	title := fmt.Sprintf("%s/%s#%d: %s", rt.owner, rt.repo, rt.number, textnorm.CleanInline(doc.title))
-	out := newOutcome(origURL, title, pub, strings.TrimSpace(b.String()), sourceType, reqID)
+	out := newOutcome(origURL, title, pub, strings.TrimSpace(b.String()), sourceType, reqID, noStore)
 	out.Page.Author = doc.author
 	out.Page.Site = "GitHub"
 	return out, nil
@@ -138,12 +144,12 @@ func (p *Provider) renderThreadOutcome(ctx context.Context, origURL string, rt p
 
 func (p *Provider) fetchDiscussion(ctx context.Context, origURL string, rt parsedRoute) (*core.FetchOutcome, error) {
 	discURL := fmt.Sprintf("%s/repos/%s/%s/discussions/%d", p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo), rt.number)
-	body, reqID, err := p.doGitHubGET(ctx, p.apiClient, discURL, "application/vnd.github+json")
+	res, err := p.doGitHubGET(ctx, p.apiClient, discURL, "application/vnd.github+json")
 	if err != nil {
 		return nil, err
 	}
 	var disc discussionWire
-	if err := json.Unmarshal(body, &disc); err != nil {
+	if err := json.Unmarshal(res.body, &disc); err != nil {
 		return nil, core.WrapError(core.CodeUpstreamBadResponse, "failed to decode GitHub discussion JSON", err).WithProvider(ProviderName)
 	}
 	var labels []string
@@ -152,7 +158,7 @@ func (p *Provider) fetchDiscussion(ctx context.Context, origURL string, rt parse
 			labels = append(labels, l.Name)
 		}
 	}
-	return p.renderThreadOutcome(ctx, origURL, rt, core.SourceGitHubDiscussion, reqID, discussionDoc{
+	return p.renderThreadOutcome(ctx, origURL, rt, core.SourceGitHubDiscussion, res.reqID, res.noStore, discussionDoc{
 		title:     disc.Title,
 		state:     disc.State,
 		category:  disc.Category.Name,
@@ -166,12 +172,12 @@ func (p *Provider) fetchDiscussion(ctx context.Context, origURL string, rt parse
 
 func (p *Provider) fetchCommit(ctx context.Context, origURL string, rt parsedRoute) (*core.FetchOutcome, error) {
 	commitURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s", p.apiBaseURL, url.PathEscape(rt.owner), url.PathEscape(rt.repo), url.PathEscape(rt.sha))
-	body, reqID, err := p.doGitHubGET(ctx, p.apiClient, commitURL, "application/vnd.github+json")
+	res, err := p.doGitHubGET(ctx, p.apiClient, commitURL, "application/vnd.github+json")
 	if err != nil {
 		return nil, err
 	}
 	var cm commitWire
-	if err := json.Unmarshal(body, &cm); err != nil {
+	if err := json.Unmarshal(res.body, &cm); err != nil {
 		return nil, core.WrapError(core.CodeUpstreamBadResponse, "failed to decode GitHub commit JSON", err).WithProvider(ProviderName)
 	}
 
@@ -231,7 +237,7 @@ func (p *Provider) fetchCommit(ctx context.Context, origURL string, rt parsedRou
 
 	pub := textnorm.ParseFlexibleTime(cm.Commit.Author.Date, time.UTC)
 	title := fmt.Sprintf("%s/%s@%s: %s", rt.owner, rt.repo, shortSHA, subject)
-	out := newOutcome(origURL, title, pub, strings.TrimSpace(b.String()), core.SourceGitHubCommit, reqID)
+	out := newOutcome(origURL, title, pub, strings.TrimSpace(b.String()), core.SourceGitHubCommit, res.reqID, res.noStore)
 	out.Page.Author = author
 	out.Page.Site = "GitHub"
 	return out, nil

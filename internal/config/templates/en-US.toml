@@ -30,14 +30,30 @@
 # respect_robots = false
 # user_agent = "browser"                  # browser | veri | custom string
 
+# [cache]
+# enabled = true                          # master cache switch (false disables CLI and MCP)
+# dir = ""                                # disk cache directory (empty uses ~/.cache/veri)
+# fetch_ttl = "15m"                       # default page-fetch TTL (shared by CLI and MCP)
+# search_ttl = "0s"                       # default search TTL (CLI stays live by default)
+# max_bytes = "32MB"                      # disk cache size limit
+
+# [cache.cli]
+## enabled = true                         # optional override for CLI disk cache
+## fetch_ttl = "15m"                      # optional override ("0s" disables CLI fetch cache)
+## search_ttl = "0s"                      # optional override (e.g. "2m" enables CLI search cache)
+
+# [cache.mcp]
+## enabled = true                         # optional override for MCP memory cache
+## fetch_ttl = "15m"                      # optional override (inherits cache.fetch_ttl if unset)
+# search_ttl = "5m"                       # MCP in-process search TTL
+# max_entries = 256                       # MCP memory cache entry cap (0 disables)
+
 # [mcp]
 # text_format = "markdown"                # markdown | json
 # search_max_chars = 24000
 # fetch_max_chars = 30000
 # content_max_chars = 3000                # per-result content cap
 # max_count = 20
-# cache_ttl = "5m"                        # set "0s" to disable in-process MCP cache
-# cache_size = 256
 
 # [network]
 # proxy = ""                              # empty respects HTTPS_PROXY / HTTP_PROXY / NO_PROXY
