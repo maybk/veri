@@ -67,7 +67,7 @@ func (r *Router) runFetchSequence(ctx context.Context, req *core.FetchRequest, s
 			})
 
 			// Split-DNS 解析至非公网 IP 被本地 SSRF 守卫拦截时立即终止，严禁向公网云端源转发该内部域名。
-			if se.HintKey == core.HintKeySSRFPrivateBlocked {
+			if core.IsSSRFBlockedHint(se.HintKey) {
 				return buildFetchErrorEnvelope(req.URL, policy.strategyLabel, reports, idx > 0, costs, start, se), se
 			}
 

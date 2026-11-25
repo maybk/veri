@@ -71,21 +71,23 @@ func TestFetchLocalPinnedAndSplitDNSNeverLeakToCloud(t *testing.T) {
 		t.Fatalf("expected 0 cloud calls after blocked private attempts, got %d", cloud.calls.Load())
 	}
 
-	// 3. 公网后缀内部域名经 Split-DNS 解析至私网被 SSRF 拦截时，必须立即停止，严禁向公网云端回退
-	ssrfLoc := &spyFetcher{
-		name: spec.ProviderLocal,
-		fn: func(_ context.Context, _ *core.FetchRequest) (*core.FetchOutcome, error) {
-			return nil, core.NewError(core.CodeContentUnavailable, "blocked connection to non-public address").
-				WithProvider(spec.ProviderLocal).
-				WithHintKey(core.HintKeySSRFPrivateBlocked)
-		},
-	}
-	rSSRF := New(Options{FetchStrategy: core.FetchSmartLocal}, []core.Provider{ssrfLoc, cloud})
-	if _, err := rSSRF.Fetch(context.Background(), &core.FetchRequest{URL: "https://intranet.company.com/roadmap"}); err == nil {
-		t.Fatal("expected Split-DNS SSRF block error")
-	}
-	if cloud.calls.Load() != 0 {
-		t.Fatalf("Split-DNS SSRF block leaked internal URL to cloud (%d calls)", cloud.calls.Load())
+	// 3. 公网后缀内部域名经 Split-DNS 解析至私网被 SSRF 拦截时（无论 private_blocked 还是 host_non_public），必须立即停止，严禁向公网云端回退
+	for _, hintKey := range []string{core.HintKeySSRFPrivateBlocked, core.HintKeySSRFHostNonPublic} {
+		ssrfLoc := &spyFetcher{
+			name: spec.ProviderLocal,
+			fn: func(_ context.Context, _ *core.FetchRequest) (*core.FetchOutcome, error) {
+				return nil, core.NewError(core.CodeContentUnavailable, "blocked connection to non-public address").
+					WithProvider(spec.ProviderLocal).
+					WithHintKey(hintKey)
+			},
+		}
+		rSSRF := New(Options{FetchStrategy: core.FetchSmartLocal}, []core.Provider{ssrfLoc, cloud})
+		if _, err := rSSRF.Fetch(context.Background(), &core.FetchRequest{URL: "https://intranet.company.com/roadmap"}); err == nil {
+			t.Fatalf("expected Split-DNS SSRF block error for hintKey=%s", hintKey)
+		}
+		if cloud.calls.Load() != 0 {
+			t.Fatalf("Split-DNS SSRF block (%s) leaked internal URL to cloud (%d calls)", hintKey, cloud.calls.Load())
+		}
 	}
 }
 

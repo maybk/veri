@@ -343,7 +343,7 @@ func buildGitHub(loaded *config.Loaded, deps Deps) (core.Provider, ProviderStatu
 		Concurrency: cfg.Concurrency,
 		MaxBytes:    int64(loaded.Config.Fetch.MaxBytes),
 		Version:     deps.Version,
-	}, deps.APIClient, deps.FetchClient)
+	}, deps.APIClient)
 	if err != nil {
 		return nil, ProviderStatus{}, err
 	}

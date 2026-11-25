@@ -4,6 +4,23 @@
 
 ## [0.2.7] - 未发布
 
+### 新增
+
+- 支持自动识别常见透明代理与双栈 TUN Fake-IP 环境（可通过 `network.fake_ip_auto` 开关）。
+- 新增 `VERI_SECRETS_DIR` 环境变量，支持跨配置文件复用本地加密凭据库。
+- MCP `web_fetch` 与 CLI 共享本地网页缓存，避免重复抓取。
+
+### 变更
+
+- `veri doctor` 与 `veri key list` 展示当前凭据库路径，`veri doctor` 新增透明代理异常提示并在 `--live` 中一并检测 `local` 与 `github` 提取。
+- MCP 批量 `web_fetch` 部分失败时在摘要中显示成功与失败页数。
+
+### 修复
+
+- 修复透明代理环境下抓取 GitHub 源码文件被误拦截的问题。
+- 修复透明代理域名被拦截时缺少 `network.fake_ip_cidrs` 配置指引的问题。
+- 修复 MCP `web_search` 的 `count` 上限与 `mcp.max_count` 不一致的问题。
+
 ## [0.2.6] - 2026-11-24
 
 ### 新增

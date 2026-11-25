@@ -46,7 +46,7 @@ func TestGitHubMatchRoutesAndRateLimitHint(t *testing.T) {
 	p, enabled, err := New(Options{
 		APIBaseURL: apiSrv.URL,
 		RawBaseURL: rawSrv.URL,
-	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	}, providertest.NewTestAPIClient(t))
 	if err != nil || !enabled {
 		t.Fatalf("New: enabled=%v err=%v", enabled, err)
 	}
@@ -125,7 +125,7 @@ func TestGitHubPathTraversalAndTokenFailover(t *testing.T) {
 		Tokens:     []string{"ghp_bad1", "ghp_good2", "ghp_spare3"},
 		APIBaseURL: apiSrv.URL,
 		RawBaseURL: apiSrv.URL,
-	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	}, providertest.NewTestAPIClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestGitHubPathTraversalAndTokenFailover(t *testing.T) {
 		Tokens:     []string{"ghp_limited"},
 		APIBaseURL: apiSrv.URL,
 		RawBaseURL: apiSrv.URL,
-	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	}, providertest.NewTestAPIClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestGitHubPathTraversalAndTokenFailover(t *testing.T) {
 		Tokens:     []string{"ghp_limited", "ghp_limited2", "ghp_limited3", "ghp_limited4"},
 		APIBaseURL: apiSrv.URL,
 		RawBaseURL: apiSrv.URL,
-	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	}, providertest.NewTestAPIClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestGitHubNoStorePropagation(t *testing.T) {
 	p, _, err := New(Options{
 		APIBaseURL: apiSrv.URL,
 		RawBaseURL: apiSrv.URL,
-	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	}, providertest.NewTestAPIClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}

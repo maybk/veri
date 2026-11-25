@@ -30,6 +30,7 @@ const (
 	DefaultAPIResponseBytes      int64 = 16 << 20
 	DefaultMaxURLLength                = 8192
 	DefaultFakeIPCIDR                  = "198.18.0.0/15"
+	DefaultFakeIPv6CIDR                = "2001:2::/48"
 
 	DefaultSearchTimeout          = 20 * time.Second
 	DefaultFetchTimeout           = 45 * time.Second
@@ -43,9 +44,9 @@ const (
 	DefaultCacheMCPSearchTTL      = 5 * time.Minute
 )
 
-// DefaultFakeIPCIDRs 返回默认放行的 TUN Fake-IP 网段列表副本。
+// DefaultFakeIPCIDRs 返回默认放行的双栈 TUN Fake-IP 网段列表副本（RFC 2544 IPv4 与 RFC 5180 IPv6 基准段）。
 func DefaultFakeIPCIDRs() []string {
-	return []string{DefaultFakeIPCIDR}
+	return []string{DefaultFakeIPCIDR, DefaultFakeIPv6CIDR}
 }
 
 // ClampSearchCount 将请求条数约束在 [1, maxCount] 合法范围内。

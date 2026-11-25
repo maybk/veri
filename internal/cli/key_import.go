@@ -61,25 +61,26 @@ func newKeyImportCmd(rt *runtimeEnv) *cobra.Command {
 				KeepConfig: keepConfig,
 			}
 
+			secretsDir, err := config.ResolveSecretsDir(rt.flags.configPath, rt.getenv)
+			if err != nil {
+				return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
+			}
+
 			var res config.ImportResult
 			if fromConfig {
 				cfgPath, err := config.ResolvePath(rt.flags.configPath, rt.getenv)
 				if err != nil {
 					return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
 				}
-				res, err = config.ImportKeysFromConfig(cfgPath, opts)
+				res, err = config.ImportKeysFromConfigToVault(cfgPath, secretsDir, opts)
 				if err != nil {
 					return err
 				}
 			} else {
-				cfgDir, err := config.ResolveDir(rt.flags.configPath, rt.getenv)
-				if err != nil {
-					return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
-				}
 				if args[0] == "-" {
-					res, err = config.ImportKeysFromEnvReader(cfgDir, "stdin", rt.stdin, opts)
+					res, err = config.ImportKeysFromEnvReader(secretsDir, "stdin", rt.stdin, opts)
 				} else {
-					res, err = config.ImportKeysFromEnvFile(cfgDir, args[0], opts)
+					res, err = config.ImportKeysFromEnvFile(secretsDir, args[0], opts)
 				}
 				if err != nil {
 					return err

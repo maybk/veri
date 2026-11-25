@@ -53,6 +53,7 @@ const (
 // 环境变量名常量（行为覆盖与各检索/提取源凭据）。
 const (
 	EnvConfig         = "VERI_CONFIG"
+	EnvSecretsDir     = "VERI_SECRETS_DIR"
 	EnvLang           = "VERI_LANG"
 	EnvProviders      = "VERI_PROVIDERS"
 	EnvFetchProviders = "VERI_FETCH_PROVIDERS"

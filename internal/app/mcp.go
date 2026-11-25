@@ -7,6 +7,7 @@ import (
 	"veri/internal/core"
 	"veri/internal/router"
 	"veri/internal/spec"
+	"veri/internal/urlnorm"
 )
 
 func (a *App) ensureMCP() {
@@ -93,14 +94,14 @@ func (a *App) SearchMCP(ctx context.Context, req *core.SearchRequest) (*core.Env
 	return resEnv.Clone(), doErr
 }
 
-// FetchMCP 执行带完整正文缓存、调用方超时隔离与零重复请求分页续读的 MCP 抓取。
+// FetchMCP 执行带 L1 进程内存 + L2 本地磁盘协同缓存、调用方超时隔离与零重复请求分页续读的 MCP 抓取。
 func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envelope, error) {
 	if req == nil {
 		return a.Fetch(ctx, nil)
 	}
 	a.ensureMCP()
 
-	normReq, _, valErr := a.mcpRouter.ValidateFetchRequest(req)
+	normReq, parsedURL, valErr := a.mcpRouter.ValidateFetchRequest(req)
 	if valErr != nil {
 		env, err := a.mcpRouter.Fetch(ctx, req)
 		a.scrubEnvelopeSecrets(env)
@@ -115,6 +116,11 @@ func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envel
 	}
 	cacheKey := a.fetchCacheKey(normReq.URL, normReq.Strategy, normReq.Providers, normReq.Options)
 	bypassCacheRead := normReq.Offset == 0 && isFreshFetchBypass(normReq.Options)
+
+	mcpPol := a.loaded.Config.Cache.EffectiveMCP()
+	cliPol := a.loaded.Config.Cache.EffectiveCLI()
+	useDiskL2 := a.diskCache != nil && mcpPol.Enabled && mcpPol.FetchTTL > 0 && cliPol.Enabled && cliPol.FetchTTL > 0 && !urlnorm.IsLocalOrPrivateTarget(parsedURL)
+	diskWriteTTL := min(mcpPol.FetchTTL, cliPol.FetchTTL)
 
 	viewReq := normReq
 	viewReq.MaxChars = maxChars
@@ -139,6 +145,17 @@ func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envel
 				cp.Meta.Cached = true
 				return &cp, nil
 			}
+			if useDiskL2 {
+				if diskFull, ok := a.diskCache.GetWithMaxAge(diskCacheKindFetch, cacheKey, mcpPol.FetchTTL); ok {
+					if a.logger != nil {
+						a.logger.DebugContext(sharedCtx, "mcp_fetch_disk_cache_hit", "url", normReq.URL)
+					}
+					a.fetchCache.Set(cacheKey, diskFull.Clone())
+					cp := *diskFull
+					cp.Meta.Cached = true
+					return &cp, nil
+				}
+			}
 		}
 		fullReq := *req
 		fullReq.Offset = 0
@@ -152,8 +169,13 @@ func (a *App) FetchMCP(ctx context.Context, req *core.FetchRequest) (*core.Envel
 		a.scrubEnvelopeSecrets(env)
 		err = a.scrubError(err)
 		a.logEnvelope("mcp.fetch", env)
-		if err == nil && isCacheableFetchEnvelope(env, false) {
-			a.fetchCache.Set(cacheKey, env.Clone())
+		if err == nil {
+			if isCacheableFetchEnvelope(env, false) {
+				a.fetchCache.Set(cacheKey, env.Clone())
+			}
+			if useDiskL2 && isCacheableFetchEnvelope(env, true) {
+				a.diskCache.Set(diskCacheKindFetch, cacheKey, env, diskWriteTTL)
+			}
 		}
 		return env, err
 	})

@@ -51,16 +51,21 @@ func TestMCPServerInMemoryIntegration(t *testing.T) {
 	defer srvHTTP.Close()
 
 	cfgDir := t.TempDir()
+	cacheDir := t.TempDir()
 	cfgPath := filepath.Join(cfgDir, "config.toml")
 	// 先在 secrets.json 写入一把默认加密 Key，再通过 MCP 环境变量覆盖，验证统一配置与 MCP env 优先生效
 	if err := credentials.NewVault(cfgDir).Set("deepseek", "sk-vault-default-1111"); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == "DEEPSEEK_API_KEY" {
+		switch k {
+		case "DEEPSEEK_API_KEY":
 			return "sk-mcpsecret9999"
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -399,6 +404,15 @@ base_url = %q
 			badFetchOut.Error.Code != core.CodeInvalidArgument ||
 			badFetchOut.Meta.Strategy != string(core.DefaultFetchStrategy) {
 			t.Fatalf("expected invalid_argument with default fetch strategy for role-mismatched fetch provider, got res=%+v out=%+v err=%v", badFetchRes, badFetchOut, err)
+		}
+
+		// 若调用方绕过 Schema 传入超过 mcp.max_count 的 count，运行期裁顶并在 meta.notes 中给出透明提示
+		cappedRes, cappedOut, err := handleWebSearch(ctx, application, spec.TextFormatMarkdown, 3, 2, SearchInput{
+			Query: "test defaults",
+			Count: 5,
+		})
+		if err != nil || cappedRes.IsError || !cappedOut.OK || len(cappedOut.Results) != 2 || !slices.Contains(cappedOut.Meta.Notes, "requested count 5 capped at 2") {
+			t.Fatalf("expected runtime count cap note when bypassing schema, got res=%+v out=%+v err=%v", cappedRes, cappedOut, err)
 		}
 	})
 }

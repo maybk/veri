@@ -58,6 +58,7 @@ func Default() Config {
 		Network: NetworkConfig{
 			Proxy:        "",
 			FakeIPCIDRs:  spec.DefaultFakeIPCIDRs(),
+			FakeIPAuto:   true,
 			AllowPrivate: false,
 		},
 		Providers: ProvidersConfig{

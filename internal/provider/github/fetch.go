@@ -87,7 +87,7 @@ func (p *Provider) fetchBlob(ctx context.Context, origURL string, rt parsedRoute
 		url.PathEscape(rt.ref),
 		strings.Join(escapedSegs, "/"),
 	)
-	res, err := p.doGitHubGET(ctx, p.rawClient, endpoint, "text/plain")
+	res, err := p.doGitHubGET(ctx, p.apiClient, endpoint, "text/plain")
 	if err != nil {
 		return nil, err
 	}

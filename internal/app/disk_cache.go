@@ -106,6 +106,12 @@ func (c *diskCache) entryPath(kind, key string) (string, bool) {
 }
 
 func (c *diskCache) Get(kind, key string) (*core.Envelope, bool) {
+	return c.GetWithMaxAge(kind, key, 0)
+}
+
+// GetWithMaxAge 读取本地磁盘缓存条目；当 maxAge > 0 时额外校验条目创建时间未超出调用方允许的新鲜度上限。
+// 若条目仅超出调用方 maxAge 但尚未超过自身 ExpiresAt，不删除磁盘文件以免误清 CLI 侧仍有效的缓存。
+func (c *diskCache) GetWithMaxAge(kind, key string, maxAge time.Duration) (*core.Envelope, bool) {
 	if c == nil || c.rootDir == "" {
 		return nil, false
 	}
@@ -123,6 +129,9 @@ func (c *diskCache) Get(kind, key string) (*core.Envelope, bool) {
 	now := c.now()
 	if rec.Version != diskCacheVersion || rec.Kind != kind || rec.Envelope == nil || !now.Before(rec.ExpiresAt) {
 		_ = os.Remove(path)
+		return nil, false
+	}
+	if maxAge > 0 && !rec.CreatedAt.IsZero() && !now.Before(rec.CreatedAt.Add(maxAge)) {
 		return nil, false
 	}
 	_ = os.Chtimes(path, now, now)

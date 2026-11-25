@@ -8,7 +8,7 @@ description: Multi-source web search and clean Markdown page extraction via the 
 ## When to use
 - Current information after your knowledge cutoff: release notes, API references, technical docs, breaking news, cross-verified research, or bug investigations.
 - Reading full text or targeted sections of web pages and GitHub repositories/files/issues/PRs/repo discussions/commits/releases (`veri fetch`).
-- Prefer `veri` MCP tools (`web_search`, `web_fetch`) when mounted for in-process caching and coalescing; CLI `veri fetch` also caches full pages locally (`~/.cache/veri`, 15m TTL) for zero-cost `--section`/`--match`/`--offset` slicing. Use CLI when MCP is unavailable or for `providers`/`doctor`/`config`/`cache`.
+- Prefer `veri` MCP tools (`web_search`, `web_fetch`) when mounted for in-process caching and coalescing; CLI `veri fetch` and MCP `web_fetch` share the local full-page disk cache (`~/.cache/veri`, 15m TTL) for zero-cost `--section`/`--match`/`--offset` slicing. Use CLI when MCP is unavailable or for `providers`/`doctor`/`config`/`cache`.
 
 ## Core recipes
 ```bash

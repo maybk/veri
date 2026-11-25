@@ -17,10 +17,23 @@ import (
 	"veri/internal/spec"
 )
 
+const (
+	defaultLiveLocalProbeURL  = "https://example.com"
+	defaultLiveGitHubProbeURL = "https://github.com/octocat/Hello-World/blob/master/README"
+	liveProbeDisabledSentinel = "-"
+)
+
+type lookupFuncResolver func(ctx context.Context, network, host string) ([]netip.Addr, error)
+
+func (fn lookupFuncResolver) LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error) {
+	return fn(ctx, network, host)
+}
+
 // LiveCheckResult 记录 doctor --live 单次真实请求连通性检测结果。
 type LiveCheckResult struct {
 	Provider  string `json:"provider"`
-	Status    string `json:"status"` // ok | error
+	Kind      string `json:"kind,omitempty"` // search | fetch
+	Status    string `json:"status"`         // ok | error
 	LatencyMS int64  `json:"latency_ms"`
 	Cost      string `json:"cost,omitempty"`
 	Error     string `json:"error,omitempty"`
@@ -28,39 +41,45 @@ type LiveCheckResult struct {
 
 // DoctorReport 汇总 veri doctor 的全部结构化检查结果。
 type DoctorReport struct {
-	Version            string            `json:"version"`
-	GoVersion          string            `json:"go_version"`
-	OS                 string            `json:"os"`
-	Arch               string            `json:"arch"`
-	UILocale           string            `json:"ui_locale"`
-	UILocaleSource     string            `json:"ui_locale_source"`
-	ConfigPath         string            `json:"config_path"`
-	ConfigExists       bool              `json:"config_exists"`
-	ConfigMode         string            `json:"config_mode,omitempty"`
-	PermWarning        bool              `json:"perm_warning"`
-	VaultPermWarning   bool              `json:"vault_perm_warning"`
-	PlaintextProviders []string          `json:"plaintext_providers,omitempty"`
-	AllowPrivate       bool              `json:"allow_private"`
-	ProbeHost          string            `json:"probe_host"`
-	ProbeIP            string            `json:"probe_ip,omitempty"`
-	FakeIPDetected     bool              `json:"fake_ip_detected"`
-	DNSError           string            `json:"dns_error,omitempty"`
-	EnabledSearcher    int               `json:"enabled_searchers"`
-	EnabledFetcher     int               `json:"enabled_fetchers"`
-	SearchStrategy     string            `json:"search_strategy,omitempty"`
-	SearchChain        []string          `json:"search_chain"`
-	SearchChainGlobal  []string          `json:"search_chain_global,omitempty"`
-	FusionChain        []string          `json:"fusion_chain,omitempty"`
-	FusionChainGlobal  []string          `json:"fusion_chain_global,omitempty"`
-	FetchStrategy      string            `json:"fetch_strategy,omitempty"`
-	FetchChain         []string          `json:"fetch_chain"`
-	FetchChainGlobal   []string          `json:"fetch_chain_global,omitempty"`
-	Providers          []ProviderStatus  `json:"providers"`
-	LiveChecks         []LiveCheckResult `json:"live_checks,omitempty"`
-	Issues             int               `json:"issues"`
+	Version             string            `json:"version"`
+	GoVersion           string            `json:"go_version"`
+	OS                  string            `json:"os"`
+	Arch                string            `json:"arch"`
+	UILocale            string            `json:"ui_locale"`
+	UILocaleSource      string            `json:"ui_locale_source"`
+	ConfigPath          string            `json:"config_path"`
+	ConfigExists        bool              `json:"config_exists"`
+	ConfigMode          string            `json:"config_mode,omitempty"`
+	SecretsPath         string            `json:"secrets_path"`
+	SecretsExists       bool              `json:"secrets_exists"`
+	PermWarning         bool              `json:"perm_warning"`
+	VaultPermWarning    bool              `json:"vault_perm_warning"`
+	PlaintextProviders  []string          `json:"plaintext_providers,omitempty"`
+	AllowPrivate        bool              `json:"allow_private"`
+	FakeIPAuto          bool              `json:"fake_ip_auto"`
+	ProbeHost           string            `json:"probe_host"`
+	ProbeIP             string            `json:"probe_ip,omitempty"`
+	FakeIPDetected      bool              `json:"fake_ip_detected"`
+	DetectedFakeIPCIDRs []string          `json:"detected_fake_ip_cidrs,omitempty"`
+	FakeIPBlocked       bool              `json:"fake_ip_blocked,omitempty"`
+	SuggestedFakeIPCIDR string            `json:"suggested_fake_ip_cidr,omitempty"`
+	DNSError            string            `json:"dns_error,omitempty"`
+	EnabledSearcher     int               `json:"enabled_searchers"`
+	EnabledFetcher      int               `json:"enabled_fetchers"`
+	SearchStrategy      string            `json:"search_strategy,omitempty"`
+	SearchChain         []string          `json:"search_chain"`
+	SearchChainGlobal   []string          `json:"search_chain_global,omitempty"`
+	FusionChain         []string          `json:"fusion_chain,omitempty"`
+	FusionChainGlobal   []string          `json:"fusion_chain_global,omitempty"`
+	FetchStrategy       string            `json:"fetch_strategy,omitempty"`
+	FetchChain          []string          `json:"fetch_chain"`
+	FetchChainGlobal    []string          `json:"fetch_chain_global,omitempty"`
+	Providers           []ProviderStatus  `json:"providers"`
+	LiveChecks          []LiveCheckResult `json:"live_checks,omitempty"`
+	Issues              int               `json:"issues"`
 }
 
-// RunDoctor 执行配置、权限、Fake-IP DNS 环境及可选并发真实请求联调检查。
+// RunDoctor 执行配置、凭据路径、权限、透明代理 Fake-IP 环境及可选并发真实请求联调检查。
 func (a *App) RunDoctor(ctx context.Context, uiLocale, uiSource string, live bool) DoctorReport {
 	statuses := a.ProviderStatuses()
 	enabledSearchers := a.EnabledSearchers()
@@ -80,10 +99,13 @@ func (a *App) RunDoctor(ctx context.Context, uiLocale, uiSource string, live boo
 		UILocaleSource:     uiSource,
 		ConfigPath:         a.loaded.Path,
 		ConfigExists:       a.loaded.FileExists,
+		SecretsPath:        a.loaded.SecretsPath,
+		SecretsExists:      a.loaded.SecretsExists,
 		PermWarning:        a.loaded.PermWarning,
 		VaultPermWarning:   a.loaded.VaultPermWarning,
 		PlaintextProviders: slices.Clone(a.loaded.PlaintextProviders),
 		AllowPrivate:       a.loaded.Config.Network.AllowPrivate,
+		FakeIPAuto:         a.loaded.Config.Network.FakeIPAuto,
 		ProbeHost:          selectProbeHost(statuses),
 		EnabledSearcher:    len(enabledSearchers),
 		EnabledFetcher:     len(enabledFetchers),
@@ -118,56 +140,110 @@ func (a *App) RunDoctor(ctx context.Context, uiLocale, uiSource string, live boo
 	if lookup == nil {
 		lookup = net.DefaultResolver.LookupNetIP
 	}
-	addrs, err := lookup(dnsCtx, "ip", rep.ProbeHost)
+	fakeCIDRs, _ := httpx.ParseCIDRs(a.loaded.Config.Network.FakeIPCIDRs)
+	diag := httpx.DiagnoseNetwork(dnsCtx, lookupFuncResolver(lookup), rep.ProbeHost, fakeCIDRs, rep.FakeIPAuto)
 	cancel()
-	if err != nil {
-		rep.DNSError = a.ScrubText(err.Error())
+
+	rep.ProbeHost = diag.ProbeHost
+	rep.ProbeIP = diag.ProbeIP
+	switch diag.Status {
+	case httpx.NetworkDiagDNSError:
+		rep.DNSError = a.ScrubText(diag.DNSError)
 		rep.Issues++
-	} else if len(addrs) > 0 {
-		rep.ProbeIP = addrs[0].String()
-		if fakeCIDRs, cErr := httpx.ParseCIDRs(a.loaded.Config.Network.FakeIPCIDRs); cErr == nil {
-			rep.FakeIPDetected = httpx.IsFakeIP(addrs[0], fakeCIDRs)
+	case httpx.NetworkDiagFakeIPConfigured:
+		rep.FakeIPDetected = true
+	case httpx.NetworkDiagFakeIPAuto:
+		rep.FakeIPDetected = true
+		rep.DetectedFakeIPCIDRs = slices.Clone(diag.DetectedFakeIPCIDRs)
+	case httpx.NetworkDiagNonPublicBlocked:
+		rep.SuggestedFakeIPCIDR = diag.SuggestedFakeIPCIDR
+		if !rep.AllowPrivate {
+			rep.FakeIPBlocked = true
+			rep.Issues++
 		}
 	}
 
-	if live && len(enabledSearchers) > 0 {
-		checks := make([]LiveCheckResult, len(enabledSearchers))
-		var g errgroup.Group
-		g.SetLimit(spec.DefaultBatchFetchConcurrency)
-		for idx, name := range enabledSearchers {
-			g.Go(func() error {
-				start := time.Now()
-				env, sErr := a.Search(ctx, &core.SearchRequest{
-					Query:     "golang",
-					Count:     1,
-					Detail:    core.DetailSnippet,
-					Providers: []string{name},
-					Strategy:  core.StrategySingle,
-				})
-				lat := time.Since(start).Milliseconds()
-				if sErr != nil {
+	if live {
+		type liveTask struct {
+			provider string
+			kind     string
+			fetchURL string
+		}
+		tasks := make([]liveTask, 0, len(enabledSearchers)+2)
+		for _, name := range enabledSearchers {
+			tasks = append(tasks, liveTask{provider: name, kind: spec.KindSearch})
+		}
+		if slices.Contains(enabledFetchers, spec.ProviderGitHub) && a.liveGitHubProbeURL != liveProbeDisabledSentinel {
+			u := a.liveGitHubProbeURL
+			if u == "" {
+				u = defaultLiveGitHubProbeURL
+			}
+			tasks = append(tasks, liveTask{provider: spec.ProviderGitHub, kind: spec.KindFetch, fetchURL: u})
+		}
+		if slices.Contains(enabledFetchers, spec.ProviderLocal) && a.liveLocalProbeURL != liveProbeDisabledSentinel {
+			u := a.liveLocalProbeURL
+			if u == "" {
+				u = defaultLiveLocalProbeURL
+			}
+			tasks = append(tasks, liveTask{provider: spec.ProviderLocal, kind: spec.KindFetch, fetchURL: u})
+		}
+
+		if len(tasks) > 0 {
+			checks := make([]LiveCheckResult, len(tasks))
+			var g errgroup.Group
+			g.SetLimit(spec.DefaultBatchFetchConcurrency)
+			for idx, task := range tasks {
+				g.Go(func() error {
+					start := time.Now()
+					var (
+						env  *core.Envelope
+						cErr error
+					)
+					if task.kind == spec.KindFetch {
+						// 直接走 runCLIFetch，避免诊断探针将临时测试页写入用户本地磁盘缓存。
+						env, cErr = a.runCLIFetch(ctx, &core.FetchRequest{
+							URL:       task.fetchURL,
+							Providers: []string{task.provider},
+							MaxChars:  512,
+							Options:   map[string]string{spec.OptFetchFresh: "true"},
+						})
+					} else {
+						env, cErr = a.Search(ctx, &core.SearchRequest{
+							Query:     "golang",
+							Count:     1,
+							Detail:    core.DetailSnippet,
+							Providers: []string{task.provider},
+							Strategy:  core.StrategySingle,
+							NoCache:   true,
+						})
+					}
+					lat := time.Since(start).Milliseconds()
+					if cErr != nil {
+						checks[idx] = LiveCheckResult{
+							Provider:  task.provider,
+							Kind:      task.kind,
+							Status:    "error",
+							LatencyMS: lat,
+							Error:     a.ScrubText(cErr.Error()),
+						}
+						return nil
+					}
 					checks[idx] = LiveCheckResult{
-						Provider:  name,
-						Status:    "error",
+						Provider:  task.provider,
+						Kind:      task.kind,
+						Status:    "ok",
 						LatencyMS: lat,
-						Error:     a.ScrubText(sErr.Error()),
+						Cost:      core.FormatCosts(env.Meta.Cost),
 					}
 					return nil
+				})
+			}
+			_ = g.Wait()
+			rep.LiveChecks = checks
+			for _, c := range checks {
+				if c.Status != "ok" {
+					rep.Issues++
 				}
-				checks[idx] = LiveCheckResult{
-					Provider:  name,
-					Status:    "ok",
-					LatencyMS: lat,
-					Cost:      core.FormatCosts(env.Meta.Cost),
-				}
-				return nil
-			})
-		}
-		_ = g.Wait()
-		rep.LiveChecks = checks
-		for _, c := range checks {
-			if c.Status != "ok" {
-				rep.Issues++
 			}
 		}
 	}

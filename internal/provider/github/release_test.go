@@ -48,7 +48,7 @@ func TestGitHubReleasePRLineRangeBinaryAndStaleTokenFallback(t *testing.T) {
 		Tokens:     []string{"ghp_testtoken1234"},
 		APIBaseURL: apiSrv.URL,
 		RawBaseURL: apiSrv.URL,
-	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	}, providertest.NewTestAPIClient(t))
 	if err != nil || !p.HasToken() {
 		t.Fatalf("New with token failed: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestGitHubReleasePRLineRangeBinaryAndStaleTokenFallback(t *testing.T) {
 		Tokens:     []string{"ghp_expiredtoken"},
 		APIBaseURL: apiSrv.URL,
 		RawBaseURL: apiSrv.URL,
-	}, providertest.NewTestAPIClient(t), providertest.NewTestFetchClient(t))
+	}, providertest.NewTestAPIClient(t))
 	if anonOut, err := pStale.Fetch(context.Background(), &core.FetchRequest{URL: "https://github.com/maybk/veri/releases/tag/v1.0.0"}); err != nil || anonOut == nil {
 		t.Fatalf("expected stale token 401 to fall back to anonymous public fetch, got %v", err)
 	}

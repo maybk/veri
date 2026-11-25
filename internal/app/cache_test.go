@@ -37,11 +37,16 @@ func TestAppMCPCacheAndSingleflightCoalescing(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cacheDir := t.TempDir()
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == "DEEPSEEK_API_KEY" {
+		switch k {
+		case "DEEPSEEK_API_KEY":
 			return "sk-secret123456"
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -145,11 +150,16 @@ func TestFetchMCPUnboundedCacheAndFlightRecovery(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cacheDir := t.TempDir()
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == "DEEPSEEK_API_KEY" {
+		switch k {
+		case "DEEPSEEK_API_KEY":
 			return "sk-secret99887766"
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -259,11 +269,16 @@ func TestFetchMCPViewNotesRedactionLiveAndCached(t *testing.T) {
 	defer srv.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cacheDir := t.TempDir()
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == "DEEPSEEK_API_KEY" {
+		switch k {
+		case "DEEPSEEK_API_KEY":
 			return "sk-ViewNotesSecret99887766"
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatalf("LoadWithEnv: %v", err)
@@ -323,11 +338,16 @@ func TestSearchMCPCacheIsolatesIncludeExtraAndNormalizesOptions(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	cacheDir := t.TempDir()
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == spec.EnvZhihuAPIKey {
+		switch k {
+		case spec.EnvZhihuAPIKey:
 			return "zh-cache-test-key"
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatalf("LoadWithEnv: %v", err)

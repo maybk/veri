@@ -232,7 +232,7 @@ mise upgrade npm:@maybk/veri        # mise（或 mise upgrade github:maybk/veri�
 - **提示未配置可用检索源**：运行 `veri providers` 确认对应检索源处于已启用状态；若仅在当前终端执行过 `export ...`，新开终端不会保留，建议改用 `veri key set <provider>` 持久化。
 - **单源报错、超时或触发限流**：运行 `veri doctor --live --yes` 定位具体源的鉴权或连通性问题；配置 2 个及以上检索源后，`veri` 会在故障时自动切换至下一可用源。
 - **动态渲染页面（SPA / JS）或反爬页面抓取不全**：纯本地提取不运行浏览器脚本；配置支持动态渲染与抗反爬的云端提取源（`firecrawl`、`parallel`、`linkup`、`tavily`、`tinyfish`）后，默认策略会自动优先使用云端提取并在遇拦截页时自动升档。
-- **代理与透明代理（TUN）环境**：自动遵循 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`，也可在 `~/.config/veri/config.toml` 的 `network.proxy` 显式配置；默认兼容常见透明代理的 TUN Fake-IP 网段。
+- **代理与透明代理（TUN）环境**：自动遵循 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`，也可在 `config.toml` 的 `network.proxy` 显式配置；默认兼容常见透明代理与双栈 TUN Fake-IP，可用 `veri doctor` 检查或通过 `network.fake_ip_cidrs` 固定网段。
 - **标准退出码（便于脚本判断）**：`0` 成功 · `1` 内部错误或诊断未通过 · `2` 参数或配置错误 · `3` 密钥缺失/失效或配额不足 · `4` 限流/超时等临时故障 · `5` 目标不存在或被安全策略拦截 · `130` 用户中断。
 
 ## 进一步阅读

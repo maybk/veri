@@ -32,13 +32,13 @@ type Provider struct {
 	maxBytes   int64
 	userAgent  string
 	apiClient  *httpx.Client
-	rawClient  *httpx.Client
 	pool       *keypool.Pool
 	gate       *httpx.Gate
 }
 
 // New 构造 GitHub 专用提取器（无需 Token 即可启用，恒返回 enabled=true）。
-func New(opts Options, apiClient, rawClient *httpx.Client) (*Provider, bool, error) {
+// api_base_url 与 raw_base_url 均为经 ResolveAPIBaseURL 校验的固定官方上游端点，统一使用 apiClient。
+func New(opts Options, apiClient *httpx.Client) (*Provider, bool, error) {
 	apiBase, err := httpx.ResolveAPIBaseURL(opts.APIBaseURL, DefaultAPIBaseURL)
 	if err != nil {
 		return nil, false, err
@@ -67,7 +67,6 @@ func New(opts Options, apiClient, rawClient *httpx.Client) (*Provider, bool, err
 		maxBytes:   maxBytes,
 		userAgent:  spec.UserAgent(opts.Version),
 		apiClient:  apiClient,
-		rawClient:  rawClient,
 		pool:       keypool.New(opts.Tokens...),
 		gate:       httpx.NewGate(conc, 0),
 	}, true, nil

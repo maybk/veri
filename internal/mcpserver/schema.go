@@ -72,10 +72,11 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 	if def.maxCount <= 0 {
 		def.maxCount = spec.DefaultMCPMaxCount
 	}
+	effectiveMax := min(def.maxCount, spec.MaxSearchCount)
 	if def.defaultCount <= 0 {
 		def.defaultCount = spec.DefaultSearchCount
 	}
-	effCount := spec.ClampSearchCount(def.defaultCount, def.maxCount)
+	effCount := spec.ClampSearchCount(def.defaultCount, effectiveMax)
 	effDetail := strings.TrimSpace(def.defaultDetail)
 	if effDetail == "" {
 		effDetail = string(core.DetailSummary)
@@ -98,8 +99,8 @@ func buildSearchInputSchema(def searchSchemaDefaults, enabledSearchers []string)
 		"count": map[string]any{
 			"type":        "integer",
 			"minimum":     spec.MinSearchCount,
-			"maximum":     spec.MaxSearchCount,
-			"description": fmt.Sprintf("Number of results to return (default from config: %d, capped at %d).", effCount, def.maxCount),
+			"maximum":     effectiveMax,
+			"description": fmt.Sprintf("Number of results to return (default from config: %d, capped at %d).", effCount, effectiveMax),
 		},
 		"detail": map[string]any{
 			"type":        "string",
@@ -231,7 +232,7 @@ func buildFetchInputSchema(def fetchSchemaDefaults, enabledFetchers []string) ma
 		},
 		"fresh": map[string]any{
 			"type":        "boolean",
-			"description": "Bypass MCP in-process cache and force live upstream extraction when supported.",
+			"description": "Bypass MCP memory and local disk caches and force live upstream extraction when supported.",
 		},
 		"options": map[string]any{
 			"type":                 "object",

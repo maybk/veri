@@ -56,9 +56,10 @@
 # max_count = 20
 
 # [network]
-# proxy = ""                              # empty respects HTTPS_PROXY / HTTP_PROXY / NO_PROXY
-# fake_ip_cidrs = ["198.18.0.0/15"]       # TUN Fake-IP CIDR allowlist
-# allow_private = false                   # allow private/loopback IPs in local fetch (keep false for SSRF guard)
+# proxy = ""                                           # empty respects HTTPS_PROXY / HTTP_PROXY / NO_PROXY
+# fake_ip_cidrs = ["198.18.0.0/15", "2001:2::/48"]     # static TUN Fake-IP CIDR allowlist (IPv4/IPv6)
+# fake_ip_auto = true                                  # auto-detect other transparent proxy Fake-IP pools safely
+# allow_private = false                                # allow private/loopback IPs in local fetch (keep false for SSRF guard)
 
 # Every provider supports enabled = false, plus timeout, concurrency, qps, and weight.
 # [providers.deepseek]

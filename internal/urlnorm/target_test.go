@@ -25,7 +25,9 @@ func TestTargetClassificationHelpers(t *testing.T) {
 		"http://172.20.0.3/status",
 		"http://100.101.102.103:8080/tailscale-service",
 		"http://198.18.0.15/fakeip",
+		"http://[2001:2::15]/fakeip6",
 		"http://wiki.internal/roadmap",
+		"http://svc.private/health",
 		"http://nas.local:5000",
 		"http://intranet-service:8080/api",
 	}

@@ -138,11 +138,17 @@ func handleWebSearch(ctx context.Context, application *app.App, textFormat strin
 		return buildSearchErrorResult(application, in.Query, textFormat, core.AsError(fErr))
 	}
 
+	effectiveMax := maxCount
+	if effectiveMax <= 0 {
+		effectiveMax = spec.DefaultMCPMaxCount
+	}
+	effectiveMax = min(effectiveMax, spec.MaxSearchCount)
 	reqCount := in.Count
 	if reqCount <= 0 {
 		reqCount = cfgCount
 	}
-	count := spec.ClampSearchCount(reqCount, maxCount)
+	count := spec.ClampSearchCount(reqCount, effectiveMax)
+	countCapped := in.Count > effectiveMax
 	providers, pErr := validateMCPProviders(in.Providers, spec.RoleSearch)
 	if pErr != nil {
 		return buildSearchErrorResult(application, in.Query, textFormat, pErr)
@@ -184,6 +190,8 @@ func handleWebSearch(ctx context.Context, application *app.App, textFormat strin
 	env, _ := application.SearchMCP(ctx, req)
 	if env == nil {
 		env = buildErrorEnvelope(application, spec.KindSearch, in.Query, core.NewError(core.CodeInternal, "unexpected nil search envelope"))
+	} else if countCapped {
+		env.Meta.Notes = append(env.Meta.Notes, fmt.Sprintf("requested count %d capped at %d", in.Count, effectiveMax))
 	}
 
 	text, err := render.FormatMCPSearchText(env, textFormat)

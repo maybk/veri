@@ -6,14 +6,14 @@
 
 - `doc.go`：包职责说明。
 - `app.go`：应用生命周期容器（`App`）、客户端与路由装配、带磁盘缓存的 CLI `Search` / `Fetch` 入口、缓存管理及调用日志。
-- `mcp.go`：MCP 专属路由按需懒加载、进程内内存缓存检索/抓取（`SearchMCP` / `FetchMCP`）与动态分页视图构造。
+- `mcp.go`：MCP 专属路由按需懒加载、进程内内存缓存检索/抓取（`SearchMCP` / `FetchMCP`，抓取协同读写本地磁盘缓存）与动态分页视图构造。
 - `scrub.go`：应用层文本、错误对象及响应信封全字段凭据脱敏。
 - `batch.go`：有界并发保序批量网页抓取（`FetchBatch` / `FetchBatchMCP`）与单页局部错误隔离。
 - `registry.go`：适配器工厂表、运行期状态模型（`ProviderStatus`）与公共状态构造辅助函数。
 - `registry_builders.go`：14 个内置检索与提取适配器的显式构造函数实现。
 - `cache.go`：并发安全的双上限（条数与字符总量）泛型 TTL-LRU 内存缓存、统一缓存键/可缓存性判定与 `flightGroup` 并发合并器。
 - `disk_cache.go`：纯 Go gzip 原子本地磁盘缓存、LRU 惰性淘汰、损坏自愈及 `InspectCache` / `ClearDiskCache` 统计与安全清理。
-- `doctor.go`：配置文件权限检查、可用链路统计、DNS / Fake-IP 环境探测及可选 `--live` 真实连通性巡检。
+- `doctor.go`：配置与凭据路径检查、权限审计、透明代理 Fake-IP 诊断及可选 `--live`（检索源与免费 `local` / `github` 提取）连通性检查。
 
 ## 开发规范
 

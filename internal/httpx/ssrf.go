@@ -9,7 +9,10 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"veri/clikit/redact"
 	"veri/internal/core"
@@ -41,11 +44,16 @@ var (
 	siitPrefix      = netip.MustParsePrefix("::ffff:0:0:0/96")
 )
 
-// SSRFGuard 负责对目标 URL 与解析后的 IP 地址执行内网隔离与 Fake-IP 规则判定。
+// SSRFGuard 负责对目标 URL 与解析后的 IP 地址执行内网隔离、伴生 IPv6 剥离与透明代理 Fake-IP 识别。
 type SSRFGuard struct {
-	AllowPrivate bool
-	FakeIPCIDRs  []netip.Prefix
-	Resolver     Resolver
+	AllowPrivate     bool
+	FakeIPCIDRs      []netip.Prefix
+	AutoDetectFakeIP bool
+	Resolver         Resolver
+
+	autoMu        sync.Mutex
+	autoCheckedAt time.Time
+	autoPrefixes  []netip.Prefix
 }
 
 // ParseCIDRs 解析 CIDR 列表配置（如 ["198.18.0.0/15"]）。
@@ -89,7 +97,7 @@ func (g *SSRFGuard) ValidateFetchURL(u *url.URL) error {
 			if ip.Zone() != "" || isBlockedIP(ip.Unmap(), nil) {
 				return core.NewError(core.CodeContentUnavailable, fmt.Sprintf("refusing to fetch non-public IP literal %s", ip)).
 					WithHint("Private, loopback, link-local, and Fake-IP literals are blocked for SSRF protection; set network.allow_private = true in config.toml if intentional.").
-					WithHintKey("hint.ssrf_private_blocked")
+					WithHintKey(core.HintKeySSRFPrivateBlocked)
 			}
 		}
 	}
@@ -101,33 +109,8 @@ func (g *SSRFGuard) CheckHost(ctx context.Context, host string) error {
 	if g == nil || g.AllowPrivate {
 		return nil
 	}
-	if strings.Contains(host, "%") {
-		return core.NewError(core.CodeContentUnavailable, "blocked scoped IPv6 zone address").
-			WithHintKey("hint.ssrf_private_blocked")
-	}
-	if ip, err := netip.ParseAddr(host); err == nil {
-		if ip.Zone() != "" || isBlockedIP(ip.Unmap(), nil) {
-			return core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked non-public IP literal %s", ip)).
-				WithHint("Local fetching blocks private, loopback, link-local, and cloud metadata addresses; set network.allow_private = true in config.toml if intentional.").
-				WithHintKey("hint.ssrf_private_blocked")
-		}
-		return nil
-	}
-	addrs, err := g.resolver().LookupNetIP(ctx, "ip", host)
-	if err != nil {
-		return core.WrapError(core.CodeContentUnavailable, fmt.Sprintf("failed to resolve host %q", host), err)
-	}
-	if len(addrs) == 0 {
-		return core.NewError(core.CodeContentUnavailable, fmt.Sprintf("host %q resolved to no addresses", host))
-	}
-	for _, addr := range addrs {
-		if addr.Zone() != "" || isBlockedIP(addr.Unmap(), g.FakeIPCIDRs) {
-			return core.NewError(core.CodeContentUnavailable, fmt.Sprintf("host %q resolved to blocked non-public address %s", host, addr)).
-				WithHint("Local fetching blocks private, loopback, link-local, and cloud metadata addresses; set network.allow_private = true in config.toml if intentional.").
-				WithHintKey("hint.ssrf_private_blocked")
-		}
-	}
-	return nil
+	_, err := g.resolveAndValidateHost(ctx, host)
+	return err
 }
 
 // SafeDialContext 先解析目标主机、逐个验证 IP 安全策略（防 DNS 重绑定 TOCTOU），再直接向通过校验的 IP 发起 TCP 连接。
@@ -140,48 +123,10 @@ func (g *SSRFGuard) SafeDialContext(baseDial func(ctx context.Context, network, 
 		if err != nil {
 			return nil, core.WrapError(core.CodeInvalidArgument, "invalid dial address", err)
 		}
-		if strings.Contains(host, "%") {
-			return nil, core.NewError(core.CodeContentUnavailable, "blocked connection to scoped IPv6 zone address").
-				WithHintKey("hint.ssrf_private_blocked")
-		}
 
-		// 直接拨号 IP 字面量时严禁放行 Fake-IP 段。
-		if ip, parseErr := netip.ParseAddr(host); parseErr == nil {
-			if ip.Zone() != "" {
-				return nil, core.NewError(core.CodeContentUnavailable, "blocked connection to scoped IPv6 zone address").
-					WithHintKey("hint.ssrf_private_blocked")
-			}
-			unmapped := ip.Unmap()
-			if isBlockedIP(unmapped, nil) {
-				return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked connection to non-public IP literal %s", unmapped)).
-					WithHint("Local fetching blocks private, loopback, link-local, and cloud metadata addresses; set network.allow_private = true in config.toml if intentional.").
-					WithHintKey("hint.ssrf_private_blocked")
-			}
-			return baseDial(ctx, network, net.JoinHostPort(unmapped.String(), port))
-		}
-
-		// 域名解析允许命中已配置的 Fake-IP 段（如 Clash/Surge TUN 198.18.0.0/15）。
-		addrs, err := g.resolver().LookupNetIP(ctx, "ip", host)
-		if err != nil {
-			return nil, core.WrapError(core.CodeContentUnavailable, fmt.Sprintf("DNS lookup failed for %q", host), err)
-		}
-		if len(addrs) == 0 {
-			return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("no IP addresses found for %q", host))
-		}
-
-		var allowed []netip.Addr
-		for _, addr := range addrs {
-			if addr.Zone() != "" {
-				return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked connection to %q (%s): scoped IPv6 address", host, addr)).
-					WithHintKey("hint.ssrf_private_blocked")
-			}
-			unmapped := addr.Unmap()
-			if isBlockedIP(unmapped, g.FakeIPCIDRs) {
-				return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked connection to %q (%s): non-public address", host, unmapped)).
-					WithHint("Local fetching blocks private, loopback, link-local, and cloud metadata addresses; set network.allow_private = true in config.toml if intentional.").
-					WithHintKey("hint.ssrf_private_blocked")
-			}
-			allowed = append(allowed, unmapped)
+		allowed, valErr := g.resolveAndValidateHost(ctx, host)
+		if valErr != nil {
+			return nil, valErr
 		}
 
 		var lastErr error
@@ -194,6 +139,177 @@ func (g *SSRFGuard) SafeDialContext(baseDial func(ctx context.Context, network, 
 		}
 		return nil, core.WrapError(core.CodeUpstreamUnavailable, fmt.Sprintf("failed to connect to %q", host), lastErr)
 	}
+}
+
+type addrEvalResult struct {
+	allowed      []netip.Addr
+	firstBlocked netip.Addr
+	firstFakeIP  netip.Addr
+	usedFakeIP   bool
+	scopedZone   bool
+	ok           bool
+}
+
+func (g *SSRFGuard) resolveAndValidateHost(ctx context.Context, host string) ([]netip.Addr, error) {
+	if strings.Contains(host, "%") {
+		return nil, core.NewError(core.CodeContentUnavailable, "blocked connection to scoped IPv6 zone address").
+			WithHintKey(core.HintKeySSRFPrivateBlocked)
+	}
+
+	// 直接拨号 IP 字面量时严禁放行任何 Fake-IP 段。
+	if ip, parseErr := netip.ParseAddr(host); parseErr == nil {
+		if ip.Zone() != "" {
+			return nil, core.NewError(core.CodeContentUnavailable, "blocked connection to scoped IPv6 zone address").
+				WithHintKey(core.HintKeySSRFPrivateBlocked)
+		}
+		unmapped := ip.Unmap()
+		if isBlockedIP(unmapped, nil) {
+			return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked connection to non-public IP literal %s", unmapped)).
+				WithHint("Local fetching blocks private, loopback, link-local, and cloud metadata addresses; set network.allow_private = true in config.toml if intentional.").
+				WithHintKey(core.HintKeySSRFPrivateBlocked)
+		}
+		return []netip.Addr{unmapped}, nil
+	}
+
+	addrs, err := g.resolver().LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return nil, core.WrapError(core.CodeContentUnavailable, fmt.Sprintf("DNS lookup failed for %q", host), err)
+	}
+	if len(addrs) == 0 {
+		return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("no IP addresses found for %q", host))
+	}
+
+	eval := evaluateResolvedAddrs(host, addrs, g.FakeIPCIDRs)
+	if eval.ok {
+		return eval.allowed, nil
+	}
+	if eval.scopedZone {
+		return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked connection to %q (%s): scoped IPv6 address", host, eval.firstBlocked)).
+			WithHintKey(core.HintKeySSRFPrivateBlocked)
+	}
+
+	eligible := isEligibleForFakeIPHost(host)
+	if eligible && g.AutoDetectFakeIP && !isNeverAutoFakeIP(eval.firstBlocked) {
+		if detected := g.detectAutoFakeIPCIDRs(ctx); len(detected) > 0 {
+			combined := append(slices.Clone(g.FakeIPCIDRs), detected...)
+			if retry := evaluateResolvedAddrs(host, addrs, combined); retry.ok {
+				return retry.allowed, nil
+			}
+		}
+	}
+
+	if !eligible || isNeverAutoFakeIP(eval.firstBlocked) {
+		return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked connection to %q (%s): non-public address", host, eval.firstBlocked)).
+			WithHint("Local fetching blocks private, loopback, link-local, and reserved local addresses; set network.allow_private = true in config.toml if intentional.").
+			WithHintKey(core.HintKeySSRFPrivateBlocked)
+	}
+
+	suggested := SuggestFakeIPCIDR(eval.firstBlocked)
+	return nil, core.NewError(core.CodeContentUnavailable, fmt.Sprintf("blocked connection to %q (%s): non-public address", host, eval.firstBlocked)).
+		WithHint(fmt.Sprintf("If you use a transparent/TUN proxy, add its Fake-IP CIDR to network.fake_ip_cidrs (e.g. `veri config set network.fake_ip_cidrs \"198.18.0.0/15,2001:2::/48,%s\"`) instead of disabling SSRF protection. Only set network.allow_private = true if intentionally fetching an intranet host.", suggested)).
+		WithHintKey(core.HintKeySSRFHostNonPublic).
+		WithParam("cidr", suggested)
+}
+
+func evaluateResolvedAddrs(host string, addrs []netip.Addr, allowedFakeCIDRs []netip.Prefix) addrEvalResult {
+	if len(addrs) == 0 {
+		return addrEvalResult{}
+	}
+	eligible := isEligibleForFakeIPHost(host)
+
+	var (
+		allowed        []netip.Addr
+		pendingV6      []netip.Addr
+		allowedIPv4Set map[netip.Addr]struct{}
+		hasFakeIPv4    bool
+		usedFakeIP     bool
+		firstFakeIP    netip.Addr
+		firstBlocked   netip.Addr
+	)
+
+	for _, addr := range addrs {
+		if !addr.IsValid() || addr.Zone() != "" {
+			return addrEvalResult{firstBlocked: addr, scopedZone: true}
+		}
+		u := addr.Unmap()
+		if !isBlockedIP(u, nil) {
+			allowed = append(allowed, u)
+			if u.Is4() {
+				if allowedIPv4Set == nil {
+					allowedIPv4Set = make(map[netip.Addr]struct{}, len(addrs))
+				}
+				allowedIPv4Set[u] = struct{}{}
+			}
+			continue
+		}
+		if eligible && !isBlockedIP(u, allowedFakeCIDRs) {
+			allowed = append(allowed, u)
+			usedFakeIP = true
+			if !firstFakeIP.IsValid() {
+				firstFakeIP = u
+			}
+			if u.Is4() {
+				hasFakeIPv4 = true
+				if allowedIPv4Set == nil {
+					allowedIPv4Set = make(map[netip.Addr]struct{}, len(addrs))
+				}
+				allowedIPv4Set[u] = struct{}{}
+			}
+			continue
+		}
+		if eligible && u.Is6() {
+			pendingV6 = append(pendingV6, u)
+			continue
+		}
+		if !firstBlocked.IsValid() {
+			firstBlocked = u
+		}
+	}
+
+	for _, v6 := range pendingV6 {
+		if hasFakeIPv4 && isFakePairedIPv6(v6) {
+			// 双栈 TUN 伴生 ULA / RFC 5180 AAAA：跳过且不拨号，由已校验的 IPv4 Fake-IP 承载连接。
+			usedFakeIP = true
+			continue
+		}
+		if len(allowedIPv4Set) > 0 && isLoonPairedIPv6(v6, allowedIPv4Set) {
+			// Loon 伴生 fd27:712::/96 AAAA：跳过且不拨号，由已校验的伴生 IPv4 承载连接。
+			continue
+		}
+		if !firstBlocked.IsValid() {
+			firstBlocked = v6
+		}
+	}
+
+	if firstBlocked.IsValid() || len(allowed) == 0 {
+		return addrEvalResult{firstBlocked: firstBlocked}
+	}
+	return addrEvalResult{
+		allowed:     allowed,
+		firstFakeIP: firstFakeIP,
+		usedFakeIP:  usedFakeIP,
+		ok:          true,
+	}
+}
+
+func (g *SSRFGuard) detectAutoFakeIPCIDRs(ctx context.Context) []netip.Prefix {
+	if ctx.Err() != nil {
+		return nil
+	}
+	g.autoMu.Lock()
+	defer g.autoMu.Unlock()
+
+	now := time.Now()
+	if !g.autoCheckedAt.IsZero() && now.Sub(g.autoCheckedAt) < fakeIPAutoCacheTTL {
+		return slices.Clone(g.autoPrefixes)
+	}
+	samples := probeCanaryHosts(ctx, g.resolver())
+	if !hasAnyCanarySample(samples) {
+		return nil
+	}
+	g.autoPrefixes = inferAutoFakeIPPrefixes(samples)
+	g.autoCheckedAt = time.Now()
+	return slices.Clone(g.autoPrefixes)
 }
 
 func (g *SSRFGuard) resolver() Resolver {

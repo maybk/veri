@@ -221,6 +221,13 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.config_missing",
 					"path", rep.ConfigPath))
 			}
+			if rep.SecretsExists {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.secrets_found",
+					"path", rep.SecretsPath))
+			} else {
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.secrets_missing",
+					"path", rep.SecretsPath))
+			}
 			if rep.PermWarning {
 				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Yellow(rt.cat.T("doctor.perm_warn",
 					"mode", rep.ConfigMode, "path", rep.ConfigPath)))
@@ -237,13 +244,23 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 			if rep.EnabledSearcher == 0 {
 				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Yellow(rt.cat.T("doctor.no_searcher_warn")))
 			}
-			if rep.DNSError != "" {
+			switch {
+			case rep.DNSError != "":
 				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Red(rt.cat.T("doctor.dns_fail",
 					"host", rep.ProbeHost, "error", rep.DNSError)))
-			} else if rep.FakeIPDetected {
+			case rep.FakeIPBlocked && rep.SuggestedFakeIPCIDR != "":
+				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Yellow(rt.cat.T("doctor.fake_ip_blocked",
+					"host", rep.ProbeHost, "ip", rep.ProbeIP, "cidr", rep.SuggestedFakeIPCIDR)))
+			case rep.FakeIPBlocked:
+				_, _ = fmt.Fprintln(rt.stdout, "- "+pal.Yellow(rt.cat.T("doctor.non_public_blocked",
+					"host", rep.ProbeHost, "ip", rep.ProbeIP)))
+			case len(rep.DetectedFakeIPCIDRs) > 0:
+				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fake_ip_auto_detected",
+					"host", rep.ProbeHost, "ip", rep.ProbeIP, "cidrs", strings.Join(rep.DetectedFakeIPCIDRs, ", ")))
+			case rep.FakeIPDetected:
 				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.fake_ip_detected",
 					"host", rep.ProbeHost, "ip", rep.ProbeIP))
-			} else {
+			default:
 				_, _ = fmt.Fprintln(rt.stdout, "- "+rt.cat.T("doctor.dns_ok",
 					"host", rep.ProbeHost, "ip", rep.ProbeIP))
 			}
@@ -298,8 +315,12 @@ func newDoctorCmd(rt *runtimeEnv) *cobra.Command {
 					if costLabel == "" {
 						costLabel = "-"
 					}
+					provLabel := lc.Provider
+					if lc.Kind == spec.KindFetch {
+						provLabel += " (fetch)"
+					}
 					liveRows = append(liveRows, []string{
-						lc.Provider,
+						provLabel,
 						lc.Status,
 						fmt.Sprintf("%dms", lc.LatencyMS),
 						costLabel,

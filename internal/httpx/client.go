@@ -35,12 +35,13 @@ const (
 
 // Options 配置安全 HTTP 客户端的网络参数。
 type Options struct {
-	ProxyURL     string
-	AllowPrivate bool
-	FakeIPCIDRs  []netip.Prefix
-	Resolver     Resolver
-	MaxRedirects int
-	Logger       *slog.Logger
+	ProxyURL         string
+	AllowPrivate     bool
+	FakeIPCIDRs      []netip.Prefix
+	AutoDetectFakeIP bool
+	Resolver         Resolver
+	MaxRedirects     int
+	Logger           *slog.Logger
 }
 
 // Client 封装经过超时与安全加固的 HTTP 客户端。
@@ -99,7 +100,7 @@ func NewAPIClient(opts Options) (*Client, error) {
 	}, nil
 }
 
-// NewSafeFetchClient 构造用于本地网页抓取（local / github）的安全客户端，支持本地代理分流、SSRF 守卫与逐跳重定向校验。
+// NewSafeFetchClient 构造用于本地网页抓取（local）的安全客户端，支持本地代理分流、SSRF 守卫与逐跳重定向校验。
 func NewSafeFetchClient(opts Options) (*Client, error) {
 	proxyFn, fixedProxy, err := buildProxyFunc(opts.ProxyURL)
 	if err != nil {
@@ -107,12 +108,13 @@ func NewSafeFetchClient(opts Options) (*Client, error) {
 	}
 	cidrs := opts.FakeIPCIDRs
 	if cidrs == nil {
-		cidrs = []netip.Prefix{netip.MustParsePrefix(spec.DefaultFakeIPCIDR)}
+		cidrs = []netip.Prefix{fakeIPv4Benchmark, fakeIPv6Benchmark}
 	}
 	guard := &SSRFGuard{
-		AllowPrivate: opts.AllowPrivate,
-		FakeIPCIDRs:  cidrs,
-		Resolver:     opts.Resolver,
+		AllowPrivate:     opts.AllowPrivate,
+		FakeIPCIDRs:      cidrs,
+		AutoDetectFakeIP: opts.AutoDetectFakeIP,
+		Resolver:         opts.Resolver,
 	}
 	maxRedirects := opts.MaxRedirects
 	if maxRedirects <= 0 {

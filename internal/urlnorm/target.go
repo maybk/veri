@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	cgnatPrefix  = netip.MustParsePrefix("100.64.0.0/10")
-	fakeIPPrefix = netip.MustParsePrefix("198.18.0.0/15")
+	cgnatPrefix    = netip.MustParsePrefix("100.64.0.0/10")
+	fakeIPPrefix   = netip.MustParsePrefix("198.18.0.0/15")
+	fakeIPv6Prefix = netip.MustParsePrefix("2001:2::/48")
 )
 
 var localHostSuffixes = []string{
@@ -19,6 +20,7 @@ var localHostSuffixes = []string{
 	".home.arpa",
 	".intranet",
 	".corp",
+	".private",
 	".localdomain",
 }
 
@@ -80,6 +82,8 @@ func IsLocalOrPrivateTarget(u *url.URL) bool {
 			if cgnatPrefix.Contains(unmapped) || fakeIPPrefix.Contains(unmapped) {
 				return true
 			}
+		} else if fakeIPv6Prefix.Contains(unmapped) {
+			return true
 		}
 		return false
 	}

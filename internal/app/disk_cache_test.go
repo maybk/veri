@@ -504,3 +504,107 @@ func TestNoStoreAndMCPDecoupledTTLsAndTokenIsolation(t *testing.T) {
 		t.Fatal("partial fusion search envelope must not be cacheable")
 	}
 }
+
+func TestMCPAndCLIDiskCacheCooperation(t *testing.T) {
+	var upstreamHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/tools/fetch" {
+			n := upstreamHits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"title":"Shared Page %d","content":"# Shared Heading\n\n## Alpha\n\nBody version %d with sufficient text for quality gate."}`, n, n)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "config.toml")
+	cacheDir := filepath.Join(tmp, "cache")
+	cfgBody := fmt.Sprintf(`
+[fetch]
+strategy = "api_only"
+providers = ["deepseek"]
+
+[cache]
+fetch_ttl = "15m"
+
+[providers.deepseek]
+api_key = "sk-coop-test-secret"
+base_url = %q
+`, srv.URL)
+	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadApp := func() *App {
+		t.Helper()
+		loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
+			if k == spec.EnvCacheDir {
+				return cacheDir
+			}
+			return ""
+		})
+		if err != nil {
+			t.Fatalf("LoadWithEnv: %v", err)
+		}
+		a, err := NewWithStderr(loaded, "1.0.0-test", io.Discard)
+		if err != nil {
+			t.Fatalf("NewWithStderr: %v", err)
+		}
+		return a
+	}
+
+	// 1. CLI 先抓取并落盘，全新的 MCP App 实例首次 FetchMCP 直接命中 L2 磁盘缓存（0 次上游请求、cached=true、duration_ms=0）
+	cliApp := loadApp()
+	firstCLI, err := cliApp.Fetch(t.Context(), &core.FetchRequest{URL: "https://example.com/shared-doc"})
+	if err != nil || !firstCLI.OK || firstCLI.Meta.Cached || upstreamHits.Load() != 1 {
+		t.Fatalf("CLI cold fetch failed: env=%+v hits=%d err=%v", firstCLI, upstreamHits.Load(), err)
+	}
+
+	mcpApp := loadApp()
+	hitFromDisk, err := mcpApp.FetchMCP(t.Context(), &core.FetchRequest{URL: "https://example.com/shared-doc", Section: "Alpha"})
+	if err != nil || !hitFromDisk.OK || !hitFromDisk.Meta.Cached || hitFromDisk.Meta.DurationMS != 0 || upstreamHits.Load() != 1 {
+		t.Fatalf("expected MCP to hit CLI disk cache with duration_ms=0: meta=%+v hits=%d err=%v", hitFromDisk.Meta, upstreamHits.Load(), err)
+	}
+	if !strings.Contains(hitFromDisk.Page.Content, "Body version 1") {
+		t.Fatalf("unexpected sliced content from L2 disk cache: %q", hitFromDisk.Page.Content)
+	}
+
+	// 2. MCP 抓取新页面写入 L1+L2 后，新 CLI 实例与重启后的 MCP 实例均可零成本命中
+	mcpCold, err := mcpApp.FetchMCP(t.Context(), &core.FetchRequest{URL: "https://example.com/mcp-origin"})
+	if err != nil || !mcpCold.OK || mcpCold.Meta.Cached || upstreamHits.Load() != 2 {
+		t.Fatalf("MCP cold fetch failed: env=%+v hits=%d err=%v", mcpCold, upstreamHits.Load(), err)
+	}
+	cliApp2 := loadApp()
+	cliHit, err := cliApp2.Fetch(t.Context(), &core.FetchRequest{URL: "https://example.com/mcp-origin"})
+	if err != nil || !cliHit.OK || !cliHit.Meta.Cached || cliHit.Meta.DurationMS != 0 || upstreamHits.Load() != 2 {
+		t.Fatalf("expected CLI to hit page cached by MCP: meta=%+v hits=%d err=%v", cliHit.Meta, upstreamHits.Load(), err)
+	}
+
+	// 3. fresh=true 同时绕过 L1 与 L2 并刷新磁盘，供后续 CLI 拿到最新版本
+	mcpFresh, err := mcpApp.FetchMCP(t.Context(), &core.FetchRequest{
+		URL:     "https://example.com/shared-doc",
+		Options: map[string]string{spec.OptFetchFresh: "true"},
+	})
+	if err != nil || !mcpFresh.OK || mcpFresh.Meta.Cached || upstreamHits.Load() != 3 || !strings.Contains(mcpFresh.Page.Content, "Body version 3") {
+		t.Fatalf("expected MCP fresh=true to bypass L1+L2 and refresh: content=%q hits=%d err=%v", mcpFresh.Page.Content, upstreamHits.Load(), err)
+	}
+	cliRefreshed, err := loadApp().Fetch(t.Context(), &core.FetchRequest{URL: "https://example.com/shared-doc"})
+	if err != nil || !cliRefreshed.Meta.Cached || !strings.Contains(cliRefreshed.Page.Content, "Body version 3") || upstreamHits.Load() != 3 {
+		t.Fatalf("expected refreshed L2 disk entry visible to CLI: content=%q cached=%v hits=%d err=%v", cliRefreshed.Page.Content, cliRefreshed.Meta.Cached, upstreamHits.Load(), err)
+	}
+
+	// 4. GetWithMaxAge 超龄未命中但保留 CLI 磁盘文件不误删
+	dc := newDiskCache(cacheDir, 1<<20, nil)
+	now := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+	dc.now = func() time.Time { return now }
+	k := buildFetchCacheKey("https://example.com/age-test", core.FetchAPIOnly, nil, nil)
+	dc.Set(diskCacheKindFetch, k, firstCLI, 15*time.Minute)
+	dc.now = func() time.Time { return now.Add(6 * time.Minute) }
+	if _, ok := dc.GetWithMaxAge(diskCacheKindFetch, k, 5*time.Minute); ok {
+		t.Fatal("expected GetWithMaxAge(5m) to miss 6m-old entry")
+	}
+	if _, ok := dc.Get(diskCacheKindFetch, k); !ok {
+		t.Fatal("expected GetWithMaxAge miss NOT to delete entry still valid for 15m TTL")
+	}
+}

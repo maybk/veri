@@ -85,8 +85,14 @@ func (c Code) ExitCode() int {
 // 跨包共享的安全拦截与挑战识别提示词表键常量。
 const (
 	HintKeySSRFPrivateBlocked = "hint.ssrf_private_blocked"
+	HintKeySSRFHostNonPublic  = "hint.ssrf_host_non_public"
 	HintKeyChallengeDetected  = "hint.challenge_detected"
 )
+
+// IsSSRFBlockedHint 判断给定 HintKey 是否对应本地 SSRF 非公网拦截（禁止向公网云端源转发）。
+func IsSSRFBlockedHint(hintKey string) bool {
+	return hintKey == HintKeySSRFPrivateBlocked || hintKey == HintKeySSRFHostNonPublic
+}
 
 // Error 是 veri 内部与边界层统一传递的结构化错误类型。
 // Message 与 Hint 固定使用英文，供机器协议、MCP 与日志消费；CLI 人类终端由 i18n 按 Code、MsgKey、HintKey 与 Params 渲染。

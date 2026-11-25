@@ -62,8 +62,8 @@ func TestProviderRegistryOptionsAndDefaults(t *testing.T) {
 	if ClampSearchCount(0, 20) != DefaultSearchCount || ClampSearchCount(99, 20) != 20 {
 		t.Fatal("unexpected ClampSearchCount behavior")
 	}
-	if len(DefaultFakeIPCIDRs()) != 1 {
-		t.Fatal("unexpected default Fake-IP CIDRs")
+	if !slices.Equal(DefaultFakeIPCIDRs(), []string{DefaultFakeIPCIDR, DefaultFakeIPv6CIDR}) {
+		t.Fatalf("unexpected default Fake-IP CIDRs: %v", DefaultFakeIPCIDRs())
 	}
 }
 

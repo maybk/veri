@@ -98,11 +98,11 @@ func runKeySaveCmd(cmd *cobra.Command, rt *runtimeEnv, rawProvider string, appen
 		return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
 	}
 
-	cfgDir, err := config.ResolveDir(rt.flags.configPath, rt.getenv)
+	secretsDir, err := config.ResolveSecretsDir(rt.flags.configPath, rt.getenv)
 	if err != nil {
 		return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
 	}
-	res, err := config.SaveVaultKey(cfgDir, provider, secret, appendMode)
+	res, err := config.SaveVaultKey(secretsDir, provider, secret, appendMode)
 	if err != nil {
 		return err
 	}
@@ -167,11 +167,11 @@ func newKeyUnsetCmd(rt *runtimeEnv) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cfgDir, err := config.ResolveDir(rt.flags.configPath, rt.getenv)
+			secretsDir, err := config.ResolveSecretsDir(rt.flags.configPath, rt.getenv)
 			if err != nil {
 				return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
 			}
-			vault := credentials.NewVault(cfgDir)
+			vault := credentials.NewVault(secretsDir)
 			removed, err := vault.Delete(provider)
 			if err != nil {
 				return core.WrapError(core.CodeInternal, err.Error(), err)
@@ -194,7 +194,8 @@ type keyListEntry struct {
 }
 
 type keyListJSONOutput struct {
-	Keys []keyListEntry `json:"keys"`
+	SecretsPath string         `json:"secrets_path"`
+	Keys        []keyListEntry `json:"keys"`
 }
 
 func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
@@ -249,7 +250,10 @@ func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
 			}
 
 			if jsonOut {
-				text, jErr := render.MarshalEnvelopeJSON(keyListJSONOutput{Keys: entries})
+				text, jErr := render.MarshalEnvelopeJSON(keyListJSONOutput{
+					SecretsPath: loaded.SecretsPath,
+					Keys:        entries,
+				})
 				if jErr != nil {
 					return jErr
 				}
@@ -264,6 +268,7 @@ func newKeyListCmd(rt *runtimeEnv) *cobra.Command {
 				rt.cat.T("table.keys.masked"),
 			}
 			pal := term.DetectPalette(rt.stdout, rt.flags.noColor, rt.getenv)
+			_, _ = fmt.Fprintln(rt.stdout, pal.Dim(rt.cat.T("key.list.vault_path", "path", loaded.SecretsPath)))
 			term.WriteTable(rt.stdout, headers, rows, term.TableStyle{
 				Header: pal.Bold,
 				Cell: func(col int, val string) string {

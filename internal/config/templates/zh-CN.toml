@@ -56,9 +56,10 @@
 # max_count = 20
 
 # [network]
-# proxy = ""                              # 为空时遵循 HTTPS_PROXY / HTTP_PROXY / NO_PROXY
-# fake_ip_cidrs = ["198.18.0.0/15"]       # TUN 模式 Fake-IP 网段
-# allow_private = false                   # 本地抓取是否允许内网地址（默认关闭以防御 SSRF）
+# proxy = ""                                           # 为空时遵循 HTTPS_PROXY / HTTP_PROXY / NO_PROXY
+# fake_ip_cidrs = ["198.18.0.0/15", "2001:2::/48"]     # TUN 模式静态 Fake-IP 白名单（IPv4/IPv6）
+# fake_ip_auto = true                                  # 自动识别其他透明代理 Fake-IP 网段（不放行内网/回环）
+# allow_private = false                                # 本地抓取是否允许内网地址（默认关闭以防御 SSRF）
 
 # 各 Provider 均支持 enabled = false，以及 timeout / concurrency / qps / weight。
 # [providers.deepseek]

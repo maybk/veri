@@ -23,6 +23,9 @@ type Loaded struct {
 	Config                        Config
 	Path                          string
 	Dir                           string
+	SecretsDir                    string
+	SecretsPath                   string
+	SecretsExists                 bool
 	CacheDir                      string
 	FileExists                    bool
 	FileMode                      os.FileMode
@@ -77,9 +80,29 @@ func ResolvePath(explicitPath string, getenv func(string) string) (string, error
 	return storage.ResolveConfigFile(spec.ConfigDirName, spec.ConfigFileName, explicitPath, spec.EnvConfig, getenv)
 }
 
-// ResolveDir 返回当前生效的配置与加密凭据目录（默认 ~/.config/veri）。
+// ResolveDir 返回当前生效的配置文件目录（默认 ~/.config/veri）。
 func ResolveDir(explicitConfigPath string, getenv func(string) string) (string, error) {
 	return storage.ResolveConfigDir(spec.ConfigDirName, spec.ConfigFileName, explicitConfigPath, spec.EnvConfig, getenv)
+}
+
+// ResolveSecretsDir 返回当前生效的本地加密凭据目录：
+// 1. 显式设置 VERI_SECRETS_DIR 时使用该目录（允许自定义 --config 复用共享加密凭据库）
+// 2. 否则跟随生效配置文件所在目录（保持多 Profile 与测试环境的默认隔离）
+func ResolveSecretsDir(explicitConfigPath string, getenv func(string) string) (string, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if raw := strings.TrimSpace(getenv(spec.EnvSecretsDir)); raw != "" {
+		return storage.ExpandHome(raw)
+	}
+	return ResolveDir(explicitConfigPath, getenv)
+}
+
+func resolveSecretsDirFor(cfgDir string, getenv func(string) string) (string, error) {
+	if raw := strings.TrimSpace(getenv(spec.EnvSecretsDir)); raw != "" {
+		return storage.ExpandHome(raw)
+	}
+	return cfgDir, nil
 }
 
 // ResolveCacheDir 按三端统一优先级解析磁盘缓存目录（默认 ~/.cache/veri）。
@@ -102,12 +125,19 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		return nil, core.WrapError(core.CodeInvalidArgument, err.Error(), err)
 	}
 	cfgDir := filepath.Dir(cfgPath)
+	secretsDir, err := resolveSecretsDirFor(cfgDir, getenv)
+	if err != nil {
+		return nil, core.WrapError(core.CodeInvalidArgument, err.Error(), err)
+	}
+	vault := credentials.NewVault(secretsDir)
 
 	credProviders := spec.CredentialProviders()
 	cfg := Default()
 	out := &Loaded{
 		Path:           cfgPath,
 		Dir:            cfgDir,
+		SecretsDir:     secretsDir,
+		SecretsPath:    vault.SecretsPath(),
 		DefinedKeys:    make(map[string]bool),
 		EnvOverrides:   make(map[string]string),
 		LogLevel:       resolveLogLevel(getenv(spec.EnvLogLevel)),
@@ -175,7 +205,7 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 	}
 	out.CacheDir = cacheDir
 
-	vaultSecrets, err := loadVaultSecrets(credentials.NewVault(cfgDir), cfgDir)
+	vaultSecrets, err := loadVaultSecrets(vault, secretsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -221,8 +251,11 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 	if out.FileExists && hasPlain && storage.HasBroadPermissions(out.FileMode) {
 		out.PermWarning = true
 	}
+	if fi, sErr := os.Stat(out.SecretsPath); sErr == nil && !fi.IsDir() {
+		out.SecretsExists = true
+	}
 	for _, fname := range []string{spec.SecretsFileName, spec.SecretKeyFileName} {
-		if fi, sErr := os.Stat(filepath.Join(cfgDir, fname)); sErr == nil && !fi.IsDir() && storage.HasBroadPermissions(fi.Mode()) {
+		if fi, sErr := os.Stat(filepath.Join(secretsDir, fname)); sErr == nil && !fi.IsDir() && storage.HasBroadPermissions(fi.Mode()) {
 			out.VaultPermWarning = true
 			break
 		}

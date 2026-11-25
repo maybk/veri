@@ -37,9 +37,11 @@ type App struct {
 	sfSearch    flightGroup[*core.Envelope]
 	sfFetch     flightGroup[*core.Envelope]
 
-	scrubber    *strings.Replacer
-	logger      *slog.Logger
-	lookupNetIP func(ctx context.Context, network, host string) ([]netip.Addr, error)
+	scrubber           *strings.Replacer
+	logger             *slog.Logger
+	lookupNetIP        func(ctx context.Context, network, host string) ([]netip.Addr, error)
+	liveLocalProbeURL  string
+	liveGitHubProbeURL string
 }
 
 // New 根据加载后的配置实例化全部已启用 Provider 与 CLI 路由（日志默认写入 os.Stderr）。
@@ -79,10 +81,11 @@ func NewWithStderr(loaded *config.Loaded, version string, stderr io.Writer) (*Ap
 		return nil, core.WrapError(core.CodeInvalidArgument, redact.ScrubWith(err.Error(), scrubber), err)
 	}
 	fetchClient, err := httpx.NewSafeFetchClient(httpx.Options{
-		ProxyURL:     cfg.Network.Proxy,
-		AllowPrivate: cfg.Network.AllowPrivate,
-		FakeIPCIDRs:  fakeCIDRs,
-		Logger:       logger,
+		ProxyURL:         cfg.Network.Proxy,
+		AllowPrivate:     cfg.Network.AllowPrivate,
+		FakeIPCIDRs:      fakeCIDRs,
+		AutoDetectFakeIP: cfg.Network.FakeIPAuto,
+		Logger:           logger,
 	})
 	if err != nil {
 		return nil, core.WrapError(core.CodeInvalidArgument, redact.ScrubWith(err.Error(), scrubber), err)

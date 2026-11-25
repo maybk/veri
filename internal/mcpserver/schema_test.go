@@ -111,11 +111,16 @@ func TestMCPFetchSectionTruncationHintIntegration(t *testing.T) {
 	defer srvHTTP.Close()
 
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cacheDir := t.TempDir()
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == "DEEPSEEK_API_KEY" {
+		switch k {
+		case "DEEPSEEK_API_KEY":
 			return "sk-section-test-1234"
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -328,15 +333,20 @@ func TestMCPOutputSchemaCompactIsolationAndSync(t *testing.T) {
 
 func TestMCPSparseConfigSetReflectedInSchemaAndReadOnlyBoundary(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cacheDir := t.TempDir()
 	noEnv := func(string) string { return "" }
 	if _, err := config.SetValue(cfgPath, "providers.zhihu_web.enabled", "false", noEnv); err != nil {
 		t.Fatalf("config.SetValue: %v", err)
 	}
 	loaded, err := config.LoadWithEnv(cfgPath, func(k string) string {
-		if k == "ZHIHU_API_KEY" {
+		switch k {
+		case "ZHIHU_API_KEY":
 			return "zhihu-test-token-1234"
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
 		}
-		return ""
 	})
 	if err != nil {
 		t.Fatalf("LoadWithEnv: %v", err)
@@ -384,5 +394,20 @@ func TestMCPSparseConfigSetReflectedInSchemaAndReadOnlyBoundary(t *testing.T) {
 	// 单把 ZHIHU_API_KEY 下关闭 zhihu_web 后，应仅暴露 zhihu（含 zhihu.sort）并省略 zhihu_web.search_db
 	if !strings.Contains(string(raw), spec.OptZhihuSort) || strings.Contains(string(raw), spec.OptZhihuWebSearchDB) {
 		t.Fatalf("expected disabled zhihu_web omitted and zhihu kept in MCP schema, got: %s", string(raw))
+	}
+
+	// count.maximum 必须动态对齐 mcp.max_count，不再固定为 50
+	allSearch := spec.ProvidersWithRole(spec.RoleSearch)
+	countSchemaDefault := buildSearchInputSchema(searchSchemaDefaults{maxCount: 20}, allSearch)["properties"].(map[string]any)["count"].(map[string]any)
+	if countSchemaDefault["maximum"] != 20 {
+		t.Fatalf("expected default web_search count.maximum=20, got %v", countSchemaDefault["maximum"])
+	}
+	countSchemaCustom := buildSearchInputSchema(searchSchemaDefaults{maxCount: 35}, allSearch)["properties"].(map[string]any)["count"].(map[string]any)
+	if countSchemaCustom["maximum"] != 35 {
+		t.Fatalf("expected custom web_search count.maximum=35, got %v", countSchemaCustom["maximum"])
+	}
+	countSchemaClamped := buildSearchInputSchema(searchSchemaDefaults{maxCount: 99}, allSearch)["properties"].(map[string]any)["count"].(map[string]any)
+	if countSchemaClamped["maximum"] != spec.MaxSearchCount {
+		t.Fatalf("expected over-limit web_search count.maximum clamped to %d, got %v", spec.MaxSearchCount, countSchemaClamped["maximum"])
 	}
 }

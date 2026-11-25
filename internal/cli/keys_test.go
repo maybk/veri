@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json/v2"
 	"path/filepath"
 	"strings"
@@ -135,9 +136,46 @@ func TestCLIKeySetSharedCredentialActivatesBothZhihuProviders(t *testing.T) {
 	if err := json.Unmarshal([]byte(listJSON), &listOut); err != nil {
 		t.Fatalf("unmarshal key list: %v", err)
 	}
+	if listOut.SecretsPath != filepath.Join(dir, spec.SecretsFileName) {
+		t.Fatalf("expected secrets_path=%q, got %q", filepath.Join(dir, spec.SecretsFileName), listOut.SecretsPath)
+	}
 	for _, k := range listOut.Keys {
 		if k.Provider == spec.ProviderZhihuWeb {
 			t.Fatalf("shared child provider zhihu_web must not occupy a duplicate key list slot: %+v", listOut.Keys)
 		}
+	}
+
+	// VERI_SECRETS_DIR 允许自定义 --config 复用共享加密凭据库，并在 key list --json 中显式返回路径
+	otherCfg := filepath.Join(t.TempDir(), "isolated.toml")
+	cacheDir := t.TempDir()
+	var sharedOutBuf, sharedErrBuf bytes.Buffer
+	sharedCode := ExecuteContext(t.Context(), []string{"--config", otherCfg, "key", "list", "--json"}, nil, BuildInfo{Version: "test"}, strings.NewReader(""), &sharedOutBuf, &sharedErrBuf, func(k string) string {
+		switch k {
+		case spec.EnvSecretsDir:
+			return dir
+		case spec.EnvCacheDir:
+			return cacheDir
+		default:
+			return ""
+		}
+	})
+	if sharedCode != 0 || sharedErrBuf.Len() > 0 {
+		t.Fatalf("key list --json with VERI_SECRETS_DIR failed: code=%d err=%s", sharedCode, sharedErrBuf.String())
+	}
+	var sharedOut keyListJSONOutput
+	if err := json.Unmarshal(sharedOutBuf.Bytes(), &sharedOut); err != nil {
+		t.Fatalf("unmarshal shared key list: %v\n%s", err, sharedOutBuf.String())
+	}
+	if sharedOut.SecretsPath != filepath.Join(dir, spec.SecretsFileName) {
+		t.Fatalf("expected shared secrets_path=%q, got %q", filepath.Join(dir, spec.SecretsFileName), sharedOut.SecretsPath)
+	}
+	foundZhihu := false
+	for _, k := range sharedOut.Keys {
+		if k.Provider == spec.ProviderZhihu && k.EncryptedVault {
+			foundZhihu = true
+		}
+	}
+	if !foundZhihu {
+		t.Fatalf("expected shared vault key for zhihu visible via VERI_SECRETS_DIR, got %+v", sharedOut.Keys)
 	}
 }

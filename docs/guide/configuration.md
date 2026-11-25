@@ -91,7 +91,7 @@ veri config path                               # 输出生效的配置文件路�
 
 ### 2. 缓存配置
 
-缓存统一归口 `[cache]`：CLI 使用本地磁盘缓存，MCP 使用进程内内存缓存（退出即释放）；`[cache.cli]` 与 `[cache.mcp]` 未设置项自动继承 `[cache]`，显式设为 `"0s"` 或 `false` 仅关闭对应一端。
+缓存统一归口 `[cache]`：CLI 使用本地磁盘缓存；MCP 检索使用进程内内存缓存，网页抓取同时复用本地磁盘缓存（私网目标与 `Cache-Control: no-store` 绝不落盘）。`[cache.cli]` 与 `[cache.mcp]` 未设置项自动继承 `[cache]`，显式设为 `"0s"` 或 `false` 仅关闭对应一端。
 
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -103,7 +103,7 @@ veri config path                               # 输出生效的配置文件路�
 | `cache.cli.enabled` | 继承 `cache.enabled` | 可选覆写：仅开关 CLI 磁盘缓存 |
 | `cache.cli.fetch_ttl` | 继承 `cache.fetch_ttl` | 可选覆写：设为 `"0s"` 仅关闭 CLI 抓取缓存 |
 | `cache.cli.search_ttl` | 继承 `cache.search_ttl` | 可选覆写：如设 `"2m"` 开启 CLI 检索缓存 |
-| `cache.mcp.enabled` | 继承 `cache.enabled` | 可选覆写：仅开关 MCP 内存缓存 |
+| `cache.mcp.enabled` | 继承 `cache.enabled` | 可选覆写：仅开关 MCP 缓存 |
 | `cache.mcp.fetch_ttl` | 继承 `cache.fetch_ttl` | 可选覆写：设为 `"0s"` 仅关闭 MCP 抓取缓存 |
 | `cache.mcp.search_ttl` | `"5m"` | MCP 进程内检索缓存有效期（与 `fetch_ttl` 独立） |
 | `cache.mcp.max_entries` | `256` | MCP 内存缓存最大条目数（`0` 关闭） |
@@ -116,9 +116,10 @@ veri config path                               # 输出生效的配置文件路�
 | `mcp.search_max_chars` | `24000` | `web_search` 默认字符预算上限 |
 | `mcp.fetch_max_chars` | `30000` | `web_fetch` 默认字符预算上限 |
 | `mcp.content_max_chars` | `3000` | MCP 检索单条结果 `content` 最大字符数 |
-| `mcp.max_count` | `20` | `web_search` 单次最大返回条数 |
+| `mcp.max_count` | `20` | `web_search` 单次最大返回条数（`1`–`50`） |
 | `network.proxy` | `""` | 显式 HTTP/SOCKS5 代理地址；为空时遵循 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` |
-| `network.fake_ip_cidrs` | `["198.18.0.0/15"]` | 透明代理 TUN Fake-IP 网段（仅放行域名解析返回的该网段地址） |
+| `network.fake_ip_cidrs` | `["198.18.0.0/15", "2001:2::/48"]` | 透明代理 Fake-IP 静态白名单（仅放行公网域名解析结果） |
+| `network.fake_ip_auto` | `true` | 自动识别未配置的透明代理 Fake-IP 网段（不放行回环、私网、云元数据与内网域名） |
 | `network.allow_private` | `false` | 是否允许本地提取器访问回环或内网地址（默认拦截以防御 SSRF） |
 | `providers.<name>.enabled` | `true` | 是否启用该 Provider（设为 `false` 可单独禁用任意检索或提取源） |
 | `providers.<name>.api_key` | `"env:..."` | 支持 `env:VAR` 引用或明文密钥，多密钥用逗号分隔以启用轮询与分级冷却 |
@@ -144,6 +145,7 @@ veri config path                               # 输出生效的配置文件路�
 | `FIRECRAWL_API_KEY` | — | Firecrawl v2 Scrape / Search API 密钥（非官方自托管 `base_url` 可省略） |
 | `GITHUB_TOKEN` | `GH_TOKEN` | GitHub REST API 访问令牌（可选，用于提高匿名配额） |
 | `VERI_CONFIG` | — | 覆盖配置文件路径 |
+| `VERI_SECRETS_DIR` | — | 指定本地加密凭据目录（默认跟随生效配置文件目录，便于跨 `--config` 复用密钥） |
 | `VERI_LANG` | — | 覆盖终端界面语言（`auto` / `zh` / `en`，兼容标准 Locale） |
 | `VERI_PROVIDERS` | — | 覆盖 `search.providers`（逗号分隔） |
 | `VERI_FETCH_PROVIDERS` | — | 覆盖 `fetch.providers`（逗号分隔） |
@@ -160,7 +162,7 @@ veri config path                               # 输出生效的配置文件路�
 
 ## 安全与可靠性机制
 
-1. **SSRF 防护、内网隔离与 Fake-IP 兼容**：本地与 GitHub 抓取在拨号阶段校验目标 IP 并逐跳复验重定向，默认拦截回环、私网、链路本地、云元数据（`169.254.169.254`）与 CGNAT 地址；仅放行经域名解析返回且命中 `network.fake_ip_cidrs` 的 TUN 虚拟地址，URL 字面量直连 Fake-IP 仍被拦截。回环、私网与解析至内网的目标仅在本地处理，不向外部云端提取源转发。API 客户端同步阻断 HTTPS 向 HTTP 的协议降级与向内网回环的跨源重定向。
+1. **SSRF 防护、内网隔离与透明代理兼容**：本地网页抓取在拨号阶段校验目标 IP 并逐跳复验重定向，默认拦截回环、私网、链路本地、云元数据（`169.254.169.254`）与 CGNAT 地址；仅对普通公网域名放行 `network.fake_ip_cidrs` 静态白名单与自动识别的透明代理 Fake-IP 网段，IP 字面量及 `.local` / `.internal` 等内网保留主机名始终拦截。本机与内网目标仅在本地处理，严禁向外部云端提取源转发；GitHub 与各厂商固定 API 端点均阻断 HTTPS 降级、回环跳转与跨源凭据泄露。
 2. **计费安全重试与冷却轮换**：请求发出后若发生读超时或连接中断，客户端禁止自动重放以防重复扣费；仅对明确未扣费的 `408 / 429 / 500 / 502 / 503 / 504` 或池内备用密钥最多重试 1 次，并按限流、欠费、鉴权失败分级冷却隔离。
 3. **全链路凭据脱敏与权限审计**：`veri config show`（含 `--overrides`）、`veri config get`、错误提示与诊断日志自动遮蔽已知密钥、认证头、代理密码与敏感查询参数；`veri config set` 拒绝写入明文 `api_key` / `token`；Unix 下若手工写入的配置文件含明文密钥或凭据库权限宽于 `0600`，启动与 `veri doctor` 均会告警。
 4. **外部网页内容隔离与隐形注入清洗**：MCP 文本输出默认包裹在带单次随机边界标识的 `<untrusted_web_content id="...">` 标签内并转义内嵌同名标签以防伪造提前闭合；同时剥离不可见格式控制符/变体选择符与零可见度 CSS 隐藏节点，降低间接提示注入风险。

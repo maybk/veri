@@ -163,11 +163,16 @@ func formatMCPBatchFetchText(env *core.Envelope, opts MCPFetchFormatOptions) str
 	var out strings.Builder
 	provLabel := activeProvidersLabel(env.Meta.Providers)
 	costStr := core.FormatCosts(env.Meta.Cost)
-	if costStr != "" {
-		fmt.Fprintf(&out, "Fetched %d pages (%s, %s):\n", len(env.Pages), provLabel, costStr)
-	} else {
-		fmt.Fprintf(&out, "Fetched %d pages (%s):\n", len(env.Pages), provLabel)
+	okCount, failedCount := 0, 0
+	for _, p := range env.Pages {
+		if p.Error != nil {
+			failedCount++
+		} else {
+			okCount++
+		}
 	}
+	out.WriteString(formatBatchFetchSummary(len(env.Pages), okCount, failedCount, provLabel, costStr))
+	out.WriteString("\n")
 
 	// 批量响应的 Meta.Notes 汇聚了全部子页；仅在单页或整批无未命中降级时才安全输出 scoped 续读参数，避免跨页误导。
 	var batchSec, batchMat string
@@ -297,4 +302,23 @@ func formatMCPErrorText(e *core.ErrorInfo) string {
 		fmt.Fprintf(&b, "\nHint: %s", e.Hint)
 	}
 	return b.String()
+}
+
+func formatBatchFetchSummary(total, okCount, failedCount int, provLabel, costStr string) string {
+	var details []string
+	if failedCount == 0 || (provLabel != "" && provLabel != "none") {
+		details = append(details, provLabel)
+	}
+	if costStr != "" {
+		details = append(details, costStr)
+	}
+	detailStr := strings.Join(details, ", ")
+	if failedCount == 0 {
+		return fmt.Sprintf("Fetched %d pages (%s):", total, detailStr)
+	}
+	status := fmt.Sprintf("%d ok, %d failed", okCount, failedCount)
+	if detailStr == "" {
+		return fmt.Sprintf("Fetched %d pages (%s):", total, status)
+	}
+	return fmt.Sprintf("Fetched %d pages (%s; %s):", total, status, detailStr)
 }

@@ -236,3 +236,63 @@ max_entries = 128
 		}
 	}
 }
+
+func TestNetworkFakeIPAutoMCPMaxCountAndSecretsDirOverride(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "custom", "config.toml")
+	sharedSecretsDir := filepath.Join(tmp, "shared-vault")
+
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, []byte("[network]\nfake_ip_auto = false\n[mcp]\nmax_count = 30\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveVaultKey(sharedSecretsDir, spec.ProviderDeepSeek, "sk-shared-vault-key-9999", false); err != nil {
+		t.Fatalf("SaveVaultKey: %v", err)
+	}
+
+	// 1. 未设置 VERI_SECRETS_DIR 时保持 --config 目录严格隔离
+	isolated, err := LoadWithEnv(cfgPath, func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("LoadWithEnv isolated: %v", err)
+	}
+	if isolated.Config.Network.FakeIPAuto {
+		t.Fatal("expected network.fake_ip_auto=false to take effect")
+	}
+	if isolated.SecretsExists || len(isolated.Credentials[spec.ProviderDeepSeek].Keys) != 0 {
+		t.Fatalf("expected isolated --config not to load keys from other dirs, got %+v", isolated.Credentials[spec.ProviderDeepSeek])
+	}
+
+	// 2. 显式设置 VERI_SECRETS_DIR 时可跨 --config 共享加密凭据库
+	shared, err := LoadWithEnv(cfgPath, func(k string) string {
+		if k == spec.EnvSecretsDir {
+			return sharedSecretsDir
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("LoadWithEnv shared secrets dir: %v", err)
+	}
+	if !shared.SecretsExists || shared.SecretsDir != sharedSecretsDir || len(shared.Credentials[spec.ProviderDeepSeek].Keys) != 1 {
+		t.Fatalf("expected VERI_SECRETS_DIR to load shared vault key: exists=%v dir=%q cred=%+v", shared.SecretsExists, shared.SecretsDir, shared.Credentials[spec.ProviderDeepSeek])
+	}
+	gotDir, err := ResolveSecretsDir(cfgPath, func(k string) string {
+		if k == spec.EnvSecretsDir {
+			return sharedSecretsDir
+		}
+		return ""
+	})
+	if err != nil || gotDir != sharedSecretsDir {
+		t.Fatalf("ResolveSecretsDir = (%q, %v), want %q", gotDir, err, sharedSecretsDir)
+	}
+
+	// 3. mcp.max_count 超过 MaxSearchCount (50) 必须被校验拦截
+	badMaxPath := filepath.Join(tmp, "bad_max.toml")
+	if err := os.WriteFile(badMaxPath, []byte("[mcp]\nmax_count = 51\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithEnv(badMaxPath, func(string) string { return "" }); err == nil {
+		t.Fatal("expected mcp.max_count=51 to fail validation")
+	}
+}

@@ -111,6 +111,9 @@ func validateConfig(cfg *Config) error {
 	if cfg.MCP.SearchMaxChars < 0 || cfg.MCP.FetchMaxChars < 0 || cfg.MCP.ContentMaxChars < 0 || cfg.MCP.MaxCount < 0 {
 		return core.NewError(core.CodeInvalidArgument, "mcp budget and max_count settings must be >= 0")
 	}
+	if cfg.MCP.MaxCount > spec.MaxSearchCount {
+		return core.NewError(core.CodeInvalidArgument, fmt.Sprintf("mcp.max_count %d exceeds maximum %d", cfg.MCP.MaxCount, spec.MaxSearchCount))
+	}
 
 	if err := validateNetwork(&cfg.Network); err != nil {
 		return err

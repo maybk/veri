@@ -71,11 +71,18 @@ type ImportResult struct {
 	ConfigRemoved bool          `json:"config_removed,omitempty"`
 }
 
-// ImportKeysFromConfig 扫描 config.toml 中的明文 Provider 密钥，批量加密迁入本地 secrets.json，
+// ImportKeysFromConfig 扫描 config.toml 中的明文 Provider 密钥，批量加密迁入同目录本地 secrets.json，
 // 并在回读解密校验通过后按原注释排版移除 config.toml 中的明文键（保留 env:VAR 引用与其他配置）。
 func ImportKeysFromConfig(cfgPath string, opts ImportOptions) (ImportResult, error) {
-	cfgDir := filepath.Dir(cfgPath)
-	vault := credentials.NewVault(cfgDir)
+	return ImportKeysFromConfigToVault(cfgPath, filepath.Dir(cfgPath), opts)
+}
+
+// ImportKeysFromConfigToVault 将 config.toml 中的明文密钥加密迁入指定 secretsDir 下的 secrets.json。
+func ImportKeysFromConfigToVault(cfgPath, secretsDir string, opts ImportOptions) (ImportResult, error) {
+	if strings.TrimSpace(secretsDir) == "" {
+		secretsDir = filepath.Dir(cfgPath)
+	}
+	vault := credentials.NewVault(secretsDir)
 	res := ImportResult{
 		Source:      "config",
 		SourcePath:  cfgPath,
@@ -101,7 +108,7 @@ func ImportKeysFromConfig(cfgPath string, opts ImportOptions) (ImportResult, err
 		return res, err
 	}
 
-	existingVault, err := loadVaultSecrets(vault, cfgDir)
+	existingVault, err := loadVaultSecrets(vault, secretsDir)
 	if err != nil {
 		return res, err
 	}

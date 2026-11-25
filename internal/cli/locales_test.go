@@ -34,6 +34,7 @@ func TestCLILocaleCatalogsSymmetryAndKeyIntegrity(t *testing.T) {
 	internalRoot := filepath.Clean(filepath.Join(".."))
 	usedKeys := map[string]bool{
 		core.HintKeySSRFPrivateBlocked: true,
+		core.HintKeySSRFHostNonPublic:  true,
 		core.HintKeyChallengeDetected:  true,
 	}
 	fset := token.NewFileSet()

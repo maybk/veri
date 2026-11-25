@@ -138,10 +138,11 @@ type MCPConfig struct {
 	MaxCount        int    `toml:"max_count" json:"max_count"`
 }
 
-// NetworkConfig 控制外部代理、TUN Fake-IP 放行网段与内网抓取开关。
+// NetworkConfig 控制外部代理、TUN Fake-IP 放行网段、自动探测与内网抓取开关。
 type NetworkConfig struct {
 	Proxy        string   `toml:"proxy" json:"proxy"`
 	FakeIPCIDRs  []string `toml:"fake_ip_cidrs" json:"fake_ip_cidrs"`
+	FakeIPAuto   bool     `toml:"fake_ip_auto" json:"fake_ip_auto"`
 	AllowPrivate bool     `toml:"allow_private" json:"allow_private"`
 }
 

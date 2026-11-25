@@ -149,18 +149,24 @@ func TestFetchBatchCLIAndMCPPaths(t *testing.T) {
 
 func TestRunDoctorResolverStatesAndLiveChecks(t *testing.T) {
 	mode := "ok"
-	application, _ := newTestAppWithServer(t, "", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/tools/search" {
+	application, srv := newTestAppWithServer(t, "", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/tools/search":
 			if mode == "fail" {
 				w.WriteHeader(http.StatusUnauthorized)
 				_, _ = w.Write([]byte(`{"error":{"message":"bad key sk-appsecret999988887777"}}`))
 				return
 			}
 			_, _ = w.Write([]byte(`{"results":[{"title":"Go","url":"https://go.dev","snippet":"Go lang"}]}`))
+		case "/local-probe":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte("<html><head><title>Probe</title></head><body><main><h1>Probe OK</h1><p>Local fetch live probe works cleanly.</p></main></body></html>"))
 		}
 	})
+	application.liveLocalProbeURL = srv.URL + "/local-probe"
+	application.liveGitHubProbeURL = liveProbeDisabledSentinel
 
-	// 1. Fake-IP DNS 识别
+	// 1. 静态 Fake-IP DNS 识别与凭据库路径展示
 	application.lookupNetIP = func(_ context.Context, _, _ string) ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr("198.18.0.42")}, nil
 	}
@@ -169,7 +175,7 @@ func TestRunDoctorResolverStatesAndLiveChecks(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		wantMode = ""
 	}
-	if !repFake.FakeIPDetected || repFake.ProbeIP != "198.18.0.42" || repFake.EnabledSearcher != 1 || repFake.ConfigMode != wantMode {
+	if !repFake.FakeIPDetected || repFake.ProbeIP != "198.18.0.42" || repFake.EnabledSearcher != 1 || repFake.ConfigMode != wantMode || repFake.SecretsPath == "" {
 		t.Fatalf("unexpected Fake-IP doctor report: %+v", repFake)
 	}
 	// allow_private=true 计 1 项 issue
@@ -177,13 +183,44 @@ func TestRunDoctorResolverStatesAndLiveChecks(t *testing.T) {
 		t.Fatalf("expected 1 issue for allow_private=true, got %d", repFake.Issues)
 	}
 
-	// 2. 公网 IP + live=true 成功
+	// 1b. 自动探测 127.255.0.0/16 透明代理，与关闭自动探测时的 FakeIPBlocked 告警
+	winMap := map[string]string{
+		"api.github.com": "127.255.0.1",
+		"example.com":    "127.255.0.2",
+		"github.com":     "127.255.0.3",
+		"cloudflare.com": "127.255.0.4",
+	}
+	application.lookupNetIP = func(_ context.Context, _, host string) ([]netip.Addr, error) {
+		if ip, ok := winMap[host]; ok {
+			return []netip.Addr{netip.MustParseAddr(ip)}, nil
+		}
+		return []netip.Addr{netip.MustParseAddr("127.255.0.9")}, nil
+	}
+	repAuto := application.RunDoctor(context.Background(), "zh-CN", "flag", false)
+	if !repAuto.FakeIPDetected || len(repAuto.DetectedFakeIPCIDRs) != 1 || repAuto.DetectedFakeIPCIDRs[0] != "127.255.0.0/16" || repAuto.FakeIPBlocked {
+		t.Fatalf("expected auto-detected 127.255.0.0/16 in doctor report, got %+v", repAuto)
+	}
+	application.loaded.Config.Network.AllowPrivate = false
+	application.loaded.Config.Network.FakeIPAuto = false
+	repBlocked := application.RunDoctor(context.Background(), "zh-CN", "flag", false)
+	if !repBlocked.FakeIPBlocked || repBlocked.SuggestedFakeIPCIDR != "127.255.0.0/16" || repBlocked.Issues != 1 {
+		t.Fatalf("expected FakeIPBlocked=true with suggested 127.255.0.0/16 and Issues=1, got %+v", repBlocked)
+	}
+	application.loaded.Config.Network.AllowPrivate = true
+	application.loaded.Config.Network.FakeIPAuto = true
+
+	// 2. 公网 IP + live=true 成功（含 search + 零成本 local 提取探针）
 	application.lookupNetIP = func(_ context.Context, _, _ string) ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr("1.1.1.1")}, nil
 	}
 	repLiveOK := application.RunDoctor(context.Background(), "en-US", "env", true)
-	if repLiveOK.FakeIPDetected || len(repLiveOK.LiveChecks) != 1 || repLiveOK.LiveChecks[0].Status != "ok" {
+	if repLiveOK.FakeIPDetected || len(repLiveOK.LiveChecks) != 2 ||
+		repLiveOK.LiveChecks[0].Status != "ok" || repLiveOK.LiveChecks[0].Kind != spec.KindSearch ||
+		repLiveOK.LiveChecks[1].Provider != spec.ProviderLocal || repLiveOK.LiveChecks[1].Kind != spec.KindFetch || repLiveOK.LiveChecks[1].Status != "ok" {
 		t.Fatalf("unexpected live-ok doctor report: %+v", repLiveOK)
+	}
+	if ci, cErr := application.CacheInfo(); cErr != nil || ci.Disk.Entries != 0 {
+		t.Fatalf("doctor --live must not pollute disk cache, got %+v err=%v", ci, cErr)
 	}
 
 	// 3. DNS 解析失败 + live=true 失败（含密钥脱敏）
@@ -195,7 +232,7 @@ func TestRunDoctorResolverStatesAndLiveChecks(t *testing.T) {
 	if repFail.DNSError == "" || strings.Contains(repFail.DNSError, "sk-appsecret999988887777") {
 		t.Fatalf("expected scrubbed DNS error, got %q", repFail.DNSError)
 	}
-	if len(repFail.LiveChecks) != 1 || repFail.LiveChecks[0].Status != "error" || strings.Contains(repFail.LiveChecks[0].Error, "sk-appsecret999988887777") {
+	if len(repFail.LiveChecks) != 2 || repFail.LiveChecks[0].Status != "error" || strings.Contains(repFail.LiveChecks[0].Error, "sk-appsecret999988887777") {
 		t.Fatalf("expected scrubbed live error, got %+v", repFail.LiveChecks)
 	}
 	if repFail.Issues < 3 {
