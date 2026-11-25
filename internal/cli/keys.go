@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"veri/clikit"
-	"veri/clikit/credentials"
 	"veri/clikit/redact"
 	"veri/clikit/term"
 	"veri/internal/config"
@@ -171,16 +170,15 @@ func newKeyUnsetCmd(rt *runtimeEnv) *cobra.Command {
 			if err != nil {
 				return core.WrapError(core.CodeInvalidArgument, err.Error(), err)
 			}
-			vault := credentials.NewVault(secretsDir)
-			removed, err := vault.Delete(provider)
+			removed, secretsPath, err := config.DeleteVaultKey(secretsDir, provider)
 			if err != nil {
-				return core.WrapError(core.CodeInternal, err.Error(), err)
+				return err
 			}
 			if !removed {
 				_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.unset.none", "provider", provider))
 				return nil
 			}
-			_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.unset.done", "provider", provider, "path", vault.SecretsPath()))
+			_, _ = fmt.Fprintln(rt.stdout, rt.cat.T("key.unset.done", "provider", provider, "path", secretsPath))
 			return nil
 		},
 	}

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json/v2"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -177,5 +178,92 @@ func TestCLIKeySetSharedCredentialActivatesBothZhihuProviders(t *testing.T) {
 	}
 	if !foundZhihu {
 		t.Fatalf("expected shared vault key for zhihu visible via VERI_SECRETS_DIR, got %+v", sharedOut.Keys)
+	}
+}
+
+func TestCLIKeyCrossDeviceCopyAndErrorDiagnostics(t *testing.T) {
+	srcDir := t.TempDir()
+	srcCfg := filepath.Join(srcDir, spec.ConfigFileName)
+
+	// 1. 模拟在源设备配置多个 Provider 密钥。
+	for _, item := range []struct {
+		prov string
+		key  string
+	}{
+		{spec.ProviderDeepSeek, "sk-ds-copy-111111"},
+		{spec.ProviderExa, "exa-copy-222222"},
+		{spec.ProviderTavily, "tvly-copy-333333"},
+	} {
+		code, _, errOut := runKeyImportCLI(t, srcCfg, item.key+"\n", "--ui-lang", "zh", "key", "set", item.prov)
+		if code != 0 || errOut != "" {
+			t.Fatalf("seed key set %s failed: code=%d err=%s", item.prov, code, errOut)
+		}
+	}
+
+	rawKey, err := os.ReadFile(filepath.Join(srcDir, spec.SecretKeyFileName))
+	if err != nil {
+		t.Fatalf("read src secret.key: %v", err)
+	}
+	rawSecrets, err := os.ReadFile(filepath.Join(srcDir, spec.SecretsFileName))
+	if err != nil {
+		t.Fatalf("read src secrets.json: %v", err)
+	}
+
+	// 2. 成对复制到新目录（含 BOM 与 CRLF）：veri key list 与追加写入全部直接生效。
+	dstDir := t.TempDir()
+	dstCfg := filepath.Join(dstDir, spec.ConfigFileName)
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	if err := os.WriteFile(filepath.Join(dstDir, spec.SecretKeyFileName), append(append([]byte{}, bom...), bytes.ReplaceAll(rawKey, []byte("\n"), []byte("\r\n"))...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dstDir, spec.SecretsFileName), append(append([]byte{}, bom...), bytes.ReplaceAll(rawSecrets, []byte("\n"), []byte("\r\n"))...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, listJSON, listErr := runKeyImportCLI(t, dstCfg, "", "key", "list", "--json")
+	if code != 0 || listErr != "" {
+		t.Fatalf("copied key list --json failed: code=%d err=%s", code, listErr)
+	}
+	var listOut keyListJSONOutput
+	if err := json.Unmarshal([]byte(listJSON), &listOut); err != nil {
+		t.Fatalf("unmarshal copied key list: %v", err)
+	}
+	vaultCount := 0
+	for _, k := range listOut.Keys {
+		if k.EncryptedVault {
+			vaultCount++
+		}
+	}
+	if vaultCount != 3 {
+		t.Fatalf("expected 3 decrypted vault keys after cross-device copy, got %d (%+v)", vaultCount, listOut.Keys)
+	}
+	code, _, appendErr := runKeyImportCLI(t, dstCfg, "sk-ds-copy-444444\n", "--ui-lang", "zh", "key", "set", "deepseek", "-a")
+	if code != 0 || appendErr != "" {
+		t.Fatalf("key set -a on copied vault failed: code=%d err=%s", code, appendErr)
+	}
+
+	// 3. 仅复制 secrets.json 漏拷 secret.key：精准报错、明确指引成对复制且不产生垃圾 secret.key。
+	missingDir := t.TempDir()
+	missingCfg := filepath.Join(missingDir, spec.ConfigFileName)
+	if err := os.WriteFile(filepath.Join(missingDir, spec.SecretsFileName), rawSecrets, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, missingErr := runKeyImportCLI(t, missingCfg, "", "--ui-lang", "zh", "key", "list")
+	if code != 3 || !strings.Contains(missingErr, "缺少 secret.key") || !strings.Contains(missingErr, "一并复制") {
+		t.Fatalf("expected clear missing-key diagnostic (exit 3), got code=%d err=%s", code, missingErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(missingDir, spec.SecretKeyFileName)); !os.IsNotExist(statErr) {
+		t.Fatalf("veri key list without secret.key must not create secret.key, stat err=%v", statErr)
+	}
+
+	// 4. 损坏 secrets.json 时执行 veri key unset：返回 exit 3 并输出本地化损坏诊断。
+	corruptDir := t.TempDir()
+	corruptCfg := filepath.Join(corruptDir, spec.ConfigFileName)
+	if err := os.WriteFile(filepath.Join(corruptDir, spec.SecretsFileName), []byte("{corrupt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, unsetErr := runKeyImportCLI(t, corruptCfg, "", "--ui-lang", "zh", "key", "unset", "deepseek")
+	if code != 3 || !strings.Contains(unsetErr, "secrets.json 已损坏") {
+		t.Fatalf("expected localized corrupted-vault error on key unset (exit 3), got code=%d err=%s", code, unsetErr)
 	}
 }

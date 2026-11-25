@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"slices"
 	"strings"
@@ -26,13 +27,9 @@ type SaveKeyResult struct {
 // SaveVaultKey 将指定 Provider 的 1 把或多把（逗号/换行分隔）API Key 规范去重后加密写入 secrets.json。
 // appendMode=false 覆盖原有密钥；appendMode=true 读取已有密钥并保序去重追加（全重复时幂等不改盘）。
 func SaveVaultKey(cfgDir, provider, rawSecret string, appendMode bool) (SaveKeyResult, error) {
-	canon, ok := spec.NormalizeCredentialProvider(provider)
-	if !ok {
-		valid := strings.Join(spec.CredentialProviders(), ", ")
-		return SaveKeyResult{}, core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", provider, valid)).
-			WithMsgKey("err.unsupported_provider").
-			WithParam("provider", provider).
-			WithParam("valid", valid)
+	canon, err := normalizeCredentialProvider(provider)
+	if err != nil {
+		return SaveKeyResult{}, err
 	}
 	rawItems := splitKeyList(rawSecret)
 	if len(rawItems) == 0 {
@@ -49,7 +46,7 @@ func SaveVaultKey(cfgDir, provider, rawSecret string, appendMode bool) (SaveKeyR
 
 	if !appendMode {
 		if err := vault.Set(canon, strings.Join(incoming, ",")); err != nil {
-			return res, core.WrapError(core.CodeInternal, err.Error(), err)
+			return res, mapVaultWriteError(cfgDir, err)
 		}
 		res.Added = len(incoming)
 		res.Duplicates = inputDups
@@ -60,7 +57,7 @@ func SaveVaultKey(cfgDir, provider, rawSecret string, appendMode bool) (SaveKeyR
 
 	existingRaw, err := vault.Get(canon)
 	if err != nil && !errors.Is(err, credentials.ErrNotFound) {
-		return res, vaultDecryptError(cfgDir, err)
+		return res, vaultAccessError(cfgDir, err)
 	}
 
 	merged, _ := dedupeKeysPreserveOrder(splitKeyList(existingRaw))
@@ -82,17 +79,81 @@ func SaveVaultKey(cfgDir, provider, rawSecret string, appendMode bool) (SaveKeyR
 		return res, nil
 	}
 	if err := vault.Set(canon, strings.Join(merged, ",")); err != nil {
-		return res, core.WrapError(core.CodeInternal, err.Error(), err)
+		return res, mapVaultWriteError(cfgDir, err)
 	}
 	res.Changed = true
 	return res, nil
 }
 
-func vaultDecryptError(cfgDir string, err error) error {
-	return core.WrapError(core.CodeAuthFailed, fmt.Sprintf("failed to load encrypted credentials in %q: %v", cfgDir, err), err).
-		WithHint("Check file permissions or re-save the damaged credential via `veri key set <provider>`.").
-		WithI18n("err.vault_decrypt_failed", "hint.vault_decrypt_failed").
-		WithParam("dir", cfgDir)
+// DeleteVaultKey 从指定凭据目录的 secrets.json 中移除指定 Provider 的加密密钥。
+func DeleteVaultKey(cfgDir, provider string) (removed bool, secretsPath string, err error) {
+	canon, err := normalizeCredentialProvider(provider)
+	if err != nil {
+		return false, "", err
+	}
+	vault := credentials.NewVault(cfgDir)
+	removed, err = vault.Delete(canon)
+	if err != nil {
+		return false, vault.SecretsPath(), mapVaultWriteError(cfgDir, err)
+	}
+	return removed, vault.SecretsPath(), nil
+}
+
+func normalizeCredentialProvider(provider string) (string, error) {
+	canon, ok := spec.NormalizeCredentialProvider(provider)
+	if !ok {
+		valid := strings.Join(spec.CredentialProviders(), ", ")
+		return "", core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", provider, valid)).
+			WithMsgKey("err.unsupported_provider").
+			WithParam("provider", provider).
+			WithParam("valid", valid)
+	}
+	return canon, nil
+}
+
+func isVaultAccessError(err error) bool {
+	return errors.Is(err, credentials.ErrMasterKeyMissing) ||
+		errors.Is(err, credentials.ErrMasterKeyInvalid) ||
+		errors.Is(err, credentials.ErrVaultCorrupted) ||
+		errors.Is(err, credentials.ErrDecryptFailed) ||
+		errors.Is(err, fs.ErrPermission)
+}
+
+func mapVaultWriteError(cfgDir string, err error) error {
+	if isVaultAccessError(err) {
+		return vaultAccessError(cfgDir, err)
+	}
+	return core.WrapError(core.CodeInternal, err.Error(), err)
+}
+
+func vaultAccessError(cfgDir string, err error) error {
+	switch {
+	case errors.Is(err, credentials.ErrMasterKeyMissing):
+		return core.WrapError(core.CodeAuthFailed, fmt.Sprintf("%s is missing in %q: %v", spec.SecretKeyFileName, cfgDir, err), err).
+			WithHint("Copy both `secret.key` and `secrets.json` together when migrating across devices; to reset, delete `secrets.json` and run `veri key set <provider>` or `veri key import`.").
+			WithI18n("err.vault_key_missing", "hint.vault_key_missing").
+			WithParam("dir", cfgDir)
+	case errors.Is(err, credentials.ErrMasterKeyInvalid):
+		return core.WrapError(core.CodeAuthFailed, fmt.Sprintf("%s in %q is invalid or corrupted: %v", spec.SecretKeyFileName, cfgDir, err), err).
+			WithHint("Re-copy both `secret.key` and `secrets.json` from the source device; to reset, delete both files and run `veri key set <provider>` or `veri key import`.").
+			WithI18n("err.vault_key_invalid", "hint.vault_key_invalid").
+			WithParam("dir", cfgDir)
+	case errors.Is(err, credentials.ErrVaultCorrupted):
+		return core.WrapError(core.CodeAuthFailed, fmt.Sprintf("%s in %q is corrupted: %v", spec.SecretsFileName, cfgDir, err), err).
+			WithHint("Re-copy `secrets.json` from the source device; to reset, delete the damaged file and run `veri key set <provider>` or `veri key import`.").
+			WithI18n("err.vault_corrupted", "hint.vault_corrupted").
+			WithParam("dir", cfgDir)
+	case errors.Is(err, fs.ErrPermission):
+		return core.WrapError(core.CodeAuthFailed, fmt.Sprintf("permission denied accessing credentials in %q: %v", cfgDir, err), err).
+			WithHint("Check ownership and read/write permissions for `secrets.json` and `secret.key` in that directory.").
+			WithI18n("err.vault_permission_denied", "hint.vault_permission_denied").
+			WithParam("dir", cfgDir)
+	default:
+		return core.WrapError(core.CodeAuthFailed, fmt.Sprintf("failed to decrypt %s in %q: %v", spec.SecretsFileName, cfgDir, err), err).
+			WithHint("Ensure `secrets.json` and `secret.key` were copied together from the same device; to reset, delete both files and run `veri key set <provider>` or `veri key import`.").
+			WithI18n("err.vault_decrypt_failed", "hint.vault_decrypt_failed").
+			WithParam("dir", cfgDir)
+	}
 }
 
 func dedupeKeysPreserveOrder(items []string) (unique []string, duplicates int) {

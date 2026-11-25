@@ -293,7 +293,7 @@ func prepareCleanedConfigTOML(path, normalized string, origCfg Config, origMeta 
 func loadVaultSecrets(vault *credentials.Vault, cfgDir string) (map[string]string, error) {
 	secrets, err := vault.LoadAll()
 	if err != nil {
-		return nil, vaultDecryptError(cfgDir, err)
+		return nil, vaultAccessError(cfgDir, err)
 	}
 	return secrets, nil
 }

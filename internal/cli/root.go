@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -425,7 +426,14 @@ func (rt *runtimeEnv) loadApp() (*app.App, error) {
 		_, _ = fmt.Fprintln(rt.stderr, rt.cat.T("note.perm_warn", "path", loaded.Path))
 	}
 	if loaded.VaultPermWarning && !rt.flags.quiet {
-		_, _ = fmt.Fprintln(rt.stderr, rt.cat.T("doctor.vault_perm_warn"))
+		_, _ = fmt.Fprintln(rt.stderr, formatVaultPermWarn(rt.cat))
 	}
 	return app.NewWithStderr(loaded, rt.info.Version, rt.stderr)
+}
+
+func formatVaultPermWarn(cat i18n.Catalog) string {
+	if runtime.GOOS == "windows" {
+		return cat.T("doctor.vault_perm_warn_windows")
+	}
+	return cat.T("doctor.vault_perm_warn")
 }

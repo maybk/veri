@@ -1,13 +1,17 @@
 package credentials
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestVaultLifecycleAndConcurrency(t *testing.T) {
@@ -145,5 +149,244 @@ func TestVaultSetManyAtomicityAndValidation(t *testing.T) {
 	}
 	if all["existing"] != "keep-me-1234" || all["alpha"] != "sk-alpha-1111" || all["beta"] != "sk-beta-2222,sk-beta-3333" {
 		t.Fatalf("unexpected decrypted batch: %+v", all)
+	}
+}
+
+func TestCrossPlatformPortableMasterKeyAndBOMCRLF(t *testing.T) {
+	srcDir := t.TempDir()
+	srcVault := NewVault(srcDir)
+	want := map[string]string{
+		"alpha": "sk-alpha-1111",
+		"beta":  "sk-beta-2222,sk-beta-3333",
+		"gamma": "sk-gamma-4444",
+	}
+	if err := srcVault.SetMany(want); err != nil {
+		t.Fatalf("seed SetMany failed: %v", err)
+	}
+
+	// 验证落盘主密钥为三端通用的 32 字节标准 Base64，不含任何平台绑定封装。
+	rawKeyFile, err := os.ReadFile(srcVault.KeyPath())
+	if err != nil {
+		t.Fatalf("read secret.key: %v", err)
+	}
+	decodedKey, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(rawKeyFile)))
+	if err != nil || len(decodedKey) != masterKeySize {
+		t.Fatalf("expected portable 32-byte base64 secret.key, got len=%d err=%v", len(decodedKey), err)
+	}
+
+	rawSecretsFile, err := os.ReadFile(srcVault.SecretsPath())
+	if err != nil {
+		t.Fatalf("read secrets.json: %v", err)
+	}
+
+	// 模拟跨平台复制至另一设备，并注入常见 Windows UTF-8 BOM 与 CRLF 换行符。
+	dstDir := t.TempDir()
+	keyWithBOMCRLF := append(append([]byte{}, utf8BOM...), bytes.ReplaceAll(rawKeyFile, []byte("\n"), []byte("\r\n"))...)
+	secretsWithBOMCRLF := append(append([]byte{}, utf8BOM...), bytes.ReplaceAll(rawSecretsFile, []byte("\n"), []byte("\r\n"))...)
+	if err := os.WriteFile(filepath.Join(dstDir, DefaultKeyFile), keyWithBOMCRLF, 0o600); err != nil {
+		t.Fatalf("write copied secret.key: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dstDir, DefaultSecretsFile), secretsWithBOMCRLF, 0o600); err != nil {
+		t.Fatalf("write copied secrets.json: %v", err)
+	}
+
+	dstVault := NewVault(dstDir)
+	gotAll, err := dstVault.LoadAll()
+	if err != nil {
+		t.Fatalf("LoadAll after cross-device copy failed: %v", err)
+	}
+	for k, v := range want {
+		if gotAll[k] != v {
+			t.Fatalf("copied vault[%s] = %q, want %q", k, gotAll[k], v)
+		}
+	}
+
+	// 在复制后的目录中继续追加写入新键应复用原主密钥，全部条目保持可读。
+	if err := dstVault.Set("delta", "sk-delta-5555"); err != nil {
+		t.Fatalf("Set on copied vault failed: %v", err)
+	}
+	if got, err := dstVault.Get("delta"); err != nil || got != "sk-delta-5555" {
+		t.Fatalf("Get(delta) = (%q, %v)", got, err)
+	}
+	if got, err := dstVault.Get("alpha"); err != nil || got != "sk-alpha-1111" {
+		t.Fatalf("Get(alpha) after write = (%q, %v)", got, err)
+	}
+}
+
+func TestVaultReadOnlyDoesNotCreateKeyAndPreventsMixedKeyWrite(t *testing.T) {
+	srcDir := t.TempDir()
+	srcVault := NewVault(srcDir)
+	if err := srcVault.SetMany(map[string]string{
+		"alpha": "sk-alpha-1111",
+		"beta":  "sk-beta-2222",
+	}); err != nil {
+		t.Fatalf("seed SetMany: %v", err)
+	}
+	rawSecrets, err := os.ReadFile(srcVault.SecretsPath())
+	if err != nil {
+		t.Fatalf("read secrets.json: %v", err)
+	}
+
+	// 仅复制 secrets.json 漏拷 secret.key：只读路径绝不能凭空新建垃圾 secret.key。
+	dstDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dstDir, DefaultSecretsFile), rawSecrets, 0o600); err != nil {
+		t.Fatalf("write secrets.json: %v", err)
+	}
+	dstVault := NewVault(dstDir)
+
+	if _, err := dstVault.LoadAll(); !errors.Is(err, ErrMasterKeyMissing) {
+		t.Fatalf("LoadAll without secret.key = %v, want ErrMasterKeyMissing", err)
+	}
+	if _, err := dstVault.Get("alpha"); !errors.Is(err, ErrMasterKeyMissing) {
+		t.Fatalf("Get without secret.key = %v, want ErrMasterKeyMissing", err)
+	}
+	if _, statErr := os.Stat(dstVault.KeyPath()); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("read-only decryption must not create secret.key, stat err=%v", statErr)
+	}
+
+	// 部分覆盖写入（仍存在未覆盖的 beta）必须拒绝，防止双密钥混写永久损坏凭据库。
+	if err := dstVault.Set("alpha", "sk-alpha-new"); !errors.Is(err, ErrMasterKeyMissing) {
+		t.Fatalf("partial Set without secret.key = %v, want ErrMasterKeyMissing", err)
+	}
+	if err := dstVault.SetMany(map[string]string{"alpha": "sk-alpha-new"}); !errors.Is(err, ErrMasterKeyMissing) {
+		t.Fatalf("partial SetMany without secret.key = %v, want ErrMasterKeyMissing", err)
+	}
+	if _, statErr := os.Stat(dstVault.KeyPath()); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("rejected partial write must not create secret.key, stat err=%v", statErr)
+	}
+
+	// 全量覆盖既有全部键时，允许安全重建新主密钥并保持库内密钥一致。
+	if err := dstVault.SetMany(map[string]string{
+		"alpha": "sk-alpha-rebuilt",
+		"beta":  "sk-beta-rebuilt",
+	}); err != nil {
+		t.Fatalf("full overwrite SetMany without old key should succeed: %v", err)
+	}
+	rebuilt, err := dstVault.LoadAll()
+	if err != nil || rebuilt["alpha"] != "sk-alpha-rebuilt" || rebuilt["beta"] != "sk-beta-rebuilt" {
+		t.Fatalf("LoadAll after full rebuild = (%+v, %v)", rebuilt, err)
+	}
+}
+
+func TestVaultErrorClassificationAndPermissions(t *testing.T) {
+	// 1. 无效主密钥（空文件 / 非法 Base64 / 长度不符如旧版 DPAPI Blob / 超大文件 / 目录）均归类为 ErrMasterKeyInvalid。
+	invalidKeyCases := []struct {
+		name  string
+		setup func(dir string) error
+	}{
+		{
+			name: "stale_empty_key_not_deleted_on_read",
+			setup: func(dir string) error {
+				p := filepath.Join(dir, DefaultKeyFile)
+				if err := os.WriteFile(p, []byte("   \n"), 0o600); err != nil {
+					return err
+				}
+				oldTime := time.Now().Add(-10 * time.Second)
+				return os.Chtimes(p, oldTime, oldTime)
+			},
+		},
+		{
+			name: "bad_base64",
+			setup: func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, DefaultKeyFile), []byte("not@@valid-base64\n"), 0o600)
+			},
+		},
+		{
+			name: "wrong_length_legacy_blob",
+			setup: func(dir string) error {
+				blob := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 128))
+				return os.WriteFile(filepath.Join(dir, DefaultKeyFile), []byte(blob+"\n"), 0o600)
+			},
+		},
+		{
+			name: "oversized_key_file",
+			setup: func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, DefaultKeyFile), bytes.Repeat([]byte("A"), maxMasterKeyBytes+16), 0o600)
+			},
+		},
+		{
+			name: "key_path_is_dir",
+			setup: func(dir string) error {
+				return os.Mkdir(filepath.Join(dir, DefaultKeyFile), 0o700)
+			},
+		},
+	}
+
+	seedDir := t.TempDir()
+	seedVault := NewVault(seedDir)
+	if err := seedVault.Set("alpha", "sk-alpha-1111"); err != nil {
+		t.Fatalf("seed Set: %v", err)
+	}
+	seedSecrets, err := os.ReadFile(seedVault.SecretsPath())
+	if err != nil {
+		t.Fatalf("read seed secrets: %v", err)
+	}
+
+	for _, tc := range invalidKeyCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, DefaultSecretsFile), seedSecrets, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.setup(dir); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := NewVault(dir).LoadAll(); !errors.Is(err, ErrMasterKeyInvalid) {
+				t.Fatalf("LoadAll() = %v, want ErrMasterKeyInvalid", err)
+			}
+			if tc.name == "stale_empty_key_not_deleted_on_read" {
+				if _, statErr := os.Stat(filepath.Join(dir, DefaultKeyFile)); statErr != nil {
+					t.Fatalf("read-only path must not delete stale empty secret.key: %v", statErr)
+				}
+			}
+		})
+	}
+
+	// 2. 损坏的 secrets.json（JSON 语法错误 / 缺少信封字段 / 不支持版本）均归类为 ErrVaultCorrupted。
+	for _, raw := range []string{`{corrupt`, `{"data":{}}`, `{"schemaVersion":99,"data":{}}`} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, DefaultSecretsFile), []byte(raw), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewVault(dir).LoadAll(); !errors.Is(err, ErrVaultCorrupted) {
+			t.Fatalf("LoadAll(%q) = %v, want ErrVaultCorrupted", raw, err)
+		}
+	}
+
+	// 3. 合法但未配对的 32 字节主密钥必须归类为 ErrDecryptFailed。
+	mismatchDir := t.TempDir()
+	otherKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x7A}, masterKeySize)) + "\n"
+	if err := os.WriteFile(filepath.Join(mismatchDir, DefaultKeyFile), []byte(otherKey), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mismatchDir, DefaultSecretsFile), seedSecrets, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewVault(mismatchDir).LoadAll(); !errors.Is(err, ErrDecryptFailed) {
+		t.Fatalf("LoadAll with mismatched key = %v, want ErrDecryptFailed", err)
+	}
+
+	// 4. 权限收紧与宽权限检测验证（Unix 0600 / 0644）。
+	if runtime.GOOS != "windows" {
+		permDir := t.TempDir()
+		permVault := NewVault(permDir)
+		if err := permVault.Set("alpha", "sk-perm-1111"); err != nil {
+			t.Fatalf("Set: %v", err)
+		}
+		if HasBroadPermissions(permVault.SecretsPath()) || HasBroadPermissions(permVault.KeyPath()) {
+			t.Fatal("newly created vault files must not report broad permissions")
+		}
+		if err := os.Chmod(permVault.SecretsPath(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !HasBroadPermissions(permVault.SecretsPath()) {
+			t.Fatal("expected 0644 secrets.json to report broad permissions")
+		}
+		if err := permVault.Set("alpha", "sk-perm-2222"); err != nil {
+			t.Fatalf("re-save Set: %v", err)
+		}
+		if HasBroadPermissions(permVault.SecretsPath()) {
+			t.Fatal("expected re-saved secrets.json permissions to be tightened back to 0600")
+		}
 	}
 }

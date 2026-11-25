@@ -508,7 +508,77 @@ func TestSaveVaultKeyOverwriteAppendAndDedupe(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(damagedDir, spec.SecretsFileName), []byte("{corrupt"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SaveVaultKey(damagedDir, spec.ProviderDeepSeek, "sk-ds-9999", true); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_decrypt_failed" {
-		t.Fatalf("expected err.vault_decrypt_failed on corrupt vault append, got %v", err)
+	if _, err := SaveVaultKey(damagedDir, spec.ProviderDeepSeek, "sk-ds-9999", true); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_corrupted" {
+		t.Fatalf("expected err.vault_corrupted on corrupt vault append, got %v", err)
+	}
+}
+
+func TestVaultDiagnosticErrorClassification(t *testing.T) {
+	seedDir := t.TempDir()
+	if _, err := SaveVaultKey(seedDir, spec.ProviderDeepSeek, "sk-ds-1111", false); err != nil {
+		t.Fatalf("seed deepseek: %v", err)
+	}
+	if _, err := SaveVaultKey(seedDir, spec.ProviderExa, "exa-2222", false); err != nil {
+		t.Fatalf("seed exa: %v", err)
+	}
+	seedSecrets, err := os.ReadFile(filepath.Join(seedDir, spec.SecretsFileName))
+	if err != nil {
+		t.Fatalf("read seed secrets: %v", err)
+	}
+
+	// 1. 仅复制 secrets.json 漏拷 secret.key -> err.vault_key_missing / hint.vault_key_missing，且不产生垃圾 secret.key。
+	missingKeyDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(missingKeyDir, spec.SecretsFileName), seedSecrets, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithEnv(filepath.Join(missingKeyDir, spec.ConfigFileName), func(string) string { return "" }); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_key_missing" || core.AsError(err).HintKey != "hint.vault_key_missing" {
+		t.Fatalf("LoadWithEnv missing key = %+v, want err.vault_key_missing", err)
+	}
+	if _, err := SaveVaultKey(missingKeyDir, spec.ProviderDeepSeek, "sk-ds-new", false); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_key_missing" {
+		t.Fatalf("partial SaveVaultKey overwrite without secret.key = %+v, want err.vault_key_missing", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(missingKeyDir, spec.SecretKeyFileName)); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no secret.key created on missing-key failure, stat err=%v", statErr)
+	}
+
+	// 2. 无效 secret.key（模拟旧版 DPAPI 长字节或损坏内容） -> err.vault_key_invalid / hint.vault_key_invalid。
+	invalidKeyDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(invalidKeyDir, spec.SecretsFileName), seedSecrets, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalidKeyDir, spec.SecretKeyFileName), []byte("invalid-key-content\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithEnv(filepath.Join(invalidKeyDir, spec.ConfigFileName), func(string) string { return "" }); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_key_invalid" || core.AsError(err).HintKey != "hint.vault_key_invalid" {
+		t.Fatalf("LoadWithEnv invalid key = %+v, want err.vault_key_invalid", err)
+	}
+
+	// 3. 合法但未配对的 secret.key -> err.vault_decrypt_failed / hint.vault_decrypt_failed。
+	mismatchDir := t.TempDir()
+	otherSeed := t.TempDir()
+	if _, err := SaveVaultKey(otherSeed, spec.ProviderTavily, "tvly-other", false); err != nil {
+		t.Fatal(err)
+	}
+	otherKeyRaw, err := os.ReadFile(filepath.Join(otherSeed, spec.SecretKeyFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mismatchDir, spec.SecretsFileName), seedSecrets, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mismatchDir, spec.SecretKeyFileName), otherKeyRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWithEnv(filepath.Join(mismatchDir, spec.ConfigFileName), func(string) string { return "" }); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_decrypt_failed" || core.AsError(err).HintKey != "hint.vault_decrypt_failed" {
+		t.Fatalf("LoadWithEnv mismatched key = %+v, want err.vault_decrypt_failed", err)
+	}
+
+	// 4. 损坏的 secrets.json 在 DeleteVaultKey 时也返回精准 err.vault_corrupted。
+	corruptDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(corruptDir, spec.SecretsFileName), []byte("{corrupt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := DeleteVaultKey(corruptDir, spec.ProviderDeepSeek); core.AsError(err) == nil || core.AsError(err).MsgKey != "err.vault_corrupted" {
+		t.Fatalf("DeleteVaultKey corrupt vault = %+v, want err.vault_corrupted", err)
 	}
 }

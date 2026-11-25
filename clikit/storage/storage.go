@@ -139,6 +139,10 @@ func renameWithRetry(src, dst string) error {
 	if err == nil || runtime.GOOS != "windows" {
 		return err
 	}
+	// 从外部介质复制过来的目标文件在 Windows 上可能带有只读属性，清除后再重试原子替换。
+	if info, statErr := os.Stat(dst); statErr == nil && !info.IsDir() && (info.Mode()&0o200) == 0 {
+		_ = os.Chmod(dst, 0o600)
+	}
 	for range 3 {
 		time.Sleep(5 * time.Millisecond)
 		if err = os.Rename(src, dst); err == nil {

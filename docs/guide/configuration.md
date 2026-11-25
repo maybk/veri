@@ -7,9 +7,11 @@
 ```text
 ~/.config/veri/
 ├── config.toml                # 可选：仅存放自定义配置项（未设置项随版本自动更新）
-├── secrets.json               # veri key 保存的本地加密凭据库（权限 0600）
-└── secret.key                 # 本机生成的本地加密主密钥（自动按系统安全权限保护）
+├── secrets.json               # veri key 保存的本地加密凭据库（仅当前用户可读写）
+└── secret.key                 # 三端通用的加密主密钥（仅当前用户可读写）
 ```
+
+> **跨设备迁移**：将 `~/.config/veri/` 下的 `secrets.json` 与 `secret.key`（及可选 `config.toml`）一并复制到另一台 macOS / Windows / Linux 设备的同名目录即可直接使用，切勿上传至公开仓库。
 
 多层配置与凭据按以下优先级从高到低生效：
 

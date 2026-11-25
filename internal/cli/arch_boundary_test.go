@@ -318,7 +318,7 @@ func checkImportBoundary(t *testing.T, relFile, pkgDir, impPath, modulePrefix st
 		}
 	case pkgDir == "internal/cli":
 		allowed := []string{
-			"clikit", "clikit/buildinfo", "clikit/credentials", "clikit/i18n",
+			"clikit", "clikit/buildinfo", "clikit/i18n",
 			"clikit/redact", "clikit/skill", "clikit/storage", "clikit/term",
 			"internal/app", "internal/render", "internal/config", "internal/mcpserver",
 			"internal/core", "internal/spec", "internal/textnorm", "internal/update",

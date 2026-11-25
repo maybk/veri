@@ -74,6 +74,7 @@ veri doctor --live --yes
 - **移除已保存密钥**：`veri key unset <provider>`
 - **调整单个默认选项**：使用 `veri config set <key> <value>`（如 `veri config set providers.zhihu_web.search_db realtime`），查看已自定义项用 `veri config show --overrides`，恢复默认用 `veri config unset <key>`。
 - **临时用环境变量覆盖**：直接导出对应环境变量（如 `export DEEPSEEK_API_KEY="sk-..."`、`export EXA_API_KEY="exa_..."`），优先级高于本地加密库与 `config.toml`。完整变量名见 [配置说明](./configuration.md)。
+- **跨设备迁移**：将 `~/.config/veri/` 下的 `secrets.json` 与 `secret.key`（及可选 `config.toml`）一并复制到新设备的同名目录即可直接生效，详见 [配置说明](./configuration.md)。
 - **安全约束**：`veri key set` 禁止通过位置参数传入明文密钥，`veri config set` 拒绝向 `api_key` / `token` 写入明文；如已在 `config.toml` 写入明文密钥，可用 `veri key import --from-config`（可先加 `--dry-run` 预览）加密迁入。
 
 ## 常用命令速查

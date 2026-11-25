@@ -20,10 +20,17 @@ import (
 // DefaultSecretsFile 是版本化加密凭据库在应用配置目录下的默认文件名。
 const DefaultSecretsFile = "secrets.json"
 
-const secretSchemaVersion = 1
+const (
+	secretSchemaVersion = 1
+	maxVaultFileBytes   = 1 << 20 // 单个 secrets.json 上限（1 MiB），防止误置超大文件引发内存抖动
+)
 
-// ErrNotFound 表示目标命名凭据尚未在加密凭据库中保存。
-var ErrNotFound = errors.New("secret not found")
+var (
+	// ErrNotFound 表示目标命名凭据尚未在加密凭据库中保存。
+	ErrNotFound = errors.New("secret not found")
+	// ErrVaultCorrupted 表示加密凭据库 secrets.json 结构损坏或版本不受支持。
+	ErrVaultCorrupted = errors.New("corrupted credentials vault")
+)
 
 type versionedDocument struct {
 	SchemaVersion int               `json:"schemaVersion"`
@@ -50,6 +57,11 @@ func (v *Vault) SecretsPath() string {
 	return v.secretsPath
 }
 
+// KeyPath 返回加密主密钥文件路径。
+func (v *Vault) KeyPath() string {
+	return v.sealer.KeyPath()
+}
+
 // Set 加密并原子写入指定命名键（大小写归一为小写）的敏感值。
 func (v *Vault) Set(name, secret string) error {
 	key, err := normalizeVaultKey(name)
@@ -68,7 +80,9 @@ func (v *Vault) Set(name, secret string) error {
 	if err != nil {
 		return err
 	}
-	sealed, err := v.sealer.Encrypt(trimmed)
+	// 库中若存在除目标键外的其他加密条目，必须复用既有主密钥，禁止自动新建主密钥造成双密钥混写损坏。
+	createKeyIfMissing := !hasOtherKey(entries, key)
+	sealed, err := v.sealer.encrypt(trimmed, createKeyIfMissing)
 	if err != nil {
 		return err
 	}
@@ -104,9 +118,10 @@ func (v *Vault) SetMany(items map[string]string) error {
 	if err != nil {
 		return err
 	}
+	createKeyIfMissing := !hasOtherEntries(entries, normalized)
 	sealedBatch := make(map[string]string, len(normalized))
 	for _, key := range slices.Sorted(maps.Keys(normalized)) {
-		sealed, encErr := v.sealer.Encrypt(normalized[key])
+		sealed, encErr := v.sealer.encrypt(normalized[key], createKeyIfMissing)
 		if encErr != nil {
 			return encErr
 		}
@@ -193,6 +208,26 @@ func (v *Vault) ListKeys() ([]string, error) {
 	return slices.Sorted(maps.Keys(entries)), nil
 }
 
+func hasOtherKey(existing map[string]string, target string) bool {
+	if len(existing) == 0 {
+		return false
+	}
+	if len(existing) > 1 {
+		return true
+	}
+	_, exists := existing[target]
+	return !exists
+}
+
+func hasOtherEntries(existing, overwriting map[string]string) bool {
+	for key := range existing {
+		if _, ok := overwriting[key]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeVaultKey(raw string) (string, error) {
 	key := strings.ToLower(strings.TrimSpace(raw))
 	if key == "" {
@@ -202,34 +237,45 @@ func normalizeVaultKey(raw string) (string, error) {
 }
 
 func (v *Vault) readMapLocked() (map[string]string, error) {
-	data, err := os.ReadFile(v.secretsPath)
+	info, err := os.Stat(v.secretsPath)
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string]string{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	trimmed := bytes.TrimSpace(data)
+	if info.IsDir() {
+		return nil, fmt.Errorf("%w: %s is a directory", ErrVaultCorrupted, DefaultSecretsFile)
+	}
+	if info.Size() > maxVaultFileBytes {
+		return nil, fmt.Errorf("%w: %s exceeds %d bytes", ErrVaultCorrupted, DefaultSecretsFile, maxVaultFileBytes)
+	}
+
+	data, err := os.ReadFile(v.secretsPath)
+	if err != nil {
+		return nil, err
+	}
+	trimmed := bytes.TrimSpace(stripUTF8BOM(data))
 	if len(trimmed) == 0 {
 		return map[string]string{}, nil
 	}
 
 	var rawFields map[string]jsontext.Value
 	if err := json.Unmarshal(trimmed, &rawFields); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", DefaultSecretsFile, err)
+		return nil, fmt.Errorf("%w: parse %s: %w", ErrVaultCorrupted, DefaultSecretsFile, err)
 	}
 	verRaw, hasVer := rawFields["schemaVersion"]
 	dataRaw, hasData := rawFields["data"]
 	if !hasVer || !hasData || len(rawFields) != 2 {
-		return nil, fmt.Errorf("invalid %s envelope structure", DefaultSecretsFile)
+		return nil, fmt.Errorf("%w: invalid %s envelope structure", ErrVaultCorrupted, DefaultSecretsFile)
 	}
 	var ver int
 	if err := json.Unmarshal(verRaw, &ver); err != nil || ver != secretSchemaVersion {
-		return nil, fmt.Errorf("unsupported %s schemaVersion %d", DefaultSecretsFile, ver)
+		return nil, fmt.Errorf("%w: unsupported %s schemaVersion %d", ErrVaultCorrupted, DefaultSecretsFile, ver)
 	}
 	var m map[string]string
 	if err := json.Unmarshal(dataRaw, &m); err != nil {
-		return nil, fmt.Errorf("parse %s payload: %w", DefaultSecretsFile, err)
+		return nil, fmt.Errorf("%w: parse %s payload: %w", ErrVaultCorrupted, DefaultSecretsFile, err)
 	}
 	if m == nil {
 		m = map[string]string{}
@@ -246,5 +292,8 @@ func (v *Vault) writeMapLocked(m map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return storage.WriteFileAtomic(v.secretsPath, append(encoded, '\n'), 0o700, 0o600)
+	if err := storage.WriteFileAtomic(v.secretsPath, append(encoded, '\n'), 0o700, 0o600); err != nil {
+		return err
+	}
+	return restrictFilePermissions(v.secretsPath)
 }

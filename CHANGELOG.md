@@ -12,7 +12,8 @@
 
 ### 变更
 
-- `veri doctor` 与 `veri key list` 展示当前凭据库路径，`veri doctor` 新增透明代理异常提示并在 `--live` 中一并检测 `local` 与 `github` 提取。
+- 本地加密凭据支持在 macOS、Windows 与 Linux 之间直接复制通用，并优化凭据异常提示。
+- `veri doctor` 与 `veri key list` 展示当前凭据库路径，`veri doctor` 新增透明代理异常与凭据权限检查，并在 `--live` 中一并检测 `local` 与 `github` 提取。
 - MCP 批量 `web_fetch` 部分失败时在摘要中显示成功与失败页数。
 
 ### 修复
