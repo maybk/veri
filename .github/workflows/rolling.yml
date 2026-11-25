@@ -2,7 +2,7 @@ name: Rolling
 
 on:
   schedule:
-    - cron: '37 18 * * *' # 每日 02:37 (UTC+8)
+    - cron: '17 20 * * *' # 每日 04:17 (UTC+8)
   workflow_dispatch:
     inputs:
       force:

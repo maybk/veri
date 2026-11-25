@@ -5,49 +5,59 @@ vars:
   DIST_DIR: '{{.DIST_DIR | default "dist"}}'
   DEFAULT_APP_NAME:
     sh: |
+      cr="$(printf '\r')"
+      tab="$(printf '\t')"
       in_info=0
       while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%"$cr"}"
         case "$line" in
-          ""|\#*) continue ;;
-          info:*) in_info=1; continue ;;
-          " "*|"	"*) ;;
-          *) in_info=0; continue ;;
+          info:|info:" "*|info:"$tab"*|info:"#"*) in_info=1 ;;
+          " "*|"$tab"*)
+            if [ "$in_info" -eq 1 ]; then
+              trimmed="${line#"${line%%[!" $tab"]*}"}"
+              case "$trimmed" in
+                productName:*'"'*'"'*)
+                  val="${trimmed#*\"}"
+                  printf '%s' "${val%%\"*}"
+                  exit 0
+                  ;;
+              esac
+            fi
+            ;;
+          ""|"#"*) ;;
+          *) in_info=0 ;;
         esac
-        if [ "$in_info" = 1 ]; then
-          case "$line" in
-            *productName:*)
-              val="${line#*productName:}"
-              val="${val#*\"}"
-              val="${val%%\"*}"
-              printf '%s' "$val"
-              break
-              ;;
-          esac
-        fi
       done < "{{.ROOT_DIR}}/build/config.yml"
+      echo "failed to extract info.productName from build/config.yml" >&2
+      exit 1
   APP_NAME: '{{.APP_NAME | default .DEFAULT_APP_NAME}}'
   DEFAULT_VERSION:
     sh: |
+      cr="$(printf '\r')"
+      tab="$(printf '\t')"
       in_info=0
       while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%"$cr"}"
         case "$line" in
-          ""|\#*) continue ;;
-          info:*) in_info=1; continue ;;
-          " "*|"	"*) ;;
-          *) in_info=0; continue ;;
+          info:|info:" "*|info:"$tab"*|info:"#"*) in_info=1 ;;
+          " "*|"$tab"*)
+            if [ "$in_info" -eq 1 ]; then
+              trimmed="${line#"${line%%[!" $tab"]*}"}"
+              case "$trimmed" in
+                version:*'"'*'"'*)
+                  val="${trimmed#*\"}"
+                  printf '%s' "${val%%\"*}"
+                  exit 0
+                  ;;
+              esac
+            fi
+            ;;
+          ""|"#"*) ;;
+          *) in_info=0 ;;
         esac
-        if [ "$in_info" = 1 ]; then
-          case "$line" in
-            *version:*)
-              val="${line#*version:}"
-              val="${val#*\"}"
-              val="${val%%\"*}"
-              printf '%s' "$val"
-              break
-              ;;
-          esac
-        fi
       done < "{{.ROOT_DIR}}/build/config.yml"
+      echo "failed to extract info.version from build/config.yml" >&2
+      exit 1
   VERSION: '{{.VERSION | default .DEFAULT_VERSION}}'
   DEFAULT_COMMIT:
     sh: git -C "{{.ROOT_DIR}}" rev-parse --short=12 HEAD 2>/dev/null || printf 'none'
@@ -116,23 +126,28 @@ tasks:
             items+=("skills")
           fi
           out="{{.DIST_DIR}}/{{.APP_NAME}}-{{.VERSION}}-{{.TARGET_OS}}-{{.TARGET_ARCH}}.tar.gz"
+          case "$out" in
+            /*) out_abs="$out" ;;
+            *) out_abs="{{.ROOT_DIR}}/$out" ;;
+          esac
           if tar --version 2>/dev/null | grep -qi 'GNU tar'; then
-            (cd "$stage" && tar --owner=0 --group=0 --numeric-owner -czf "{{.ROOT_DIR}}/$out" "${items[@]}")
+            (cd "$stage" && tar --owner=0 --group=0 --numeric-owner -czf "$out_abs" "${items[@]}")
           else
-            (cd "$stage" && COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname "" --gname "" -czf "{{.ROOT_DIR}}/$out" "${items[@]}")
+            (cd "$stage" && COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname "" --gname "" -czf "$out_abs" "${items[@]}")
           fi
           printf 'packaged %s\n' "$out"
         platforms: [darwin, linux]
       - cmd: |
           powershell -NoProfile -Command '
             $ErrorActionPreference = "Stop";
-            $distDir = Join-Path "{{.ROOT_DIR}}" "{{.DIST_DIR}}";
+            $distDir = if ([System.IO.Path]::IsPathRooted("{{.DIST_DIR}}")) { "{{.DIST_DIR}}" } else { Join-Path "{{.ROOT_DIR}}" "{{.DIST_DIR}}" };
             New-Item -ItemType Directory -Path $distDir -Force | Out-Null;
             $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("{{.APP_NAME}}-stage-" + [guid]::NewGuid().ToString("N"));
             New-Item -ItemType Directory -Path $stage -Force | Out-Null;
             try {
               $env:GOOS = "{{.TARGET_OS}}"; $env:GOARCH = "{{.TARGET_ARCH}}"; $env:CGO_ENABLED = "0";
               go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.buildDate={{.BUILD_DATE}}" -o (Join-Path $stage "{{.APP_NAME}}") .;
+              if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" };
               $items = @("{{.APP_NAME}}");
               foreach ($f in @("LICENSE","THIRD_PARTY_NOTICES.md","README.md","README.en.md")) {
                 if (Test-Path -LiteralPath $f) {
@@ -153,6 +168,7 @@ tasks:
               } else {
                 tar --uid 0 --gid 0 --uname "" --gname "" -czf $archive -C $stage @items;
               };
+              if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" };
               Write-Host "packaged {{.DIST_DIR}}/$name";
             } finally {
               Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue;
@@ -187,10 +203,14 @@ tasks:
             items+=("skills")
           fi
           out="{{.DIST_DIR}}/{{.APP_NAME}}-{{.VERSION}}-windows-{{.TARGET_ARCH}}.zip"
+          case "$out" in
+            /*) out_abs="$out" ;;
+            *) out_abs="{{.ROOT_DIR}}/$out" ;;
+          esac
           if command -v zip >/dev/null 2>&1; then
-            (cd "$stage" && zip -qr "{{.ROOT_DIR}}/$out" "${items[@]}")
+            (cd "$stage" && zip -qr "$out_abs" "${items[@]}")
           elif command -v python3 >/dev/null 2>&1; then
-            (cd "$stage" && python3 -m zipfile -c "{{.ROOT_DIR}}/$out" "${items[@]}")
+            (cd "$stage" && python3 -m zipfile -c "$out_abs" "${items[@]}")
           else
             echo "missing 'zip' (or python3) required to package Windows .zip archive" >&2
             exit 1
@@ -200,12 +220,14 @@ tasks:
       - cmd: |
           powershell -NoProfile -Command '
             $ErrorActionPreference = "Stop";
-            New-Item -ItemType Directory -Path "{{.DIST_DIR}}" -Force | Out-Null;
+            $distDir = if ([System.IO.Path]::IsPathRooted("{{.DIST_DIR}}")) { "{{.DIST_DIR}}" } else { Join-Path "{{.ROOT_DIR}}" "{{.DIST_DIR}}" };
+            New-Item -ItemType Directory -Path $distDir -Force | Out-Null;
             $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("{{.APP_NAME}}-stage-" + [guid]::NewGuid().ToString("N"));
             New-Item -ItemType Directory -Path $stage -Force | Out-Null;
             try {
               $env:GOOS = "windows"; $env:GOARCH = "{{.TARGET_ARCH}}"; $env:CGO_ENABLED = "0";
               go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.buildDate={{.BUILD_DATE}}" -o (Join-Path $stage "{{.APP_NAME}}.exe") .;
+              if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" };
               foreach ($f in @("LICENSE","THIRD_PARTY_NOTICES.md","README.md","README.en.md")) {
                 if (Test-Path -LiteralPath $f) { Copy-Item -LiteralPath $f -Destination (Join-Path $stage $f) -Force }
               };
@@ -213,9 +235,10 @@ tasks:
                 New-Item -ItemType Directory -Path (Join-Path $stage "skills/{{.APP_NAME}}") -Force | Out-Null;
                 Copy-Item -LiteralPath "skills/{{.APP_NAME}}/SKILL.md" -Destination (Join-Path $stage "skills/{{.APP_NAME}}/SKILL.md") -Force;
               };
-              $out = "{{.DIST_DIR}}/{{.APP_NAME}}-{{.VERSION}}-windows-{{.TARGET_ARCH}}.zip";
+              $name = "{{.APP_NAME}}-{{.VERSION}}-windows-{{.TARGET_ARCH}}.zip";
+              $out = Join-Path $distDir $name;
               Compress-Archive -Path "$stage/*" -DestinationPath $out -Force;
-              Write-Host "packaged $out";
+              Write-Host "packaged {{.DIST_DIR}}/$name";
             } finally {
               Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue;
             }
@@ -237,11 +260,15 @@ tasks:
           fi
           printf 'generated %s/SHA256SUMS.txt\n' "{{.DIST_DIR}}"
         platforms: [darwin, linux]
-      - cmd: >-
-          powershell -NoProfile -Command "$ErrorActionPreference='Stop';
-          Set-Location '{{.DIST_DIR}}';
-          Get-ChildItem -File -Filter '{{.APP_NAME}}-*' | Sort-Object Name |
-          ForEach-Object { '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant(), $_.Name } |
-          Set-Content -Encoding ascii SHA256SUMS.txt;
-          Write-Host 'generated {{.DIST_DIR}}/SHA256SUMS.txt'"
+      - cmd: |
+          powershell -NoProfile -Command '
+            $ErrorActionPreference = "Stop";
+            Set-Location "{{.DIST_DIR}}";
+            $files = @(Get-ChildItem -File -Filter "{{.APP_NAME}}-*" | Sort-Object Name);
+            if ($files.Count -eq 0) { throw "no release archives found in {{.DIST_DIR}}" };
+            $lines = $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant(), $_.Name };
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false);
+            [System.IO.File]::WriteAllText((Join-Path (Get-Location).Path "SHA256SUMS.txt"), (($lines -join "`n") + "`n"), $utf8NoBom);
+            Write-Host "generated {{.DIST_DIR}}/SHA256SUMS.txt";
+          '
         platforms: [windows]

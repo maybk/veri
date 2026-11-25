@@ -7,7 +7,7 @@
 - `ci.yml`：`main` 推送、PR 与发布共用的质量门禁（静态/漏洞扫描、契约测试与跨 Job Artifact 校验）；直接触发时并行执行六架构交叉编译与三端 `-race` 测试及冒烟，被发布工作流复用时自动跳过与 `release-assets.yml` 重复的矩阵。
 - `release-assets.yml`：正式版与 Rolling 共用的三端六架构原生测试（含 macOS、Linux 与 Windows `amd64` `-race`）、静态归档构建与条目完整性校验流水线。
 - `rolling.yml`：每日定时或手动按需构建 `main` 分支最新提交并发布 `v<version>-pre` 预发布版本。
-- `release.yml`：`vMAJOR.MINOR.PATCH` 标签触发的正式 GitHub Release 资产与校验和验证、草稿公开及过期 Rolling 清理。
+- `release.yml`：`vMAJOR.MINOR.PATCH` 标签触发的正式 GitHub Release 资产与校验和验证、草稿公开、过期 Rolling 清理与 `maybk/homebrew-tap` 同步触发。
 
 ## 维护规范
 

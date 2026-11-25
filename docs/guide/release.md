@@ -7,7 +7,7 @@
 - [`ci.yml`](../../.github/workflows/ci.yml)：`main` 推送与 PR 的质量门禁（静态/漏洞扫描、契约测试、六架构交叉编译、三端 `-race` 测试与 Artifact 往返校验）；被发布工作流复用时自动跳过与 `release-assets.yml` 重复的矩阵
 - [`release-assets.yml`](../../.github/workflows/release-assets.yml)：正式版与 Rolling 共用的三端六架构原生测试（含 macOS、Linux 与 Windows `amd64` `-race`）、静态归档构建与条目完整性校验流水线
 - [`rolling.yml`](../../.github/workflows/rolling.yml)：每日定时或手动按需构建 `main` 分支未发布提交并更新 `v<version>-pre` 预发布
-- [`release.yml`](../../.github/workflows/release.yml)：`vMAJOR.MINOR.PATCH` 版本标签触发的正式 GitHub Release 发布与过期 Rolling 清理
+- [`release.yml`](../../.github/workflows/release.yml)：`vMAJOR.MINOR.PATCH` 版本标签触发的正式 GitHub Release 发布、过期 Rolling 清理与 `maybk/homebrew-tap` 同步触发
 - [`extract_pending_version.sh`](../../scripts/extract_pending_version.sh)：读取并校验 `CHANGELOG.md` 顶部的待发布版本
 - [`extract_release_notes.sh`](../../scripts/extract_release_notes.sh)：从 `CHANGELOG.md` 提取指定版本的更新内容
 - [`prepare_release.sh`](../../scripts/prepare_release.sh)：一键同步 `build/config.yml` 与 `CHANGELOG.md` 版本段落
@@ -52,7 +52,14 @@
    git tag -a "v$version" -m "veri v$version"
    git push --atomic origin main "v$version"
    ```
-4. 正式版公开后，[`maybk/homebrew-tap`](https://github.com/maybk/homebrew-tap) 会按计划自动同步 Homebrew Formula、Scoop Bucket、WinGet 清单与 npm 包（`@maybk/veri`）；如需立即同步，可执行：
+4. 正式版公开后，`release.yml` 会通过 `workflow_dispatch` 自动触发 [`maybk/homebrew-tap`](https://github.com/maybk/homebrew-tap) 同步 Homebrew Formula、Scoop Bucket、WinGet 清单与 npm 包（`@maybk/veri`）；如需手动同步，可执行：
    ```bash
-   gh workflow run sync.yml -R maybk/homebrew-tap
+   gh workflow run sync.yml -R maybk/homebrew-tap --ref main -f app=veri
    ```
+
+## 跨仓同步凭据
+
+`release.yml` 仅向 `maybk/homebrew-tap` 发送 `workflow_dispatch` 触发信号，仅需目标仓库 `Actions: write` 权限（不需 `Contents: write`）；未配置时自动跳过，不影响正式版发布（完整架构与 App 创建见 [`homebrew-tap` 维护指南](https://github.com/maybk/homebrew-tap/blob/main/docs/guide/maintenance.md)）：
+
+- **GitHub App（推荐，优先使用）**：配置仓库变量 `TAP_DISPATCH_APP_CLIENT_ID` 与密钥 `TAP_DISPATCH_APP_PRIVATE_KEY`。
+- **Fine-grained PAT（备选）**：配置仓库密钥 `TAP_DISPATCH_TOKEN`。

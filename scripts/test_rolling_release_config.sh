@@ -34,7 +34,7 @@ if grep -Fq 'workflow_run:' "$rolling_workflow" || grep -Fq 'GITHUB_SHA' "$rolli
   exit 1
 fi
 
-cleanup_job="$(awk '/^  cleanup-rolling:/,0' "$release_workflow")"
+cleanup_job="$(awk '/^  cleanup-rolling:/,/^  notify-tap:/' "$release_workflow")"
 for req_clean in \
   'git merge-base --is-ancestor "$rolling_commit" "$release_commit"' \
   'gh release delete "$tag_name" --yes' \
