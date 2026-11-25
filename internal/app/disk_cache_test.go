@@ -608,3 +608,89 @@ base_url = %q
 		t.Fatal("expected GetWithMaxAge miss NOT to delete entry still valid for 15m TTL")
 	}
 }
+
+func TestDiskCachePruneThrottleAndStrictQuota(t *testing.T) {
+	dc := newDiskCache(t.TempDir(), 1<<20, nil)
+	dc.maxEntries = 4
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	dc.now = func() time.Time { return now }
+
+	sample := func(i int) *core.Envelope {
+		return &core.Envelope{
+			Schema: spec.SchemaVersion,
+			OK:     true,
+			Kind:   spec.KindFetch,
+			Query:  fmt.Sprintf("https://example.com/p/%d", i),
+			Page: &core.Page{
+				URL:        fmt.Sprintf("https://example.com/p/%d", i),
+				Title:      "Sample",
+				Content:    strings.Repeat("Clean content line.\n", 20),
+				TotalChars: 400,
+				Provider:   spec.ProviderLocal,
+				SourceType: core.SourceGeneric,
+			},
+		}
+	}
+
+	// 同进程首次写盘必扫描 1 次；后续在配额与时间窗内的第 2～4 次写盘跳过目录扫描。
+	for i := range 4 {
+		k := buildFetchCacheKey(fmt.Sprintf("https://example.com/p/%d", i), core.FetchSmartLocal, nil, nil)
+		dc.Set(diskCacheKindFetch, k, sample(i), 15*time.Minute)
+	}
+	if dc.pruneScans != 1 {
+		t.Fatalf("expected 1 directory scan within quota window, got %d", dc.pruneScans)
+	}
+
+	// 第 5 次写盘预估条目触达上限 maxEntries=4，必须立刻扫描并淘汰最旧条目。
+	k5 := buildFetchCacheKey("https://example.com/p/5", core.FetchSmartLocal, nil, nil)
+	dc.Set(diskCacheKindFetch, k5, sample(5), 15*time.Minute)
+	if dc.pruneScans != 2 {
+		t.Fatalf("expected quota boundary to trigger immediate prune scan (want 2), got %d", dc.pruneScans)
+	}
+	if st := statDiskCache(dc.rootDir, now); st.Entries > 4 {
+		t.Fatalf("expected strict entry quota <= 4 after prune, got %d", st.Entries)
+	}
+
+	// 超过扫描间隔后再次写盘会触发周期扫描。
+	now = now.Add(diskCachePruneInterval + time.Second)
+	dc.Set(diskCacheKindFetch, k5, sample(5), 15*time.Minute)
+	if dc.pruneScans != 3 {
+		t.Fatalf("expected interval expiry to trigger prune scan (want 3), got %d", dc.pruneScans)
+	}
+}
+
+func BenchmarkDiskCacheGetSet(b *testing.B) {
+	dc := newDiskCache(b.TempDir(), spec.DefaultCacheMaxBytes, nil)
+	env := &core.Envelope{
+		Schema: spec.SchemaVersion,
+		OK:     true,
+		Kind:   spec.KindFetch,
+		Query:  "https://docs.example.com/guide",
+		Page: &core.Page{
+			URL:        "https://docs.example.com/guide",
+			Title:      "Guide",
+			Content:    strings.Repeat("# Section\n\nConcise technical documentation paragraph.\n\n", 120),
+			TotalChars: 6000,
+			Provider:   spec.ProviderLocal,
+			SourceType: core.SourceGeneric,
+		},
+	}
+	key := buildFetchCacheKey(env.Query, core.FetchSmartLocal, nil, nil)
+	dc.Set(diskCacheKindFetch, key, env, 15*time.Minute)
+
+	b.Run("GetHit", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, ok := dc.GetWithMaxAge(diskCacheKindFetch, key, 15*time.Minute); !ok {
+				b.Fatal("expected disk cache hit")
+			}
+		}
+	})
+
+	b.Run("SetWithinQuota", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			dc.Set(diskCacheKindFetch, key, env, 15*time.Minute)
+		}
+	})
+}

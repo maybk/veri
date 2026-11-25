@@ -275,6 +275,7 @@ func (v *Sealer) readKey(allowStaleCleanup bool) ([]byte, os.FileInfo, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	defer clear(data)
 	trimmed := strings.TrimSpace(string(stripUTF8BOM(data)))
 	if trimmed == "" {
 		if time.Since(info.ModTime()) > 5*time.Second {

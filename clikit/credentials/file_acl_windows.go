@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -143,7 +144,35 @@ func volumeSupportsPersistentACLs(path string) bool {
 	return (fsFlags & windows.FILE_PERSISTENT_ACLS) != 0
 }
 
+var (
+	trustedSIDsMu    sync.RWMutex
+	trustedSIDsCache []trustedSIDEntry
+)
+
 func trustedFileSIDs() ([]trustedSIDEntry, error) {
+	trustedSIDsMu.RLock()
+	if len(trustedSIDsCache) > 0 {
+		cached := trustedSIDsCache
+		trustedSIDsMu.RUnlock()
+		return cached, nil
+	}
+	trustedSIDsMu.RUnlock()
+
+	computed, err := computeTrustedFileSIDs()
+	if err != nil {
+		return nil, err
+	}
+
+	trustedSIDsMu.Lock()
+	if len(trustedSIDsCache) == 0 {
+		trustedSIDsCache = computed
+	}
+	cached := trustedSIDsCache
+	trustedSIDsMu.Unlock()
+	return cached, nil
+}
+
+func computeTrustedFileSIDs() ([]trustedSIDEntry, error) {
 	tu, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
 		return nil, err

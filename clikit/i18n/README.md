@@ -5,17 +5,17 @@
 ## 目录结构
 
 - `doc.go`：包级说明与依赖边界。
-- `locale.go`：`Locale` 定义与跨平台语言优先级解析。
-- `catalog.go`：`Bundle` / `Catalog` 加载、`{placeholder}` 插值、结构化错误格式化与 `ValidateSymmetry` 校验。
-- `system_darwin.go`：macOS 读取 `AppleLanguages` 偏好。
-- `system_linux.go`：Linux 解析 `/etc/locale.conf`。
-- `system_windows.go`：Windows 调用 `GetUserPreferredUILanguages`。
+- `locale.go`：语言标识定义与跨平台语言优先级解析。
+- `catalog.go`：多语言词表预加载与按需惰性解码、`{placeholder}` 插值、结构化错误格式化与对称性校验。
+- `system_darwin.go`：macOS 系统语言探测实现。
+- `system_linux.go`：Linux 系统语言探测实现。
+- `system_windows.go`：Windows 系统语言探测实现。
 - `system_other.go`：其他平台回退实现。
 
 ## 开发规范
 
-- **词表外置**：本包不内嵌具体业务文案，调用方通过 `LoadBundle` 注入词表并通过 `ValidateSymmetry` 校验对称性。
-- **单遍替换**：插值统一使用 `strings.NewReplacer` 单遍替换，防止参数值二次展开。
+- **词表外置**：本包不内嵌具体业务文案，调用方经由 `fs.FS` 注入词表（支持全量加载或按语种惰性解码），并在测试中校验多语种键与占位符对称性。
+- **单遍替换**：占位符插值必须单遍替换，防止参数值二次展开。
 
 ## 验证
 

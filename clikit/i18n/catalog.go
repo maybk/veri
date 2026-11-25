@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // ErrorText 保存结构化错误码对应的人类可读标题与修复建议模板。
@@ -24,14 +25,26 @@ type Catalog struct {
 	CLI    map[string]string    `json:"cli"`
 }
 
-// Bundle 管理一组已加载的多语言词表（如 zh-CN 与 en-US）。
+// Bundle 管理一组多语言词表（如 zh-CN 与 en-US），支持全量预加载或按命中语言惰性解码。
 type Bundle struct {
+	mu       sync.RWMutex
+	fsys     fs.FS
+	dir      string
 	catalogs map[Locale]Catalog
 }
 
 var placeholderRe = regexp.MustCompile(`\{[a-zA-Z0-9_]+\}`)
 
-// LoadBundle 从给定的 fs.FS 指定目录（如 "locales"）加载全部受支持语言的 JSON 词表。
+// NewLazyBundle 构造按语种惰性解码的多语言词表集合；首次调用 For 时仅解析当前命中的单个 JSON 文件。
+func NewLazyBundle(fsys fs.FS, dir string) *Bundle {
+	return &Bundle{
+		fsys:     fsys,
+		dir:      strings.Trim(strings.TrimSpace(dir), "/"),
+		catalogs: make(map[Locale]Catalog, len(SupportedLocales())),
+	}
+}
+
+// LoadBundle 从给定的 fs.FS 指定目录（如 "locales"）立即加载全部受支持语言的 JSON 词表。
 func LoadBundle(fsys fs.FS, dir string) (*Bundle, error) {
 	if fsys == nil {
 		return nil, fmt.Errorf("nil locale filesystem")
@@ -39,22 +52,17 @@ func LoadBundle(fsys fs.FS, dir string) (*Bundle, error) {
 	cleanDir := strings.Trim(strings.TrimSpace(dir), "/")
 	catalogs := make(map[Locale]Catalog, len(SupportedLocales()))
 	for _, loc := range SupportedLocales() {
-		filePath := string(loc) + ".json"
-		if cleanDir != "" {
-			filePath = path.Join(cleanDir, filePath)
-		}
-		raw, err := fs.ReadFile(fsys, filePath)
+		cat, err := loadLocaleCatalog(fsys, cleanDir, loc)
 		if err != nil {
-			return nil, fmt.Errorf("read locale file %s: %w", filePath, err)
+			return nil, err
 		}
-		var cat Catalog
-		if err := json.Unmarshal(raw, &cat); err != nil {
-			return nil, fmt.Errorf("parse locale file %s: %w", filePath, err)
-		}
-		cat.Locale = loc
 		catalogs[loc] = cat
 	}
-	return &Bundle{catalogs: catalogs}, nil
+	return &Bundle{
+		fsys:     fsys,
+		dir:      cleanDir,
+		catalogs: catalogs,
+	}, nil
 }
 
 // MustLoadBundle 加载多语言词表，若内嵌资源损坏则在启动初始化阶段直接 panic。
@@ -66,21 +74,98 @@ func MustLoadBundle(fsys fs.FS, dir string) *Bundle {
 	return b
 }
 
+func loadLocaleCatalog(fsys fs.FS, cleanDir string, loc Locale) (Catalog, error) {
+	if fsys == nil {
+		return Catalog{}, fmt.Errorf("nil locale filesystem")
+	}
+	filePath := string(loc) + ".json"
+	if cleanDir != "" {
+		filePath = path.Join(cleanDir, filePath)
+	}
+	raw, err := fs.ReadFile(fsys, filePath)
+	if err != nil {
+		return Catalog{}, fmt.Errorf("read locale file %s: %w", filePath, err)
+	}
+	var cat Catalog
+	if err := json.Unmarshal(raw, &cat); err != nil {
+		return Catalog{}, fmt.Errorf("parse locale file %s: %w", filePath, err)
+	}
+	cat.Locale = loc
+	return cat, nil
+}
+
+func normalizeBundleLocale(locale Locale) Locale {
+	if slices.Contains(SupportedLocales(), locale) {
+		return locale
+	}
+	return LocaleEnUS
+}
+
+func (b *Bundle) getOrLoad(locale Locale) (Catalog, error) {
+	if b == nil {
+		return Catalog{Locale: LocaleEnUS}, nil
+	}
+	target := normalizeBundleLocale(locale)
+
+	b.mu.RLock()
+	cat, ok := b.catalogs[target]
+	b.mu.RUnlock()
+	if ok {
+		return cat, nil
+	}
+	if b.fsys == nil {
+		return Catalog{Locale: target}, nil
+	}
+
+	loaded, err := loadLocaleCatalog(b.fsys, b.dir, target)
+	if err != nil {
+		return Catalog{}, err
+	}
+
+	b.mu.Lock()
+	if b.catalogs == nil {
+		b.catalogs = make(map[Locale]Catalog, len(SupportedLocales()))
+	}
+	if existing, exists := b.catalogs[target]; exists {
+		b.mu.Unlock()
+		return existing, nil
+	}
+	b.catalogs[target] = loaded
+	b.mu.Unlock()
+	return loaded, nil
+}
+
 // For 返回指定语言的 Catalog；未知语言时回退至 en-US。
 func (b *Bundle) For(locale Locale) Catalog {
-	if b == nil {
-		return Catalog{Locale: LocaleEnUS}
+	cat, err := b.getOrLoad(locale)
+	if err != nil {
+		panic(err)
 	}
-	if cat, ok := b.catalogs[locale]; ok {
-		return cat
-	}
-	return b.catalogs[LocaleEnUS]
+	return cat
 }
 
 // ValidateSymmetry 校验 zh-CN 与 en-US 两份词表的 cli / errors 键集合及 {placeholder} 集合是否 100% 对称且非空。
 func (b *Bundle) ValidateSymmetry() error {
-	zh := b.For(LocaleZhCN)
-	en := b.For(LocaleEnUS)
+	if b == nil {
+		return fmt.Errorf("nil locale bundle")
+	}
+	b.mu.RLock()
+	emptyUninitialized := b.fsys == nil && len(b.catalogs) == 0
+	b.mu.RUnlock()
+	if emptyUninitialized {
+		return fmt.Errorf("empty locale bundle with nil filesystem")
+	}
+	zh, err := b.getOrLoad(LocaleZhCN)
+	if err != nil {
+		return err
+	}
+	en, err := b.getOrLoad(LocaleEnUS)
+	if err != nil {
+		return err
+	}
+	if len(en.CLI) == 0 {
+		return fmt.Errorf("locale cli catalog must not be empty")
+	}
 
 	if err := compareStringMaps("cli", en.CLI, zh.CLI); err != nil {
 		return err

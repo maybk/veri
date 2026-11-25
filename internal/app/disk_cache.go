@@ -20,13 +20,14 @@ import (
 )
 
 const (
-	diskCacheVersion      = 1
-	diskCacheSubdir       = "v1"
-	diskCacheKindFetch    = "fetch"
-	diskCacheKindSearch   = "search"
-	diskCacheMaxEntries   = 256
-	diskCacheMaxReadBytes = 16 << 20 // 16 MiB 解压后上限，防御异常压缩膨胀
-	diskCacheStaleTempAge = 10 * time.Minute
+	diskCacheVersion       = 1
+	diskCacheSubdir        = "v1"
+	diskCacheKindFetch     = "fetch"
+	diskCacheKindSearch    = "search"
+	diskCacheMaxEntries    = 256
+	diskCacheMaxReadBytes  = 16 << 20 // 16 MiB 解压后上限，防御异常压缩膨胀
+	diskCacheStaleTempAge  = 10 * time.Minute
+	diskCachePruneInterval = 10 * time.Second
 )
 
 var errNotRegularFile = errors.New("cached entry is not a regular file")
@@ -73,12 +74,16 @@ type diskCacheRecord struct {
 }
 
 type diskCache struct {
-	mu         sync.Mutex
-	rootDir    string
-	maxBytes   int64
-	maxEntries int
-	logger     *slog.Logger
-	now        func() time.Time
+	mu            sync.Mutex
+	rootDir       string
+	maxBytes      int64
+	maxEntries    int
+	logger        *slog.Logger
+	now           func() time.Time
+	lastPrunedAt  time.Time
+	cachedBytes   int64
+	cachedEntries int
+	pruneScans    int // 供单元测试观测实际目录扫描次数
 }
 
 func newDiskCache(rootDir string, maxBytes int64, logger *slog.Logger) *diskCache {
@@ -169,7 +174,7 @@ func (c *diskCache) Set(kind, key string, env *core.Envelope, ttl time.Duration)
 		return
 	}
 	_ = os.Chtimes(path, now, now)
-	c.prune(now, filepath.Base(path))
+	c.maybePrune(now, filepath.Base(path), int64(len(compressed)))
 }
 
 type cacheFileMeta struct {
@@ -179,10 +184,26 @@ type cacheFileMeta struct {
 	modTime time.Time
 }
 
-func (c *diskCache) prune(now time.Time, protectName string) {
+// maybePrune 在同进程首次写盘、预估占用触达上限或超过扫描周期时执行目录淘汰；
+// 其余在配额内的连续写入跳过全目录 lstat 扫描，兼顾短命 CLI 严格淘汰与 MCP 批量写盘性能。
+func (c *diskCache) maybePrune(now time.Time, protectName string, addedBytes int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if !c.lastPrunedAt.IsZero() &&
+		!now.Before(c.lastPrunedAt) &&
+		now.Sub(c.lastPrunedAt) < diskCachePruneInterval &&
+		c.cachedBytes+addedBytes <= c.maxBytes &&
+		c.cachedEntries+1 <= c.maxEntries {
+		c.cachedBytes += addedBytes
+		c.cachedEntries++
+		return
+	}
+	c.pruneLocked(now, protectName)
+}
+
+func (c *diskCache) pruneLocked(now time.Time, protectName string) {
+	c.pruneScans++
 	dir := c.versionDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -221,6 +242,9 @@ func (c *diskCache) prune(now time.Time, protectName string) {
 	}
 
 	if totalBytes <= c.maxBytes && len(files) <= c.maxEntries {
+		c.lastPrunedAt = now
+		c.cachedBytes = totalBytes
+		c.cachedEntries = len(files)
 		return
 	}
 
@@ -246,6 +270,9 @@ func (c *diskCache) prune(now time.Time, protectName string) {
 		totalBytes = max(totalBytes-f.size, 0)
 		remaining--
 	}
+	c.lastPrunedAt = now
+	c.cachedBytes = totalBytes
+	c.cachedEntries = remaining
 }
 
 // InspectCache 读取统一缓存策略并统计当前磁盘缓存目录中的有效条目数与占用空间（自动忽略并清理过期/损坏文件）。

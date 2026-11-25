@@ -35,7 +35,7 @@ type Loaded struct {
 	SearchProvidersExplicit       bool              // 用户在 config.toml 或 VERI_PROVIDERS 中显式配置了 search.providers
 	FusionProvidersGlobalExplicit bool              // 用户在 config.toml 中显式配置了 search.fusion_providers_global（含设 [] 关闭分池）
 	FetchProvidersExplicit        bool              // 用户在 config.toml 或 VERI_FETCH_PROVIDERS 中显式配置了 fetch.providers
-	PermWarning                   bool              // 配置文件含明文密钥且权限宽于 0600
+	PermWarning                   bool              // 配置文件含明文密钥且权限过宽（Unix 宽于 0600 或 Windows ACL 暴露）
 	VaultPermWarning              bool              // secrets.json 或 secret.key 权限过宽（Unix 宽于 0600 或 Windows ACL 暴露）
 	PlaintextProviders            []string          // config.toml 中存有明文密钥的 Provider 列表（不含明文值）
 	LogLevel                      string
@@ -248,7 +248,7 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		}
 	}
 
-	if out.FileExists && hasPlain && storage.HasBroadPermissions(out.FileMode) {
+	if out.FileExists && hasPlain && credentials.HasBroadPermissions(cfgPath) {
 		out.PermWarning = true
 	}
 	if fi, sErr := os.Stat(out.SecretsPath); sErr == nil && !fi.IsDir() {

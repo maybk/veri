@@ -10,7 +10,7 @@ import (
 //go:embed locales/*.json
 var localeFS embed.FS
 
-var localeBundle = i18n.MustLoadBundle(localeFS, "locales")
+var localeBundle = i18n.NewLazyBundle(localeFS, "locales")
 
 func formatCoreError(cat i18n.Catalog, err error) string {
 	se := core.AsError(err)

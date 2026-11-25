@@ -4,11 +4,12 @@
 
 ## 目录结构
 
-- `client.go`：API 客户端（含重定向降级与回环拦截）与安全网页抓取客户端构造、代理/直连双通道分流、Gzip 解压及响应体积上限读取（`ReadBodyLimited`）。
-- `ssrf.go`：非公网与过渡隧道网段判定、统一主机解析校验、`SafeDialContext` 拨号拦截、SSRF 错误分类与 API `base_url` 校验。
-- `fakeip.go`：主机名资格守卫、双栈伴生 IPv6 剥离、透明代理 Fake-IP 自动识别与 `DiagnoseNetwork` 诊断。
+- `client.go`：API 客户端（含重定向降级与回环拦截）与安全网页抓取客户端构造、代理/直连双通道分流、Gzip 解压及响应体积上限读取。
+- `ssrf.go`：非公网与过渡隧道网段判定、统一主机解析与底层拨号 SSRF 拦截、错误分类及 API `base_url` 校验。
+- `dial.go`：面向已校验地址列表的双栈 Happy Eyeballs 竞速拨号（零 TOCTOU、零连接泄漏）。
+- `fakeip.go`：主机名资格守卫、双栈伴生 IPv6 剥离、透明代理 Fake-IP 自动识别与网络环境诊断。
 - `gate.go`：单进程内按厂商隔离的最大并发信号量与可选 QPS 节流闸门。
-- `do_json.go`：统一 JSON 请求执行器（`DoJSON`）、HTTP 2xx 应用层错误钩子、多 Key 故障转移与 HTTP 状态码错误映射。
+- `do_json.go`：统一 JSON 请求执行器、HTTP 2xx 应用层错误钩子、多 Key 故障转移与 HTTP 状态码错误映射。
 - `retry.go`：计费安全状态码判定、`Retry-After` 解析与带抖动退避休眠。
 
 ## 开发规范

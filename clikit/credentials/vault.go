@@ -292,8 +292,5 @@ func (v *Vault) writeMapLocked(m map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if err := storage.WriteFileAtomic(v.secretsPath, append(encoded, '\n'), 0o700, 0o600); err != nil {
-		return err
-	}
-	return restrictFilePermissions(v.secretsPath)
+	return storage.WriteFileAtomicWithHook(v.secretsPath, append(encoded, '\n'), 0o700, 0o600, restrictFilePermissions)
 }

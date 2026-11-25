@@ -4,13 +4,15 @@
 
 ## 目录结构
 
-- `types.go`：时长（`Duration`）与防溢出可读字节单位解析器（`ByteSize`）。
+- `types.go`：时长与防溢出可读字节单位解析器。
 - `config.go`：配置结构体定义（含统一 `[cache]` / `[cache.cli]` / `[cache.mcp]` 继承策略）、基于 `toml` 标签的凭据/权重访问与自动脱敏快照构造。
 - `defaults.go`：内置默认配置树。
 - `load.go`：三端配置、凭据（`VERI_SECRETS_DIR`）与缓存目录解析、未知 TOML 键拦截、环境变量合并与文件权限审计。
-- `keys.go`：配置键元数据索引、指针覆写键继承查询、拼写建议、单键脱敏读取与自定义覆盖视图。
+- `keys.go`：配置键 Schema 反射索引、查找与拼写建议。
+- `inspect.go`：单键脱敏生效值查询（含指针覆写继承）与 `config.toml` 自定义覆盖视图导出。
 - `edit.go`：单键写入、移除清理、明文密钥拦截与落盘前预校验。
-- `toml_edit.go`：保留注释与换行的 TOML 行级编辑与字面量格式化。
+- `toml_edit.go`：保留注释与排版的 TOML 行级编辑、空节修剪与字面量格式化。
+- `toml_scan.go`：TOML 换行/BOM 归一化、表头解析、键值赋值与多行字符串词法扫描。
 - `dotenv.go`：`.env` 文件与标准输入批量加密导入及 dotenv 语法解析。
 - `import.go`：`config.toml` 明文密钥加密迁入、清理预演与结果模型。
 - `credentials.go`：环境变量、加密凭据库与配置文件的优先级合并及多密钥脱敏。
@@ -20,7 +22,7 @@
 
 ## 开发规范
 
-- **严格解码**：解码 `config.toml` 时必须校验 `MetaData.Undecoded()`，拒绝静默忽略拼写错误或未知配置项。
+- **严格解码**：解码 `config.toml` 时必须拦截所有未识别键，拒绝静默忽略拼写错误或未知配置项。
 - **依赖收敛**：全仓仅允许在本包导入 `github.com/BurntSushi/toml`。
 
 ## 验证

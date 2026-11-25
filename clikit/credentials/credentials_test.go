@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -387,6 +388,37 @@ func TestVaultErrorClassificationAndPermissions(t *testing.T) {
 		}
 		if HasBroadPermissions(permVault.SecretsPath()) {
 			t.Fatal("expected re-saved secrets.json permissions to be tightened back to 0600")
+		}
+	}
+}
+
+func BenchmarkSealerDecryptCached(b *testing.B) {
+	sealer := New(b.TempDir())
+	sealed, err := sealer.Encrypt("sk-benchmark-secret-key-1234567890")
+	if err != nil {
+		b.Fatalf("Encrypt failed: %v", err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := sealer.Decrypt(sealed); err != nil {
+			b.Fatalf("Decrypt failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkVaultLoadAll(b *testing.B) {
+	vault := NewVault(b.TempDir())
+	seed := make(map[string]string, 12)
+	for i := range 12 {
+		seed[fmt.Sprintf("provider_%02d", i)] = fmt.Sprintf("sk-bench-key-%02d-abcdef1234567890", i)
+	}
+	if err := vault.SetMany(seed); err != nil {
+		b.Fatalf("SetMany failed: %v", err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := vault.LoadAll(); err != nil {
+			b.Fatalf("LoadAll failed: %v", err)
 		}
 	}
 }

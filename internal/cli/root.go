@@ -423,12 +423,26 @@ func (rt *runtimeEnv) loadApp() (*app.App, error) {
 	}
 	rt.scrubber = redact.NewScrubber(loaded.AllSecrets)
 	if loaded.PermWarning && !rt.flags.quiet {
-		_, _ = fmt.Fprintln(rt.stderr, rt.cat.T("note.perm_warn", "path", loaded.Path))
+		_, _ = fmt.Fprintln(rt.stderr, formatConfigPermNote(rt.cat, loaded.Path))
 	}
 	if loaded.VaultPermWarning && !rt.flags.quiet {
 		_, _ = fmt.Fprintln(rt.stderr, formatVaultPermWarn(rt.cat))
 	}
 	return app.NewWithStderr(loaded, rt.info.Version, rt.stderr)
+}
+
+func formatConfigPermNote(cat i18n.Catalog, path string) string {
+	if runtime.GOOS == "windows" {
+		return cat.T("note.perm_warn_windows", "path", path)
+	}
+	return cat.T("note.perm_warn", "path", path)
+}
+
+func formatDoctorPermWarn(cat i18n.Catalog, mode, path string) string {
+	if runtime.GOOS == "windows" {
+		return cat.T("doctor.perm_warn_windows", "path", path)
+	}
+	return cat.T("doctor.perm_warn", "mode", mode, "path", path)
 }
 
 func formatVaultPermWarn(cat i18n.Catalog) string {

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -68,6 +69,39 @@ func TestWriteFileAtomicAndPermissions(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && !HasBroadPermissions(0o644) {
 		t.Fatal("expected 0644 to report broad permissions on Unix")
+	}
+
+	// 校验 WriteFileAtomicWithHook 在重命名前调用钩子；钩子失败时不得覆盖已有文件且自动清理临时文件。
+	var seenTmp string
+	hookErr := os.ErrPermission
+	if err := WriteFileAtomicWithHook(target, []byte("updated\n"), 0o700, 0o600, func(tmpPath string) error {
+		seenTmp = tmpPath
+		if tmpPath == target {
+			t.Fatal("beforeRename hook must run on temp path before rename")
+		}
+		return hookErr
+	}); !errors.Is(err, hookErr) {
+		t.Fatalf("expected hook error %v, got %v", hookErr, err)
+	}
+	if _, statErr := os.Stat(seenTmp); !os.IsNotExist(statErr) {
+		t.Fatalf("expected temp file %q cleaned up on hook error, stat err=%v", seenTmp, statErr)
+	}
+	if afterFail, err := os.ReadFile(target); err != nil || string(afterFail) != "hello\n" {
+		t.Fatalf("original file must remain untouched on hook error: (%q, %v)", string(afterFail), err)
+	}
+
+	hookRan := false
+	if err := WriteFileAtomicWithHook(target, []byte("updated\n"), 0o700, 0o600, func(tmpPath string) error {
+		hookRan = true
+		if _, err := os.Stat(tmpPath); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil || !hookRan {
+		t.Fatalf("WriteFileAtomicWithHook success path failed: err=%v hookRan=%v", err, hookRan)
+	}
+	if afterOK, err := os.ReadFile(target); err != nil || string(afterOK) != "updated\n" {
+		t.Fatalf("ReadFile after hook = (%q, %v)", string(afterOK), err)
 	}
 }
 

@@ -51,6 +51,8 @@ type SSRFGuard struct {
 	AutoDetectFakeIP bool
 	Resolver         Resolver
 
+	happyEyeballsDelay time.Duration
+
 	autoMu        sync.Mutex
 	autoCheckedAt time.Time
 	autoPrefixes  []netip.Prefix
@@ -129,15 +131,11 @@ func (g *SSRFGuard) SafeDialContext(baseDial func(ctx context.Context, network, 
 			return nil, valErr
 		}
 
-		var lastErr error
-		for _, addr := range allowed {
-			conn, dialErr := baseDial(ctx, network, net.JoinHostPort(addr.String(), port))
-			if dialErr == nil {
-				return conn, nil
-			}
-			lastErr = dialErr
+		conn, dialErr := g.dialAllowed(ctx, baseDial, network, port, allowed)
+		if dialErr == nil {
+			return conn, nil
 		}
-		return nil, core.WrapError(core.CodeUpstreamUnavailable, fmt.Sprintf("failed to connect to %q", host), lastErr)
+		return nil, core.WrapError(core.CodeUpstreamUnavailable, fmt.Sprintf("failed to connect to %q", host), dialErr)
 	}
 }
 

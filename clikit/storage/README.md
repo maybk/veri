@@ -5,12 +5,12 @@
 ## 目录结构
 
 - `doc.go`：包职责与纯标准库边界声明。
-- `storage.go`：`ExpandHome`、`ResolveConfigFile`、`ResolveConfigDir`、`ResolveCacheDir`、`WriteFileAtomic` 与 `HasBroadPermissions` 实现。
+- `storage.go`：三端配置/缓存目录解析、`~` 主目录展开、支持前置钩子的原子文件落盘与类 Unix 宽权限审计实现。
 
 ## 开发规范
 
 - **三端统一路径**：未显式传入路径或环境变量时，三端均统一落位 `~/.config/<app>/` 与 `~/.cache/<app>/`，避免跨平台文档与运维心智割裂。
-- **原子落盘**：配置文件、密钥库与安装资产统一通过同目录临时文件 `Sync` + `Rename` 原子写入。
+- **原子落盘**：配置文件、密钥库与安装资产统一通过同目录临时文件刷盘后原子替换写入，支持在重命名前执行权限收紧钩子。
 
 ## 验证
 

@@ -97,6 +97,12 @@ func ResolveCacheDir(appDirName, explicitDir, envVarName string, getenv func(str
 
 // WriteFileAtomic 在目标文件同级目录创建临时文件、设置权限、落盘同步后原子重命名替换目标文件。
 func WriteFileAtomic(path string, data []byte, dirPerm, filePerm os.FileMode) error {
+	return WriteFileAtomicWithHook(path, data, dirPerm, filePerm, nil)
+}
+
+// WriteFileAtomicWithHook 与 WriteFileAtomic 相同，但在临时文件关闭落盘后、原子重命名之前执行可选钩子
+// （例如在 Windows NTFS 上提前收紧 Protected DACL，消除重命名后的权限暴露窗口；钩子报错时清理临时文件且不覆盖原目标）。
+func WriteFileAtomicWithHook(path string, data []byte, dirPerm, filePerm os.FileMode, beforeRename func(tmpPath string) error) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return err
@@ -126,6 +132,12 @@ func WriteFileAtomic(path string, data []byte, dirPerm, filePerm os.FileMode) er
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return err
+	}
+	if beforeRename != nil {
+		if err := beforeRename(tmpPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return err
+		}
 	}
 	if err := renameWithRetry(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath)

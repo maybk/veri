@@ -7,10 +7,14 @@ import (
 	"sync"
 )
 
+const maxUntrustedRegexCache = 64
+
 var (
-	validTagNameRe      = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-	validBoundaryIDRe   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
-	untrustedRegexCache sync.Map
+	validTagNameRe    = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	validBoundaryIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+
+	untrustedRegexMu    sync.RWMutex
+	untrustedRegexCache = make(map[string]*regexp.Regexp, 4)
 )
 
 // SanitizeUntrusted 清洗外部文本中伪造的同名开闭标签（含带属性、自闭合或末尾截断形式），防止闭合逃逸。
@@ -51,10 +55,21 @@ func normalizeTagName(tagName string) string {
 
 func cachedBreakoutRegex(tag string) *regexp.Regexp {
 	key := strings.ToLower(tag)
-	if v, ok := untrustedRegexCache.Load(key); ok {
-		return v.(*regexp.Regexp)
+	untrustedRegexMu.RLock()
+	re, ok := untrustedRegexCache[key]
+	untrustedRegexMu.RUnlock()
+	if ok {
+		return re
 	}
-	re := regexp.MustCompile(`(?i)</?\s*` + regexp.QuoteMeta(tag) + `(?:\b[^>]*>?|/\s*>?|$)`)
-	untrustedRegexCache.Store(key, re)
-	return re
+
+	compiled := regexp.MustCompile(`(?i)</?\s*` + regexp.QuoteMeta(tag) + `(?:\b[^>]*>?|/\s*>?|$)`)
+	untrustedRegexMu.Lock()
+	defer untrustedRegexMu.Unlock()
+	if existing, found := untrustedRegexCache[key]; found {
+		return existing
+	}
+	if len(untrustedRegexCache) < maxUntrustedRegexCache {
+		untrustedRegexCache[key] = compiled
+	}
+	return compiled
 }

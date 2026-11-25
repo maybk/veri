@@ -155,3 +155,46 @@ func TestDeeplyNestedDOMSafety(t *testing.T) {
 	cur.AppendChild(&html.Node{Type: html.TextNode, Data: "deep text"})
 	_ = RenderNode(root, Options{})
 }
+
+func BenchmarkConvertString(b *testing.B) {
+	sample := `<!doctype html><html><head><title>Go Concurrency Notes</title></head><body>
+<nav><a href="/">Home</a><a href="/docs">Docs</a></nav>
+<article>
+<h1>Structured Concurrency in Go</h1>
+<p>Use <a href="/pkg/context">context cancellation</a> and <code>errgroup.Group</code> for bounded fan-out.</p>
+<pre><code class="language-go">func fetchAll(ctx context.Context, urls []string) error {
+	var g errgroup.Group
+	g.SetLimit(4)
+	for _, u := range urls {
+		g.Go(func() error { return fetchOne(ctx, u) })
+	}
+	return g.Wait()
+}</code></pre>
+<h2>Comparison</h2>
+<table>
+<thead><tr><th>Mode</th><th>Latency</th><th>Memory</th></tr></thead>
+<tbody>
+<tr><td>Auto</td><td>120ms</td><td>8MB</td></tr>
+<tr><td>Fusion</td><td>240ms</td><td>14MB</td></tr>
+</tbody>
+</table>
+<ul><li>Item one with <strong>bold</strong> and <em>italic</em></li><li>Item two with math <math><mi>x</mi><mo>+</mo><mi>y</mi></math></li></ul>
+</article></body></html>`
+	raw := strings.Repeat(sample, 4)
+	opts := Options{BaseURL: mustParseURL(b, "https://example.com/guide/concurrency")}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := ConvertString(raw, opts); err != nil {
+			b.Fatalf("ConvertString failed: %v", err)
+		}
+	}
+}
+
+func mustParseURL(tb testing.TB, raw string) *url.URL {
+	tb.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		tb.Fatalf("parse URL %q: %v", raw, err)
+	}
+	return u
+}
