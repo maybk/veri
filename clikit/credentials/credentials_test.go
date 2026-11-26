@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"veri/clikit/storage"
 )
 
 func TestVaultLifecycleAndConcurrency(t *testing.T) {
@@ -182,8 +184,9 @@ func TestCrossPlatformPortableMasterKeyAndBOMCRLF(t *testing.T) {
 
 	// 模拟跨平台复制至另一设备，并注入常见 Windows UTF-8 BOM 与 CRLF 换行符。
 	dstDir := t.TempDir()
-	keyWithBOMCRLF := append(append([]byte{}, utf8BOM...), bytes.ReplaceAll(rawKeyFile, []byte("\n"), []byte("\r\n"))...)
-	secretsWithBOMCRLF := append(append([]byte{}, utf8BOM...), bytes.ReplaceAll(rawSecretsFile, []byte("\n"), []byte("\r\n"))...)
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	keyWithBOMCRLF := append(append([]byte{}, bom...), bytes.ReplaceAll(rawKeyFile, []byte("\n"), []byte("\r\n"))...)
+	secretsWithBOMCRLF := append(append([]byte{}, bom...), bytes.ReplaceAll(rawSecretsFile, []byte("\n"), []byte("\r\n"))...)
 	if err := os.WriteFile(filepath.Join(dstDir, DefaultKeyFile), keyWithBOMCRLF, 0o600); err != nil {
 		t.Fatalf("write copied secret.key: %v", err)
 	}
@@ -374,22 +377,121 @@ func TestVaultErrorClassificationAndPermissions(t *testing.T) {
 		if err := permVault.Set("alpha", "sk-perm-1111"); err != nil {
 			t.Fatalf("Set: %v", err)
 		}
-		if HasBroadPermissions(permVault.SecretsPath()) || HasBroadPermissions(permVault.KeyPath()) {
+		if storage.HasBroadPermissions(permVault.SecretsPath()) || storage.HasBroadPermissions(permVault.KeyPath()) {
 			t.Fatal("newly created vault files must not report broad permissions")
 		}
 		if err := os.Chmod(permVault.SecretsPath(), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if !HasBroadPermissions(permVault.SecretsPath()) {
+		if !storage.HasBroadPermissions(permVault.SecretsPath()) {
 			t.Fatal("expected 0644 secrets.json to report broad permissions")
 		}
 		if err := permVault.Set("alpha", "sk-perm-2222"); err != nil {
 			t.Fatalf("re-save Set: %v", err)
 		}
-		if HasBroadPermissions(permVault.SecretsPath()) {
+		if storage.HasBroadPermissions(permVault.SecretsPath()) {
 			t.Fatal("expected re-saved secrets.json permissions to be tightened back to 0600")
 		}
 	}
+
+	// 5. 凭据文件与主密钥为符号链接/悬空符号链接时必须拒绝（不跟随、不篡改目标）。
+	t.Run("reject_symlink_key_and_vault", func(t *testing.T) {
+		symDir := t.TempDir()
+		outsideKey := filepath.Join(symDir, "outside.key")
+		outsideVault := filepath.Join(symDir, "outside.json")
+		if err := os.WriteFile(outsideKey, []byte(otherKey), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(outsideVault, seedSecrets, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		keyLinkDir := filepath.Join(symDir, "key-link")
+		if err := os.MkdirAll(keyLinkDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(keyLinkDir, DefaultSecretsFile), seedSecrets, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outsideKey, filepath.Join(keyLinkDir, DefaultKeyFile)); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("symlink creation unavailable on Windows: %v", err)
+			}
+			t.Fatalf("Symlink secret.key: %v", err)
+		}
+		if _, err := NewVault(keyLinkDir).LoadAll(); !errors.Is(err, ErrMasterKeyInvalid) {
+			t.Fatalf("LoadAll with symlink secret.key = %v, want ErrMasterKeyInvalid", err)
+		}
+
+		vaultLinkDir := filepath.Join(symDir, "vault-link")
+		if err := os.MkdirAll(vaultLinkDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outsideVault, filepath.Join(vaultLinkDir, DefaultSecretsFile)); err != nil {
+			t.Fatalf("Symlink secrets.json: %v", err)
+		}
+		if _, err := NewVault(vaultLinkDir).LoadAll(); !errors.Is(err, ErrVaultCorrupted) {
+			t.Fatalf("LoadAll with symlink secrets.json = %v, want ErrVaultCorrupted", err)
+		}
+
+		danglingDir := filepath.Join(symDir, "dangling")
+		if err := os.MkdirAll(danglingDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(symDir, "absent.json"), filepath.Join(danglingDir, DefaultSecretsFile)); err != nil {
+			t.Fatalf("dangling Symlink secrets.json: %v", err)
+		}
+		if _, err := NewVault(danglingDir).LoadAll(); !errors.Is(err, ErrVaultCorrupted) {
+			t.Fatalf("LoadAll with dangling secrets.json = %v, want ErrVaultCorrupted", err)
+		}
+		if runtime.GOOS != "windows" {
+			for _, outside := range []string{outsideKey, outsideVault} {
+				info, statErr := os.Stat(outside)
+				if statErr != nil || info.Mode().Perm() != 0o644 {
+					t.Fatalf("outside target %q mutated: err=%v mode=%v", outside, statErr, info)
+				}
+			}
+		}
+
+		vaultDirCase := filepath.Join(symDir, "vault-is-dir")
+		if err := os.MkdirAll(filepath.Join(vaultDirCase, DefaultSecretsFile), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewVault(vaultDirCase).LoadAll(); !errors.Is(err, ErrVaultCorrupted) {
+			t.Fatalf("LoadAll with directory secrets.json = %v, want ErrVaultCorrupted", err)
+		}
+
+		oversizedVaultDir := filepath.Join(symDir, "vault-oversized")
+		if err := os.MkdirAll(oversizedVaultDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(oversizedVaultDir, DefaultSecretsFile), bytes.Repeat([]byte("A"), maxVaultFileBytes+16), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewVault(oversizedVaultDir).LoadAll(); !errors.Is(err, ErrVaultCorrupted) {
+			t.Fatalf("LoadAll with oversized secrets.json = %v, want ErrVaultCorrupted", err)
+		}
+	})
+
+	// 6. 写路径遇到超过 5 秒的陈旧空 secret.key 时，可安全清理并重建有效主密钥。
+	t.Run("stale_empty_key_rebuilt_on_write", func(t *testing.T) {
+		staleDir := t.TempDir()
+		keyPath := filepath.Join(staleDir, DefaultKeyFile)
+		if err := os.WriteFile(keyPath, []byte(" \n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		oldTime := time.Now().Add(-10 * time.Second)
+		if err := os.Chtimes(keyPath, oldTime, oldTime); err != nil {
+			t.Fatal(err)
+		}
+		v := NewVault(staleDir)
+		if err := v.Set("alpha", "sk-rebuilt-9999"); err != nil {
+			t.Fatalf("Set after stale empty key failed: %v", err)
+		}
+		if got, err := v.Get("alpha"); err != nil || got != "sk-rebuilt-9999" {
+			t.Fatalf("Get(alpha) = (%q, %v)", got, err)
+		}
+	})
 }
 
 func BenchmarkSealerDecryptCached(b *testing.B) {

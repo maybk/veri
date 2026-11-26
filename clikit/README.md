@@ -7,9 +7,9 @@
 - `doc.go`：包级说明与架构边界定义。
 - `exitcode.go`：标准进程退出码、`SIGINT` / `SIGTERM` 信号上下文与前置标志预扫描。
 - `buildinfo/`：解析内嵌 `build/config.yml` 元信息，合并 `-ldflags` 与 Go VCS 构建信息。
-- `storage/`：跨平台 `~/.config/<app>/` 目录解析、`~` 展开、原子文件写入与权限检查。
+- `storage/`：跨平台配置/缓存目录解析、`~` 展开、原子写入、三端权限保护与防 TOCTOU 常规文件读取。
 - `redact/`：敏感密钥遮蔽、认证头识别、URL 参数清洗与自动脱敏 `slog` 日志器。
-- `credentials/`：基于 AES-256-GCM 跨平台主密钥与系统文件权限保护的加密凭据库。
+- `credentials/`：基于 AES-256-GCM 跨平台主密钥的加密凭据库。
 - `i18n/`：三端零 CGO 系统语言探测与基于 `fs.FS` 的多语言词表加载及对称校验。
 - `term/`：交互终端检测、ANSI 样式、无回显敏感输入读取、对齐表格与不可信文本标签包裹。
 - `skill/`：内嵌 `SKILL.md` 读取与跨平台标准目录原子安装。

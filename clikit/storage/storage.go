@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"time"
 )
 
 // ExpandHome 将路径开头的 "~"、"~/..." 或 "~\..." 跨平台展开为当前用户主目录并规范化分隔符。
@@ -93,78 +91,4 @@ func ResolveCacheDir(appDirName, explicitDir, envVarName string, getenv func(str
 		return "", fmt.Errorf("cannot determine user home directory: %w", err)
 	}
 	return filepath.Join(home, ".cache", appDirName), nil
-}
-
-// WriteFileAtomic 在目标文件同级目录创建临时文件、设置权限、落盘同步后原子重命名替换目标文件。
-func WriteFileAtomic(path string, data []byte, dirPerm, filePerm os.FileMode) error {
-	return WriteFileAtomicWithHook(path, data, dirPerm, filePerm, nil)
-}
-
-// WriteFileAtomicWithHook 与 WriteFileAtomic 相同，但在临时文件关闭落盘后、原子重命名之前执行可选钩子
-// （例如在 Windows NTFS 上提前收紧 Protected DACL，消除重命名后的权限暴露窗口；钩子报错时清理临时文件且不覆盖原目标）。
-func WriteFileAtomicWithHook(path string, data []byte, dirPerm, filePerm os.FileMode, beforeRename func(tmpPath string) error) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	cleanup := func() {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-	}
-
-	if err := tmp.Chmod(filePerm); err != nil {
-		cleanup()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		cleanup()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		cleanup()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if beforeRename != nil {
-		if err := beforeRename(tmpPath); err != nil {
-			_ = os.Remove(tmpPath)
-			return err
-		}
-	}
-	if err := renameWithRetry(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	return nil
-}
-
-func renameWithRetry(src, dst string) error {
-	err := os.Rename(src, dst)
-	if err == nil || runtime.GOOS != "windows" {
-		return err
-	}
-	// 从外部介质复制过来的目标文件在 Windows 上可能带有只读属性，清除后再重试原子替换。
-	if info, statErr := os.Stat(dst); statErr == nil && !info.IsDir() && (info.Mode()&0o200) == 0 {
-		_ = os.Chmod(dst, 0o600)
-	}
-	for range 3 {
-		time.Sleep(5 * time.Millisecond)
-		if err = os.Rename(src, dst); err == nil {
-			return nil
-		}
-	}
-	return err
-}
-
-// HasBroadPermissions 判断类 Unix 系统下敏感文件是否向组或其他用户暴露了读写执行权限（宽于 0600）。
-func HasBroadPermissions(mode os.FileMode) bool {
-	return runtime.GOOS != "windows" && (mode.Perm()&0o077) != 0
 }

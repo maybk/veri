@@ -370,7 +370,13 @@ func statDiskCache(cacheDir string, now time.Time) DiskCacheStats {
 		}
 		fullPath := filepath.Join(vDir, name)
 		rec, readErr := readDiskCacheRecord(fullPath)
-		if readErr != nil || rec.Version != diskCacheVersion || rec.Kind != kind || rec.Envelope == nil || !now.Before(rec.ExpiresAt) {
+		if readErr != nil {
+			if !errors.Is(readErr, os.ErrNotExist) && !errors.Is(readErr, errNotRegularFile) {
+				_ = os.Remove(fullPath)
+			}
+			continue
+		}
+		if rec.Version != diskCacheVersion || rec.Kind != kind || rec.Envelope == nil || !now.Before(rec.ExpiresAt) {
 			_ = os.Remove(fullPath)
 			continue
 		}
@@ -410,15 +416,11 @@ func encodeDiskCacheRecord(rec *diskCacheRecord) ([]byte, error) {
 
 func readDiskCacheRecord(path string) (*diskCacheRecord, error) {
 	cleanPath := filepath.Clean(path)
-	fi, err := os.Lstat(cleanPath)
+	f, _, err := storage.OpenRegularFileNoFollow(cleanPath)
 	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, errNotRegularFile
-	}
-	f, err := os.Open(cleanPath) // #nosec G304 -- path constrained to managed cacheDir/v1/<kind>-<sha256>.json.gz
-	if err != nil {
+		if errors.Is(err, os.ErrInvalid) {
+			return nil, errNotRegularFile
+		}
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()

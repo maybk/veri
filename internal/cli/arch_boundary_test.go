@@ -223,10 +223,14 @@ func checkImportBoundary(t *testing.T, relFile, pkgDir, impPath, modulePrefix st
 	isNonStdlib := strings.Contains(impPath, ".") || strings.HasPrefix(impPath, modulePrefix) || impPath == "veri"
 
 	switch pkgDir {
-	case "clikit", "clikit/buildinfo", "clikit/storage", "clikit/redact",
+	case "clikit", "clikit/buildinfo", "clikit/redact",
 		"internal/spec", "internal/mdscan", "internal/urlnorm", "internal/keypool":
 		if isNonStdlib {
 			t.Errorf("%s imports non-stdlib package %q", relFile, impPath)
+		}
+	case "clikit/storage":
+		if isNonStdlib && impPath != "golang.org/x/sys/windows" {
+			t.Errorf("%s in clikit/storage imports forbidden package %q (only stdlib and golang.org/x/sys/windows are permitted)", relFile, impPath)
 		}
 	case "internal/textnorm":
 		if isNonStdlib && impPath != modulePrefix+"internal/mdscan" {
@@ -266,8 +270,8 @@ func checkImportBoundary(t *testing.T, relFile, pkgDir, impPath, modulePrefix st
 	if impPath == "golang.org/x/term" && pkgDir != "clikit/term" {
 		t.Errorf("%s imports golang.org/x/term outside clikit/term", relFile)
 	}
-	if strings.HasPrefix(impPath, "golang.org/x/sys") && pkgDir != "clikit/i18n" && pkgDir != "clikit/credentials" {
-		t.Errorf("%s imports golang.org/x/sys outside clikit/i18n or clikit/credentials", relFile)
+	if strings.HasPrefix(impPath, "golang.org/x/sys") && pkgDir != "clikit/i18n" && pkgDir != "clikit/storage" {
+		t.Errorf("%s imports golang.org/x/sys outside clikit/i18n or clikit/storage", relFile)
 	}
 	if strings.HasPrefix(impPath, "golang.org/x/sync") {
 		if impPath != "golang.org/x/sync/errgroup" || (pkgDir != "internal/router" && pkgDir != "internal/app") {

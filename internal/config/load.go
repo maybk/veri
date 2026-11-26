@@ -248,14 +248,14 @@ func LoadWithEnv(explicitPath string, getenv func(string) string) (*Loaded, erro
 		}
 	}
 
-	if out.FileExists && hasPlain && credentials.HasBroadPermissions(cfgPath) {
+	if out.FileExists && hasPlain && storage.HasBroadPermissions(cfgPath) {
 		out.PermWarning = true
 	}
-	if fi, sErr := os.Stat(out.SecretsPath); sErr == nil && !fi.IsDir() {
+	if fi, sErr := os.Lstat(out.SecretsPath); sErr == nil && fi.Mode().IsRegular() {
 		out.SecretsExists = true
 	}
 	for _, fname := range []string{spec.SecretsFileName, spec.SecretKeyFileName} {
-		if credentials.HasBroadPermissions(filepath.Join(secretsDir, fname)) {
+		if storage.HasBroadPermissions(filepath.Join(secretsDir, fname)) {
 			out.VaultPermWarning = true
 			break
 		}

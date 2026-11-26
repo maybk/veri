@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"veri/clikit/storage"
 )
 
 // DefaultKeyFile 是跨平台主密钥在应用配置目录下的默认文件名。
@@ -22,21 +24,19 @@ const DefaultKeyFile = "secret.key"
 const (
 	masterKeySize     = 32
 	maxMasterKeyBytes = 4096
+	staleEmptyKeyAge  = 5 * time.Second
 )
 
 var (
 	// ErrMasterKeyMissing 表示凭据目录中缺少主密钥文件 secret.key。
 	ErrMasterKeyMissing = errors.New("master key file missing")
-	// ErrMasterKeyInvalid 表示主密钥文件 secret.key 格式无效、为空或长度不合法。
+	// ErrMasterKeyInvalid 表示主密钥文件 secret.key 格式无效、为空、为非常规文件或长度不合法。
 	ErrMasterKeyInvalid = errors.New("invalid master key file")
 	// ErrDecryptFailed 表示主密钥与密文不匹配或密文已被篡改。
 	ErrDecryptFailed = errors.New("decrypt credential failed")
 )
 
-var (
-	utf8BOM              = []byte{0xEF, 0xBB, 0xBF}
-	errKeyFileIncomplete = errors.New("master key file is being written")
-)
+var errKeyFileIncomplete = errors.New("master key file is being written")
 
 // Sealer 使用保存在配置目录 secret.key 的跨平台 256 位主密钥提供并发安全的 AES-256-GCM 加解密。
 type Sealer struct {
@@ -60,7 +60,8 @@ func (v *Sealer) cipher(createIfMissing bool) (cipher.AEAD, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.cachedGCM != nil && v.keyInfo != nil {
-		if info, err := os.Stat(v.keyPath); err == nil &&
+		if info, err := os.Lstat(v.keyPath); err == nil &&
+			info.Mode().IsRegular() &&
 			os.SameFile(info, v.keyInfo) &&
 			info.ModTime().Equal(v.keyInfo.ModTime()) &&
 			info.Size() == v.keyInfo.Size() {
@@ -100,8 +101,10 @@ func (v *Sealer) encrypt(plaintext string, createIfMissing bool) (string, error)
 	if err != nil {
 		return "", err
 	}
+	plain := []byte(plaintext)
+	defer clear(plain)
 	//nolint:gosec // G407: NewGCMWithRandomNonce 要求传入 nil nonce，并在内部自动生成随机 96 位 nonce 前缀
-	sealed := gcm.Seal(nil, nil, []byte(plaintext), nil)
+	sealed := gcm.Seal(nil, nil, plain, nil)
 	return base64.StdEncoding.EncodeToString(sealed), nil
 }
 
@@ -120,6 +123,7 @@ func (v *Sealer) Decrypt(encoded string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrDecryptFailed, err)
 	}
+	defer clear(plain)
 	return string(plain), nil
 }
 
@@ -148,7 +152,11 @@ func (v *Sealer) createKeyLocked() ([]byte, os.FileInfo, error) {
 	if _, err := rand.Read(newKey); err != nil {
 		return nil, nil, fmt.Errorf("generate master key: %w", err)
 	}
-	payload := base64.StdEncoding.EncodeToString(newKey) + "\n"
+	encodedLen := base64.StdEncoding.EncodedLen(len(newKey))
+	payload := make([]byte, encodedLen+1)
+	base64.StdEncoding.Encode(payload[:encodedLen], newKey)
+	payload[encodedLen] = '\n'
+	defer clear(payload)
 
 	dir := filepath.Dir(v.keyPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -170,7 +178,7 @@ func (v *Sealer) createKeyLocked() ([]byte, os.FileInfo, error) {
 		clear(newKey)
 		return nil, nil, err
 	}
-	if _, err := tmp.WriteString(payload); err != nil {
+	if _, err := tmp.Write(payload); err != nil {
 		_ = tmp.Close()
 		clear(newKey)
 		return nil, nil, err
@@ -184,7 +192,7 @@ func (v *Sealer) createKeyLocked() ([]byte, os.FileInfo, error) {
 		clear(newKey)
 		return nil, nil, err
 	}
-	if err := restrictFilePermissions(tmpPath); err != nil {
+	if err := storage.RestrictPrivateFile(tmpPath); err != nil {
 		clear(newKey)
 		return nil, nil, err
 	}
@@ -198,11 +206,11 @@ func (v *Sealer) createKeyLocked() ([]byte, os.FileInfo, error) {
 		return v.createExclFallbackLocked(newKey, payload)
 	}
 
-	info, _ := os.Stat(v.keyPath)
+	info, _ := os.Lstat(v.keyPath)
 	return newKey, info, nil
 }
 
-func (v *Sealer) createExclFallbackLocked(newKey []byte, payload string) ([]byte, os.FileInfo, error) {
+func (v *Sealer) createExclFallbackLocked(newKey, payload []byte) ([]byte, os.FileInfo, error) {
 	f, err := os.OpenFile(v.keyPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if errors.Is(err, fs.ErrExist) {
 		clear(newKey)
@@ -212,7 +220,7 @@ func (v *Sealer) createExclFallbackLocked(newKey []byte, payload string) ([]byte
 		clear(newKey)
 		return nil, nil, err
 	}
-	if _, err := f.WriteString(payload); err != nil {
+	if _, err := f.Write(payload); err != nil {
 		_ = f.Close()
 		_ = os.Remove(v.keyPath)
 		clear(newKey)
@@ -229,12 +237,12 @@ func (v *Sealer) createExclFallbackLocked(newKey []byte, payload string) ([]byte
 		clear(newKey)
 		return nil, nil, err
 	}
-	if err := restrictFilePermissions(v.keyPath); err != nil {
+	if err := storage.RestrictPrivateFile(v.keyPath); err != nil {
 		_ = os.Remove(v.keyPath)
 		clear(newKey)
 		return nil, nil, err
 	}
-	info, _ := os.Stat(v.keyPath)
+	info, _ := os.Lstat(v.keyPath)
 	return newKey, info, nil
 }
 
@@ -261,42 +269,48 @@ func (v *Sealer) waitForConcurrentKeyWriteLocked(allowStaleCleanup bool) ([]byte
 }
 
 func (v *Sealer) readKey(allowStaleCleanup bool) ([]byte, os.FileInfo, error) {
-	info, err := os.Stat(v.keyPath)
+	data, info, err := storage.ReadRegularFileBoundedWithInfo(v.keyPath, maxMasterKeyBytes)
 	if err != nil {
-		return nil, nil, err
-	}
-	if info.IsDir() {
-		return nil, nil, fmt.Errorf("%w: path is a directory", ErrMasterKeyInvalid)
-	}
-	if info.Size() > maxMasterKeyBytes {
-		return nil, nil, fmt.Errorf("%w: file exceeds %d bytes", ErrMasterKeyInvalid, maxMasterKeyBytes)
-	}
-	data, err := os.ReadFile(v.keyPath)
-	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
+			return nil, nil, err
+		}
+		if errors.Is(err, os.ErrInvalid) || errors.Is(err, storage.ErrFileTooLarge) {
+			return nil, nil, fmt.Errorf("%w: %w", ErrMasterKeyInvalid, err)
+		}
 		return nil, nil, err
 	}
 	defer clear(data)
-	trimmed := strings.TrimSpace(string(stripUTF8BOM(data)))
-	if trimmed == "" {
-		if time.Since(info.ModTime()) > 5*time.Second {
+
+	trimmed := bytes.TrimSpace(storage.StripUTF8BOM(data))
+	if len(trimmed) == 0 {
+		if time.Since(info.ModTime()) > staleEmptyKeyAge {
 			if allowStaleCleanup {
-				_ = os.Remove(v.keyPath)
-				return nil, nil, fs.ErrNotExist
+				// 删除陈旧空文件前再次核验文件身份，防止误删并发进程刚落盘的有效主密钥。
+				if cur, statErr := os.Lstat(v.keyPath); statErr == nil &&
+					cur.Mode().IsRegular() &&
+					os.SameFile(cur, info) &&
+					cur.ModTime().Equal(info.ModTime()) &&
+					cur.Size() == info.Size() {
+					_ = os.Remove(v.keyPath)
+					return nil, nil, fs.ErrNotExist
+				}
+				return nil, nil, errKeyFileIncomplete
 			}
 			return nil, nil, fmt.Errorf("%w: empty master key file", ErrMasterKeyInvalid)
 		}
 		return nil, nil, errKeyFileIncomplete
 	}
-	key, err := base64.StdEncoding.DecodeString(trimmed)
+
+	key := make([]byte, base64.StdEncoding.DecodedLen(len(trimmed)))
+	n, err := base64.StdEncoding.Decode(key, trimmed)
 	if err != nil {
+		clear(key)
 		return nil, nil, fmt.Errorf("%w: decode base64: %w", ErrMasterKeyInvalid, err)
 	}
+	key = key[:n]
 	if len(key) != masterKeySize {
+		clear(key)
 		return nil, nil, fmt.Errorf("%w: expected %d-byte key, got %d bytes", ErrMasterKeyInvalid, masterKeySize, len(key))
 	}
 	return key, info, nil
-}
-
-func stripUTF8BOM(data []byte) []byte {
-	return bytes.TrimPrefix(data, utf8BOM)
 }

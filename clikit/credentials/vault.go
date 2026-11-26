@@ -237,25 +237,20 @@ func normalizeVaultKey(raw string) (string, error) {
 }
 
 func (v *Vault) readMapLocked() (map[string]string, error) {
-	info, err := os.Stat(v.secretsPath)
+	data, err := storage.ReadRegularFileBounded(v.secretsPath, maxVaultFileBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string]string{}, nil
 	}
 	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return nil, err
+		}
+		if errors.Is(err, os.ErrInvalid) || errors.Is(err, storage.ErrFileTooLarge) {
+			return nil, fmt.Errorf("%w: %s: %w", ErrVaultCorrupted, DefaultSecretsFile, err)
+		}
 		return nil, err
 	}
-	if info.IsDir() {
-		return nil, fmt.Errorf("%w: %s is a directory", ErrVaultCorrupted, DefaultSecretsFile)
-	}
-	if info.Size() > maxVaultFileBytes {
-		return nil, fmt.Errorf("%w: %s exceeds %d bytes", ErrVaultCorrupted, DefaultSecretsFile, maxVaultFileBytes)
-	}
-
-	data, err := os.ReadFile(v.secretsPath)
-	if err != nil {
-		return nil, err
-	}
-	trimmed := bytes.TrimSpace(stripUTF8BOM(data))
+	trimmed := bytes.TrimSpace(storage.StripUTF8BOM(data))
 	if len(trimmed) == 0 {
 		return map[string]string{}, nil
 	}
@@ -292,5 +287,5 @@ func (v *Vault) writeMapLocked(m map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return storage.WriteFileAtomicWithHook(v.secretsPath, append(encoded, '\n'), 0o700, 0o600, restrictFilePermissions)
+	return storage.WritePrivateFile(v.secretsPath, append(encoded, '\n'))
 }

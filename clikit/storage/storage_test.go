@@ -53,22 +53,23 @@ func TestResolveConfigFilePrecedence(t *testing.T) {
 
 func TestWriteFileAtomicAndPermissions(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "nested", "secrets.json")
-	if err := WriteFileAtomic(target, []byte("hello\n"), 0o700, 0o600); err != nil {
-		t.Fatalf("WriteFileAtomic failed: %v", err)
+	if err := WritePrivateFile(target, []byte("hello\n")); err != nil {
+		t.Fatalf("WritePrivateFile failed: %v", err)
 	}
 	raw, err := os.ReadFile(target)
 	if err != nil || string(raw) != "hello\n" {
 		t.Fatalf("ReadFile = (%q, %v)", string(raw), err)
 	}
-	info, err := os.Stat(target)
-	if err != nil {
-		t.Fatalf("Stat failed: %v", err)
+	if HasBroadPermissions(target) {
+		t.Fatal("expected WritePrivateFile output not to report broad permissions")
 	}
-	if HasBroadPermissions(info.Mode()) {
-		t.Fatalf("expected 0600 file not to have broad permissions, got %v", info.Mode())
-	}
-	if runtime.GOOS != "windows" && !HasBroadPermissions(0o644) {
-		t.Fatal("expected 0644 to report broad permissions on Unix")
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(target, 0o644); err != nil {
+			t.Fatalf("Chmod 0644 failed: %v", err)
+		}
+		if !HasBroadPermissions(target) {
+			t.Fatal("expected 0644 file to report broad permissions on Unix")
+		}
 	}
 
 	// 校验 WriteFileAtomicWithHook 在重命名前调用钩子；钩子失败时不得覆盖已有文件且自动清理临时文件。
@@ -102,6 +103,14 @@ func TestWriteFileAtomicAndPermissions(t *testing.T) {
 	}
 	if afterOK, err := os.ReadFile(target); err != nil || string(afterOK) != "updated\n" {
 		t.Fatalf("ReadFile after hook = (%q, %v)", string(afterOK), err)
+	}
+
+	bomPayload := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"bom":true}`)...)
+	if got := string(StripUTF8BOM(bomPayload)); got != `{"bom":true}` {
+		t.Fatalf("StripUTF8BOM = %q, want %q", got, `{"bom":true}`)
+	}
+	if got := string(StripUTF8BOM([]byte(`{"plain":true}`))); got != `{"plain":true}` {
+		t.Fatalf("StripUTF8BOM(plain) = %q", got)
 	}
 }
 
