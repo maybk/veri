@@ -1,4 +1,4 @@
-# 项目概览与目录结构
+# 项目架构与目录结构
 
 `veri` 是面向 AI Agent 和开发者的纯 Go 单二进制多源联网检索与网页 Markdown 提取工具，跨平台支持 macOS、Windows 与 Linux，同时提供命令行界面（CLI）、MCP 服务端（`veri mcp`）与 Agent Skill（`veri skill`）。
 
@@ -10,23 +10,23 @@ main.go -> internal/cli | internal/mcpserver -> internal/app -> internal/router 
 
 | 模块 | 职责 | 边界约束 |
 | --- | --- | --- |
-| [`internal/cli`](../../internal/cli/README.md) | Cobra 命令行解析、双语终端词表、密钥管理与架构合规测试 | 薄适配层，不直接承载路由或网络请求 |
-| [`internal/mcpserver`](../../internal/mcpserver/README.md) | 基于官方 MCP Go SDK 的 stdio 服务端（`web_search` / `web_fetch`） | 工具描述与结构化输出固定使用英文 |
-| [`internal/app`](../../internal/app/README.md) | 显式 Provider 注册装配、CLI 磁盘缓存、MCP 内存缓存、并发请求合并与 `doctor` 诊断 | 禁用包级 `init()` 隐式注册 |
-| [`internal/update`](../../internal/update/README.md) | 官方 Release 版本检查、摘要校验、安装形态识别与跨平台原子自更新 | 网络经 `httpx`，元数据与摘要仅信任官方源 |
-| [`internal/router`](../../internal/router/README.md) | 链式自动回退、并发 RRF 融合、网页提取选路与 404/空结果短路、质量闸门、过滤模拟与预算截断 | 仅导入内部包 `core` / `mdscan` / `spec` / `textnorm` / `urlnorm` |
-| [`internal/provider`](../../internal/provider/README.md) | 各云端检索/提取源与本地/GitHub 网页提取适配器 | 互不导入，不感知外层路由与缓存 |
-| [`internal/httpx`](../../internal/httpx/README.md) | 安全 HTTP 客户端、SSRF 拨号拦截、TUN Fake-IP 放行、并发闸门与计费安全重试 | 严禁使用 `http.DefaultClient` |
-| [`internal/htmlmd`](../../internal/htmlmd/README.md) | HTML DOM 预处理（代码块、公式/MathML、隐藏节点清洗）与紧凑 GFM Markdown 渲染 | 仅依赖标准库、`golang.org/x/net/html` 与 `mdscan` |
-| [`internal/keypool`](../../internal/keypool/README.md) | 同厂商多密钥轮询、按状态退避冷却与失效隔离 | 仅依赖 Go 标准库 |
-| [`internal/urlnorm`](../../internal/urlnorm/README.md) | URL 规范化、追踪参数剥离与融合去重键生成 | 仅依赖 Go 标准库 |
-| [`internal/textnorm`](../../internal/textnorm/README.md) | 文本归一化、隐形注入剥离、宽容时间解析、正文质量闸门与内容指纹 | 仅依赖标准库与 `mdscan` |
-| [`internal/mdscan`](../../internal/mdscan/README.md) | Markdown 围栏代码块状态机与 ATX 标题扫描 | 仅依赖 Go 标准库 |
-| [`internal/config`](../../internal/config/README.md) | `~/.config/veri/` 配置加载、TOML 严格校验与三级凭据合并 | 全仓仅在此包导入 `BurntSushi/toml` |
-| [`internal/render`](../../internal/render/README.md) | Markdown / JSON / JSONL / URL 列表格式化渲染与不可信内容包裹 | 不依赖界面本地化词表 |
-| [`internal/core`](../../internal/core/README.md) | 核心领域实体、输出信封、正交接口、微单位成本、时间窗与标准错误码 | 仅依赖标准库、`spec` 与 `textnorm` |
-| [`internal/spec`](../../internal/spec/README.md) | 应用身份标识、内置 Provider 注册表、扩展选项键与跨包默认边界常量 | 仅依赖 Go 标准库 |
-| [`clikit`](../../clikit/README.md) | 命令行通用基础组件（构建信息、存储、加密凭据、脱敏、多语言、终端与技能安装） | 严禁引用 `veri/internal/**` |
+| [`internal/cli`](../../../internal/cli/README.md) | Cobra 命令行解析、双语终端词表、密钥管理与架构合规测试 | 薄适配层，不直接承载路由或网络请求 |
+| [`internal/mcpserver`](../../../internal/mcpserver/README.md) | 基于官方 MCP Go SDK 的 stdio 服务端（`web_search` / `web_fetch`） | 工具描述与结构化输出固定使用英文 |
+| [`internal/app`](../../../internal/app/README.md) | 显式 Provider 注册装配、CLI 磁盘缓存、MCP 内存缓存、并发请求合并与 `doctor` 诊断 | 禁用包级 `init()` 隐式注册 |
+| [`internal/update`](../../../internal/update/README.md) | 官方 Release 版本检查、摘要校验、安装形态识别与跨平台原子自更新 | 网络经 `httpx`，元数据与摘要仅信任官方源 |
+| [`internal/router`](../../../internal/router/README.md) | 链式自动回退、并发 RRF 融合、网页提取选路与 404/空结果短路、质量闸门、过滤模拟与预算截断 | 仅导入内部包 `core` / `mdscan` / `spec` / `textnorm` / `urlnorm` |
+| [`internal/provider`](../../../internal/provider/README.md) | 各云端检索/提取源与本地/GitHub 网页提取适配器 | 互不导入，不感知外层路由与缓存 |
+| [`internal/httpx`](../../../internal/httpx/README.md) | 安全 HTTP 客户端、SSRF 拨号拦截、TUN Fake-IP 放行、并发闸门与计费安全重试 | 严禁使用 `http.DefaultClient` |
+| [`internal/htmlmd`](../../../internal/htmlmd/README.md) | HTML DOM 预处理（代码块、公式/MathML、隐藏节点清洗）与紧凑 GFM Markdown 渲染 | 仅依赖标准库、`golang.org/x/net/html` 与 `mdscan` |
+| [`internal/keypool`](../../../internal/keypool/README.md) | 同厂商多密钥轮询、按状态退避冷却与失效隔离 | 仅依赖 Go 标准库 |
+| [`internal/urlnorm`](../../../internal/urlnorm/README.md) | URL 规范化、追踪参数剥离与融合去重键生成 | 仅依赖 Go 标准库 |
+| [`internal/textnorm`](../../../internal/textnorm/README.md) | 文本归一化、隐形注入剥离、宽容时间解析、正文质量闸门与内容指纹 | 仅依赖标准库与 `mdscan` |
+| [`internal/mdscan`](../../../internal/mdscan/README.md) | Markdown 围栏代码块状态机与 ATX 标题扫描 | 仅依赖 Go 标准库 |
+| [`internal/config`](../../../internal/config/README.md) | `~/.config/veri/` 配置加载、TOML 严格校验与三级凭据合并 | 全仓仅在此包导入 `BurntSushi/toml` |
+| [`internal/render`](../../../internal/render/README.md) | Markdown / JSON / JSONL / URL 列表格式化渲染与不可信内容包裹 | 不依赖界面本地化词表 |
+| [`internal/core`](../../../internal/core/README.md) | 核心领域实体、输出信封、正交接口、微单位成本、时间窗与标准错误码 | 仅依赖标准库、`spec` 与 `textnorm` |
+| [`internal/spec`](../../../internal/spec/README.md) | 应用身份标识、内置 Provider 注册表、扩展选项键与跨包默认边界常量 | 仅依赖 Go 标准库 |
+| [`clikit`](../../../clikit/README.md) | 命令行通用基础组件（构建信息、存储、加密凭据、脱敏、多语言、终端与技能安装） | 严禁引用 `veri/internal/**` |
 
 ## 目录结构
 
@@ -81,7 +81,8 @@ veri/
 │   └── windows/               # Windows 独立构建与打包任务
 ├── scripts/                   # 版本提取、发版准备、Release 说明与安装脚本
 ├── .github/                   # PR 模板、Dependabot 与 CI / Release / Rolling 工作流
-├── docs/guide/                # 稳定项目指南
+├── docs/                      # 项目文档（zh/guide、zh/dev、en/guide）
+├── llms-install.md            # 面向 AI Agent 与 MCP 客户端的自主安装指令
 ├── CHANGELOG.md               # 版本更新日志
 └── Taskfile.yml               # 根级开发与打包任务入口
 ```

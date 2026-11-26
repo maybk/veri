@@ -364,5 +364,5 @@ say "  ${BINARY} update"
 if [ -z "${HOME:-}" ] || [ ! -f "${HOME}/.agents/skills/${BINARY}/SKILL.md" ]; then
   say ""
   say "Optional Agent Skill:"
-  say "  npx skills add ${REPO}   (offline: ${BINARY} skill install)"
+  say "  npx skills add ${REPO} -g   (offline: ${BINARY} skill install)"
 fi

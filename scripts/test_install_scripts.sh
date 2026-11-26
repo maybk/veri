@@ -22,7 +22,7 @@ grep -Fq "Get-FileHash" "$install_ps1"
 grep -Fq "DoNotExpandEnvironmentNames" "$install_ps1"
 grep -Fq "RegistryValueKind]::ExpandString" "$install_ps1"
 grep -Fq '.agents\skills\veri\SKILL.md' "$install_ps1"
-grep -Fq 'npx skills add' "$install_ps1"
+grep -Fq 'npx skills add $Repo -g' "$install_ps1"
 grep -Fq 'Fail "Invalid mirror prefix: must be an https:// URL without credentials, query, or fragment"' "$install_ps1"
 if grep -Fq "http://" "$install_ps1"; then
   echo "install.ps1 must not hardcode insecure http:// URLs" >&2
@@ -177,7 +177,7 @@ install_out="$(HOME="$fake_home" VERI_GITHUB_BASE="$base_url" sh "$install_sh" -
 test -x "$install_dir/veri"
 out_ver="$("$install_dir/veri")"
 [ "$out_ver" = "veri 0.2.0 (mock)" ]
-grep -Fq "npx skills add maybk/veri" <<<"$install_out"
+grep -Fq "npx skills add maybk/veri -g" <<<"$install_out"
 grep -Fq "veri skill install" <<<"$install_out"
 
 # 4b. 已安装标准路径 SKILL.md 时静默跳过 Skill 提示

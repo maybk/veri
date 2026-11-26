@@ -15,7 +15,7 @@ import (
 )
 
 // TestProviderRegistrationCompletenessAndRouterNeutrality 确保新增或调整 Provider 时：
-// 1. spec.Providers() 登记表与 app 装配工厂、配置模板、docs/guide/providers.md 完全同步；
+// 1. spec.Providers() 登记表与 app 装配工厂、配置模板、docs/{zh,en}/guide/providers.md 完全同步；
 // 2. internal/router 业务代码不硬编码任何云端厂商名称常量（仅允许区分本地提取角色 ProviderLocal）。
 func TestProviderRegistrationCompletenessAndRouterNeutrality(t *testing.T) {
 	repoRoot := filepath.Clean(filepath.Join("..", ".."))
@@ -34,11 +34,18 @@ func TestProviderRegistrationCompletenessAndRouterNeutrality(t *testing.T) {
 		statusByName[st.Name] = st
 	}
 
-	providersGuideBytes, err := os.ReadFile(filepath.Join(repoRoot, "docs", "guide", "providers.md"))
-	if err != nil {
-		t.Fatalf("read docs/guide/providers.md: %v", err)
+	providerGuidePaths := []string{
+		filepath.Join("docs", "zh", "guide", "providers.md"),
+		filepath.Join("docs", "en", "guide", "providers.md"),
 	}
-	providersGuide := string(providersGuideBytes)
+	providerGuides := make(map[string]string, len(providerGuidePaths))
+	for _, relPath := range providerGuidePaths {
+		raw, err := os.ReadFile(filepath.Join(repoRoot, relPath))
+		if err != nil {
+			t.Fatalf("read %s: %v", filepath.ToSlash(relPath), err)
+		}
+		providerGuides[filepath.ToSlash(relPath)] = string(raw)
+	}
 	zhTpl := config.TemplateForLocale("zh-CN")
 	enTpl := config.TemplateForLocale("en-US")
 
@@ -55,8 +62,10 @@ func TestProviderRegistrationCompletenessAndRouterNeutrality(t *testing.T) {
 		if st.Role != info.Roles.String() {
 			t.Errorf("provider %q factory role=%q mismatches spec role=%q", info.Name, st.Role, info.Roles.String())
 		}
-		if !strings.Contains(providersGuide, "| `"+info.Name+"` |") {
-			t.Errorf("docs/guide/providers.md missing adapter matrix row for %q", info.Name)
+		for relPath, guideText := range providerGuides {
+			if !strings.Contains(guideText, "| `"+info.Name+"` |") {
+				t.Errorf("%s missing adapter matrix row for %q", relPath, info.Name)
+			}
 		}
 		section := "[providers." + info.Name + "]"
 		if !strings.Contains(zhTpl, section) || !strings.Contains(enTpl, section) {

@@ -7,7 +7,7 @@
   Single pure-Go binary with zero runtime dependencies — shipping a <strong>CLI</strong>, <strong>MCP Server</strong>, and <strong>Agent Skill</strong>
 </p>
 
-**[简体中文](./README.md)** · **English** &nbsp;|&nbsp; **[Usage Guide](./docs/guide/usage.md)**
+**[简体中文](./README.md)** · **English** &nbsp;|&nbsp; **[Usage Guide](./docs/en/guide/usage.md)**
 
 ![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-stdio-4A5568)
@@ -24,6 +24,14 @@
 ---
 
 ## 📦 Download & Installation
+
+### Install with AI
+
+Paste this prompt into your AI agent (Claude Code, Cursor, Codex, Cline, etc.):
+
+```text
+Install and configure veri for me: https://raw.githubusercontent.com/maybk/veri/main/llms-install.md
+```
 
 ### Install Script
 
@@ -76,33 +84,22 @@ winget install maybk.Veri
 
 ### Manual Download
 
-Prebuilt archives and `SHA256SUMS.txt` checksums are available on [GitHub Releases](https://github.com/maybk/veri/releases); script or manual binary installs can check and upgrade via `veri update`. To build from source, see the [Development & Build Guide](./docs/guide/development.md).
+Prebuilt archives and `SHA256SUMS.txt` checksums are available on [GitHub Releases](https://github.com/maybk/veri/releases); script or manual binary installs can check and upgrade via `veri update`. To build from source, see the [Development & Build Guide](./docs/zh/dev/build.md) (Chinese).
 
 ## 🚀 Quick Start
 
 > [!TIP]
-> Web page and GitHub extraction works **out of the box with no API keys**; configuring any single search provider key unlocks web search and cloud extraction. For full walkthroughs, command recipes, and troubleshooting, see the **[Usage Guide](./docs/guide/usage.md)**.
+> Web page and GitHub extraction works **out of the box with no API keys**; configuring any single search provider key unlocks web search and cloud extraction. For full walkthroughs, command recipes, and troubleshooting, see the **[Usage Guide](./docs/en/guide/usage.md)**.
 
 ### 1. Configure API Keys
 
-Credentials are encrypted under `~/.config/veri/` and shared automatically between the CLI and MCP server (see [provider free tiers and API key portals](./docs/guide/usage.md#选型与官方申请入口)):
+Save any search provider key interactively with `veri key set <provider>`; encrypted credentials are shared automatically between the CLI and MCP server ([supported providers and signup portals](./docs/en/guide/usage.md#supported-providers-and-signup-portals)):
 
 ```bash
-veri key set exa
-veri key list
-```
-
-You can also pass keys via environment variables (highest precedence); see the [Configuration Guide](./docs/guide/configuration.md) for batch import and option overrides:
-
-```bash
-export EXA_API_KEY="exa_..."
-```
-
-Check active providers and health:
-
-```bash
-veri providers
-veri doctor
+veri key set exa        # Replace with any provider ID (e.g. tavily, parallel, brave, deepseek)
+veri key list           # List all supported provider IDs and credential sources
+veri providers          # Inspect enabled search and fetch providers
+veri doctor             # Verify local configuration and network health
 ```
 
 ### 2. Command-Line Usage
@@ -150,10 +147,10 @@ Without a global install, you can also run it directly via `npx`:
 
 ### 4. Agent Skill Installation
 
-Provides routing strategies and extraction recipes for CLI-capable coding agents (usable standalone with the CLI or alongside MCP). Recommended via [`npx skills`](https://skills.sh) for unified multi-agent installation and updates:
+Provides routing strategies and extraction recipes for CLI-capable coding agents (usable standalone with the CLI or alongside MCP). Recommended via [`npx skills`](https://skills.sh) for unified global installation and updates across agents:
 
 ```bash
-npx skills add maybk/veri
+npx skills add maybk/veri -g
 ```
 
 In offline or Node-free environments:
@@ -198,12 +195,12 @@ main.go -> internal/cli | internal/mcpserver -> internal/app -> internal/router 
 
 ## 📚 Documentation
 
-- [Usage Guide](./docs/guide/usage.md)
-- [Overview & Directory Layout](./docs/guide/overview.md)
-- [Configuration Guide](./docs/guide/configuration.md)
-- [Providers & Routing Guide](./docs/guide/providers.md)
-- [Development & Build Guide](./docs/guide/development.md)
-- [Release Guide](./docs/guide/release.md)
+- [Usage Guide](./docs/en/guide/usage.md)
+- [Configuration Guide](./docs/en/guide/configuration.md)
+- [Providers & Routing Guide](./docs/en/guide/providers.md)
+- [Architecture & Directory Layout](./docs/zh/dev/architecture.md) (Chinese)
+- [Development & Build Guide](./docs/zh/dev/build.md) (Chinese)
+- [Release Guide](./docs/zh/dev/release.md) (Chinese)
 - [Changelog](./CHANGELOG.md)
 
 ## ⚠️ Disclaimer

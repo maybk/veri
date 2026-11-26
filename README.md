@@ -7,7 +7,7 @@
   纯 Go 单二进制，零运行时依赖，同时提供 <strong>CLI</strong>、<strong>MCP Server</strong> 与 <strong>Agent Skill</strong>
 </p>
 
-**简体中文** · **[English](./README.en.md)** &nbsp;|&nbsp; **[使用指南](./docs/guide/usage.md)**
+**简体中文** · **[English](./README.en.md)** &nbsp;|&nbsp; **[使用指南](./docs/zh/guide/usage.md)**
 
 ![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-stdio-4A5568)
@@ -24,6 +24,14 @@
 ---
 
 ## 📦 下载与安装
+
+### 让 AI 帮你安装
+
+把下面这句话直接发给你的 AI Agent（Claude Code、Cursor、Codex、Cline 等）：
+
+```text
+帮我安装并配置 veri：https://raw.githubusercontent.com/maybk/veri/main/llms-install.md
+```
 
 ### 一键脚本安装
 
@@ -76,33 +84,22 @@ winget install maybk.Veri
 
 ### 手动下载
 
-预编译压缩包与 `SHA256SUMS.txt` 校验文件可从 [GitHub Releases](https://github.com/maybk/veri/releases) 下载；一键脚本或手动安装的二进制可通过 `veri update` 检查并升级。如需从源码构建，请参阅[开发与构建指南](./docs/guide/development.md)。
+预编译压缩包与 `SHA256SUMS.txt` 校验文件可从 [GitHub Releases](https://github.com/maybk/veri/releases) 下载；一键脚本或手动安装的二进制可通过 `veri update` 检查并升级。如需从源码构建，请参阅[开发与构建指南](./docs/zh/dev/build.md)。
 
 ## 🚀 快速开始
 
 > [!TIP]
-> 网页正文与 GitHub 页面提取**无需任何 API Key，安装后即可直接使用**；只需配置任意一个检索源密钥，即可启用联网搜索与云端增强提取。完整教程、命令配方与常见问题请参阅 **[使用指南](./docs/guide/usage.md)**。
+> 网页正文与 GitHub 页面提取**无需任何 API Key，安装后即可直接使用**；只需配置任意一个检索源密钥，即可启用联网搜索与云端增强提取。完整教程、命令配方与常见问题请参阅 **[使用指南](./docs/zh/guide/usage.md)**。
 
 ### 1. 配置 API Key
 
-凭据统一加密保存在 `~/.config/veri/`，CLI 与 MCP 服务端自动共享（[各检索源免费额度与官方申请入口](./docs/guide/usage.md#选型与官方申请入口)）：
+使用 `veri key set <provider>` 交互式加密保存任意检索源密钥，CLI 与 MCP 服务端自动共享（[支持的厂商与申请入口](./docs/zh/guide/usage.md#支持的厂商与申请入口)）：
 
 ```bash
-veri key set deepseek
-veri key list
-```
-
-也可通过环境变量传入密钥（优先级最高），更多批量导入与配置项用法见[配置说明](./docs/guide/configuration.md)：
-
-```bash
-export DEEPSEEK_API_KEY="sk-..."
-```
-
-查看已启用的检索源与环境状态：
-
-```bash
-veri providers
-veri doctor
+veri key set deepseek   # 可替换为任意厂商标识（如 exa、tavily、tencent_wsa、zhihu）
+veri key list           # 查看全部可用标识与当前凭据来源
+veri providers          # 查看已启用的检索与提取源
+veri doctor             # 检查本机配置与网络环境
 ```
 
 ### 2. 命令行使用
@@ -150,10 +147,10 @@ veri search "raft leader lease" --fusion -p deepseek,exa --json
 
 ### 4. 安装 Agent Skill
 
-为支持命令行调用的编码 Agent 提供检索策略与提取配方（可单独配合 CLI，也可与 MCP 搭配使用）。推荐通过 [`npx skills`](https://skills.sh) 为各类 AI Agent 统一安装与更新：
+为支持命令行调用的编码 Agent 提供检索策略与提取配方（可单独配合 CLI，也可与 MCP 搭配使用）。推荐通过 [`npx skills`](https://skills.sh) 为各类 AI Agent 统一全局安装与更新：
 
 ```bash
-npx skills add maybk/veri
+npx skills add maybk/veri -g
 ```
 
 离线或无 Node.js 环境下，可直接使用内置命令：
@@ -198,12 +195,12 @@ main.go -> internal/cli | internal/mcpserver -> internal/app -> internal/router 
 
 ## 📚 项目文档
 
-- [使用指南](./docs/guide/usage.md)
-- [项目概览与目录结构](./docs/guide/overview.md)
-- [配置说明](./docs/guide/configuration.md)
-- [检索与提取源说明](./docs/guide/providers.md)
-- [开发与构建](./docs/guide/development.md)
-- [发布指南](./docs/guide/release.md)
+- [使用指南](./docs/zh/guide/usage.md)
+- [配置说明](./docs/zh/guide/configuration.md)
+- [检索与提取源说明](./docs/zh/guide/providers.md)
+- [项目架构与目录结构](./docs/zh/dev/architecture.md)
+- [开发与构建](./docs/zh/dev/build.md)
+- [发布指南](./docs/zh/dev/release.md)
 - [更新日志](./CHANGELOG.md)
 
 ## ⚠️ 免责声明

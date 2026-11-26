@@ -348,7 +348,7 @@ try {
     if ([string]::IsNullOrWhiteSpace($skillPath) -or -not (Test-Path -LiteralPath $skillPath -PathType Leaf)) {
         Write-Host ""
         Write-Host "Optional Agent Skill:"
-        Write-Host "  npx skills add $Repo   (offline: veri skill install)"
+        Write-Host "  npx skills add $Repo -g   (offline: veri skill install)"
     }
 } finally {
     Remove-Item -LiteralPath $TempDir -Recurse -Force -ErrorAction SilentlyContinue

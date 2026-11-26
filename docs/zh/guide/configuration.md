@@ -32,18 +32,9 @@
 
 CLI 磁盘缓存三端统一存放在 `~/.cache/veri/`（Windows 为 `%USERPROFILE%\.cache\veri\`），优先级：`VERI_CACHE_DIR` > `cache.dir` > `XDG_CACHE_HOME/veri` > `~/.cache/veri`；可用 `veri cache info` / `veri cache clear` 查看或清理。
 
-常用配置与密钥管理命令：
+常用配置命令（API Key 写入与管理见[使用指南](./usage.md#配置-api-key)）：
 
 ```bash
-# 凭据管理（无需 config.toml）
-veri key set deepseek                          # 交互隐藏输入并覆盖保存密钥（多把用逗号分隔）
-veri key set deepseek -a                       # 追加新密钥并自动去重（不覆盖原密钥）
-printf '%s' "$EXA_API_KEY" | veri key set exa  # 从标准输入保存密钥
-veri key import --from-config                  # 加密迁入 config.toml 明文密钥并清理明文
-veri key import .env                           # 从 .env 批量加密导入（`-` 表示标准输入）
-veri key list                                  # 查看各源凭据来源与加密状态
-veri key unset deepseek                        # 移除本地加密密钥
-
 # 单项配置（支持 Tab 补全，未设置项随版本自动更新）
 veri config set providers.zhihu_web.search_db realtime        # 修改单个配置项
 veri config set search.providers deepseek,zhihu_web,keenable  # 列表支持逗号分隔或 TOML 数组
@@ -132,6 +123,8 @@ veri config path                               # 输出生效的配置文件路�
 
 ## 环境变量参考
 
+### 厂商凭据变量
+
 | 变量名 | 别名 | 作用 |
 | --- | --- | --- |
 | `DEEPSEEK_API_KEY` | — | DeepSeek Search / Fetch API 密钥 |
@@ -146,21 +139,26 @@ veri config path                               # 输出生效的配置文件路�
 | `PARALLEL_API_KEY` | — | Parallel Search / Extract REST API 密钥 |
 | `FIRECRAWL_API_KEY` | — | Firecrawl v2 Scrape / Search API 密钥（非官方自托管 `base_url` 可省略） |
 | `GITHUB_TOKEN` | `GH_TOKEN` | GitHub REST API 访问令牌（可选，用于提高匿名配额） |
-| `VERI_CONFIG` | — | 覆盖配置文件路径 |
-| `VERI_SECRETS_DIR` | — | 指定本地加密凭据目录（默认跟随生效配置文件目录，便于跨 `--config` 复用密钥） |
-| `VERI_LANG` | — | 覆盖终端界面语言（`auto` / `zh` / `en`，兼容标准 Locale） |
-| `VERI_PROVIDERS` | — | 覆盖 `search.providers`（逗号分隔） |
-| `VERI_FETCH_PROVIDERS` | — | 覆盖 `fetch.providers`（逗号分隔） |
-| `VERI_FETCH_STRATEGY` | — | 覆盖 `fetch.strategy` |
-| `VERI_TIMEOUT` | — | 覆盖 `search.timeout` |
-| `VERI_CACHE_DIR` | — | 覆盖磁盘缓存目录（优先于 `cache.dir`） |
-| `VERI_CACHE_FETCH_TTL` | — | 同时覆盖 CLI 与 MCP 的网页抓取缓存有效期（支持 `"0s"` 关闭） |
-| `VERI_CACHE_SEARCH_TTL` | — | 同时覆盖 CLI 与 MCP 的检索缓存有效期（如 `"2m"` 临时开启 CLI 搜索缓存） |
-| `VERI_NO_CACHE` | — | 设为 `1` / `true` 时禁用本次进程全部缓存 |
-| `VERI_LOG_LEVEL` | — | 诊断日志级别：`debug` / `info` / `warn`（默认）/ `error` |
-| `VERI_LOG_FORMAT` | — | 诊断日志格式：`text`（默认）/ `json` |
-| `VERI_UPDATE_MIRROR` | — | `veri update` 与安装脚本的 HTTPS 归档下载镜像前缀（可选） |
-| `NO_COLOR` | — | 非空时禁用终端 ANSI 颜色输出 |
+
+### 运行与行为覆盖变量
+
+| 变量名 | 作用 |
+| --- | --- |
+| `VERI_CONFIG` | 覆盖配置文件路径 |
+| `VERI_SECRETS_DIR` | 指定本地加密凭据目录（默认跟随生效配置文件目录，便于跨 `--config` 复用密钥） |
+| `VERI_LANG` | 覆盖终端界面语言（`auto` / `zh` / `en`，兼容标准 Locale） |
+| `VERI_PROVIDERS` | 覆盖 `search.providers`（逗号分隔） |
+| `VERI_FETCH_PROVIDERS` | 覆盖 `fetch.providers`（逗号分隔） |
+| `VERI_FETCH_STRATEGY` | 覆盖 `fetch.strategy` |
+| `VERI_TIMEOUT` | 覆盖 `search.timeout` |
+| `VERI_CACHE_DIR` | 覆盖磁盘缓存目录（优先于 `cache.dir`） |
+| `VERI_CACHE_FETCH_TTL` | 同时覆盖 CLI 与 MCP 的网页抓取缓存有效期（支持 `"0s"` 关闭） |
+| `VERI_CACHE_SEARCH_TTL` | 同时覆盖 CLI 与 MCP 的检索缓存有效期（如 `"2m"` 临时开启 CLI 搜索缓存） |
+| `VERI_NO_CACHE` | 设为 `1` / `true` 时禁用本次进程全部缓存 |
+| `VERI_LOG_LEVEL` | 诊断日志级别：`debug` / `info` / `warn`（默认）/ `error` |
+| `VERI_LOG_FORMAT` | 诊断日志格式：`text`（默认）/ `json` |
+| `VERI_UPDATE_MIRROR` | `veri update` 与安装脚本的 HTTPS 归档下载镜像前缀（可选） |
+| `NO_COLOR` | 非空时禁用终端 ANSI 颜色输出 |
 
 ## 安全与可靠性机制
 

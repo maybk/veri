@@ -108,4 +108,4 @@ task package:all
 
 1. **质量门禁**：通过 `task check`（格式、`golangci-lint`、`govulncheck`、竞态单测、架构/文件预算/目录守卫、CI 与发布契约测试及 `git diff --check`），确认无临时文件或敏感信息残留。
 2. **多端一致**：CLI 标志、MCP 参数或技能说明变更时，同步对齐 CLI、MCP 与 `skills/veri/SKILL.md`。
-3. **文档与日志**：配置、目录、命令或用户可见变化时，同步更新 `README.md`、`README.en.md`、`docs/guide/*`、目录 `README.md` 或 `CHANGELOG.md` 待发布段。
+3. **文档与日志**：配置、目录、命令或用户可见变化时，同步更新 `README.md`、`README.en.md`、`docs/`、目录 `README.md` 或 `CHANGELOG.md` 待发布段。

@@ -4,17 +4,17 @@
 
 ## 相关文件
 
-- [`ci.yml`](../../.github/workflows/ci.yml)：`main` 推送与 PR 的质量门禁（静态/漏洞扫描、契约测试、六架构交叉编译、三端 `-race` 测试与 Artifact 往返校验）；被发布工作流复用时自动跳过与 `release-assets.yml` 重复的矩阵
-- [`release-assets.yml`](../../.github/workflows/release-assets.yml)：正式版与 Rolling 共用的三端六架构原生测试（含 macOS、Linux 与 Windows `amd64` `-race`）、静态归档构建与条目完整性校验流水线
-- [`rolling.yml`](../../.github/workflows/rolling.yml)：每日定时或手动按需构建 `main` 分支未发布提交并更新 `v<version>-pre` 预发布
-- [`release.yml`](../../.github/workflows/release.yml)：`vMAJOR.MINOR.PATCH` 版本标签触发的正式 GitHub Release 发布、过期 Rolling 清理与 `maybk/homebrew-tap` 同步触发
-- [`extract_pending_version.sh`](../../scripts/extract_pending_version.sh)：读取并校验 `CHANGELOG.md` 顶部的待发布版本
-- [`extract_release_notes.sh`](../../scripts/extract_release_notes.sh)：从 `CHANGELOG.md` 提取指定版本的更新内容
-- [`prepare_release.sh`](../../scripts/prepare_release.sh)：一键同步 `build/config.yml` 与 `CHANGELOG.md` 版本段落
-- [`render_release_notes.sh`](../../scripts/render_release_notes.sh)：渲染正式版与 Rolling 预发布的 GitHub Release 说明与下载表
-- [`install.sh`](../../scripts/install.sh) / [`install.ps1`](../../scripts/install.ps1)：macOS / Linux / Windows 一键安装脚本
-- [`build/config.yml`](../../build/config.yml)：应用元信息与版本号配置
-- [`CHANGELOG.md`](../../CHANGELOG.md)：正式版本与待发布版本更新记录
+- [`ci.yml`](../../../.github/workflows/ci.yml)：`main` 推送与 PR 的质量门禁（静态/漏洞扫描、契约测试、六架构交叉编译、三端 `-race` 测试与 Artifact 往返校验）；被发布工作流复用时自动跳过与 `release-assets.yml` 重复的矩阵
+- [`release-assets.yml`](../../../.github/workflows/release-assets.yml)：正式版与 Rolling 共用的三端六架构原生测试（含 macOS、Linux 与 Windows `amd64` `-race`）、静态归档构建与条目完整性校验流水线
+- [`rolling.yml`](../../../.github/workflows/rolling.yml)：每日定时或手动按需构建 `main` 分支未发布提交并更新 `v<version>-pre` 预发布
+- [`release.yml`](../../../.github/workflows/release.yml)：`vMAJOR.MINOR.PATCH` 版本标签触发的正式 GitHub Release 发布、过期 Rolling 清理与 `maybk/homebrew-tap` 同步触发
+- [`extract_pending_version.sh`](../../../scripts/extract_pending_version.sh)：读取并校验 `CHANGELOG.md` 顶部的待发布版本
+- [`extract_release_notes.sh`](../../../scripts/extract_release_notes.sh)：从 `CHANGELOG.md` 提取指定版本的更新内容
+- [`prepare_release.sh`](../../../scripts/prepare_release.sh)：一键同步 `build/config.yml` 与 `CHANGELOG.md` 版本段落
+- [`render_release_notes.sh`](../../../scripts/render_release_notes.sh)：渲染正式版与 Rolling 预发布的 GitHub Release 说明与下载表
+- [`install.sh`](../../../scripts/install.sh) / [`install.ps1`](../../../scripts/install.ps1)：macOS / Linux / Windows 一键安装脚本
+- [`build/config.yml`](../../../build/config.yml)：应用元信息与版本号配置
+- [`CHANGELOG.md`](../../../CHANGELOG.md)：正式版本与待发布版本更新记录
 
 ## 版本号管理
 

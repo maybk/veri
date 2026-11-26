@@ -309,7 +309,7 @@ func checkProviderPackageLayouts(t *testing.T, repoRoot string) {
 func discoverIndexedDirs(t *testing.T, repoRoot string, ignored gitIgnoreRules) []string {
 	t.Helper()
 	indexedDirs := []string{".github/workflows", "skills"}
-	recursiveRoots := []string{"build", "clikit", "docs/guide", "internal", "scripts"}
+	recursiveRoots := []string{"build", "clikit", "internal", "scripts"}
 
 	for _, root := range recursiveRoots {
 		absRoot := filepath.Join(repoRoot, filepath.FromSlash(root))
@@ -384,7 +384,7 @@ func checkDirectoryREADMEsAndDocsSelfContainment(t *testing.T, repoRoot string, 
 		}
 	}
 
-	docRoots := []string{"README.md", "README.en.md", "AGENTS.md", "CHANGELOG.md", ".github", "build", "clikit", "docs/guide", "internal", "scripts", "skills"}
+	docRoots := []string{"README.md", "README.en.md", "llms-install.md", "AGENTS.md", "CHANGELOG.md", ".github", "build", "clikit", "docs", "internal", "scripts", "skills"}
 	for _, item := range docRoots {
 		target := filepath.Join(repoRoot, filepath.FromSlash(item))
 		walkErr := filepath.WalkDir(target, func(path string, d fs.DirEntry, err error) error {
