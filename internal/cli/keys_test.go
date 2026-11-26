@@ -267,3 +267,42 @@ func TestCLIKeyCrossDeviceCopyAndErrorDiagnostics(t *testing.T) {
 		t.Fatalf("expected localized corrupted-vault error on key unset (exit 3), got code=%d err=%s", code, unsetErr)
 	}
 }
+
+func TestKeyHelpListsSupportedProviders(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), spec.ConfigFileName)
+	providers := spec.CredentialProviders()
+	if len(providers) == 0 {
+		t.Fatal("spec.CredentialProviders() returned empty list")
+	}
+	wantList := strings.Join(providers, ", ")
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "key-zh", args: []string{"--ui-lang", "zh", "key", "--help"}},
+		{name: "key-en", args: []string{"--ui-lang", "en", "key", "--help"}},
+		{name: "key-set-zh", args: []string{"--ui-lang", "zh", "key", "set", "--help"}},
+		{name: "key-set-en", args: []string{"--ui-lang", "en", "key", "set", "--help"}},
+		{name: "key-unset-zh", args: []string{"--ui-lang", "zh", "key", "unset", "--help"}},
+		{name: "key-unset-en", args: []string{"--ui-lang", "en", "key", "unset", "--help"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, out, errOut := runKeyImportCLI(t, cfgPath, "", tc.args...)
+			if code != 0 {
+				t.Fatalf("expected exit 0, got code=%d stderr=%s", code, errOut)
+			}
+			if strings.Contains(out, "{providers}") {
+				t.Fatalf("%v help output contains unrendered placeholder:\n%s", tc.args, out)
+			}
+			if !strings.Contains(out, wantList) {
+				t.Errorf("%v help output missing full provider list %q:\n%s", tc.args, wantList, out)
+			}
+			if strings.Contains(out, spec.ProviderLocal+",") || strings.Contains(out, ", "+spec.ProviderLocal) {
+				t.Errorf("%v help output must not list keyless provider %q:\n%s", tc.args, spec.ProviderLocal, out)
+			}
+		})
+	}
+}

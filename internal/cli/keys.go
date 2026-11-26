@@ -24,6 +24,7 @@ func newKeyCmd(rt *runtimeEnv) *cobra.Command {
 		Aliases: []string{"keys"},
 		GroupID: groupAdmin,
 		Short:   rt.cat.T("key.short"),
+		Long:    rt.cat.T("key.long", "providers", supportedCredentialProvidersText()),
 		Example: rt.cat.T("key.example"),
 	}
 	requireSubcommand(keyCmd)
@@ -36,12 +37,16 @@ func newKeyCmd(rt *runtimeEnv) *cobra.Command {
 	return keyCmd
 }
 
+func supportedCredentialProvidersText() string {
+	return strings.Join(spec.CredentialProviders(), ", ")
+}
+
 func newKeySetCmd(rt *runtimeEnv) *cobra.Command {
 	var appendMode bool
 	cmd := &cobra.Command{
 		Use:               "set <provider>",
 		Short:             rt.cat.T("key.set.short"),
-		Long:              rt.cat.T("key.set.long"),
+		Long:              rt.cat.T("key.set.long", "providers", supportedCredentialProvidersText()),
 		Example:           rt.cat.T("key.set.example"),
 		ValidArgsFunction: completeCredentialProviderArg,
 		Args:              validateKeyProviderArgs,
@@ -70,7 +75,7 @@ func validateKeyProviderArgs(_ *cobra.Command, args []string) error {
 func normalizeCredentialProviderArg(raw string) (string, error) {
 	provider, ok := spec.NormalizeCredentialProvider(raw)
 	if !ok {
-		valid := strings.Join(spec.CredentialProviders(), ", ")
+		valid := supportedCredentialProvidersText()
 		return "", core.NewError(core.CodeInvalidArgument, fmt.Sprintf("unsupported provider %q (valid: %s)", raw, valid)).
 			WithMsgKey("err.unsupported_provider").
 			WithParam("provider", raw).
@@ -159,6 +164,7 @@ func newKeyUnsetCmd(rt *runtimeEnv) *cobra.Command {
 		Use:               "unset <provider>",
 		Aliases:           []string{"rm", "delete"},
 		Short:             rt.cat.T("key.unset.short"),
+		Long:              rt.cat.T("key.unset.long", "providers", supportedCredentialProvidersText()),
 		ValidArgsFunction: completeCredentialProviderArg,
 		Args:              requireExactArgs(1, "err.missing_key_provider", ""),
 		RunE: func(_ *cobra.Command, args []string) error {

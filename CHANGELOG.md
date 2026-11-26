@@ -11,6 +11,7 @@
 ### 变更
 
 - Agent Skill 推荐安装命令默认加上 `-g`，安装至用户全局目录。
+- `veri key`（含 `set` / `unset`）的 `--help` 说明展示全部支持的 Provider 标识。
 
 ### 修复
 
