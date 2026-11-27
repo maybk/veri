@@ -147,7 +147,7 @@ func FormatMCPFetchTextWithOptions(env *core.Envelope, textFormat string, opts M
 
 	if p.NextOffset != nil {
 		shown := textnorm.RuneCount(p.Content)
-		contHint := formatMCPContinueInstruction(opts, env.Meta.Notes, *p.NextOffset)
+		contHint := formatMCPContinueInstruction(opts, env.Meta.Notes, *p.NextOffset, len(p.Outline) > 0)
 		fmt.Fprintf(&out, "\n\nContent truncated: %d of %d chars shown. %s", shown, p.TotalChars, contHint)
 		if outlineHint := formatCompactOutline(p.Outline); outlineHint != "" {
 			fmt.Fprintf(&out, "\nOutline: %s", outlineHint)
@@ -216,12 +216,15 @@ func formatMCPBatchFetchText(env *core.Envelope, opts MCPFetchFormatOptions) str
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatMCPContinueInstruction(opts MCPFetchFormatOptions, notes []string, nextOffset int) string {
+func formatMCPContinueInstruction(opts MCPFetchFormatOptions, notes []string, nextOffset int, hasOutline bool) string {
 	sec, mat := ResolveFetchContinueScope(opts.Section, opts.Match, notes)
 	if params := formatMCPScopeArgs(sec, mat, nextOffset); params != "" {
 		return fmt.Sprintf("Call web_fetch with %s to continue.", params)
 	}
-	return fmt.Sprintf("Call web_fetch with offset=%d (or section/match) to continue.", nextOffset)
+	if hasOutline {
+		return fmt.Sprintf("Call web_fetch with offset=%d (or section/match) to continue.", nextOffset)
+	}
+	return fmt.Sprintf("Call web_fetch with offset=%d (or match) to continue.", nextOffset)
 }
 
 func formatMCPScopeArgs(sec, mat string, nextOffset int) string {

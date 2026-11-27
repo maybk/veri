@@ -127,7 +127,12 @@ func applyPageView(full *core.Page, req *core.FetchRequest) (*core.Page, []strin
 			if len(paged.Outline) == 0 {
 				paged.Outline = ExtractOutline(full.Content, maxOutlineSections)
 			}
-			note := fmt.Sprintf("section %q not found; showing page preview and heading outline", sec)
+			var note string
+			if len(paged.Outline) > 0 {
+				note = fmt.Sprintf("section %q not found; showing page preview and heading outline", sec)
+			} else {
+				note = fmt.Sprintf("section %q not found; showing page preview (no headings detected; try match)", sec)
+			}
 			return paged, []string{note}
 		}
 		scopePage = extracted

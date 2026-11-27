@@ -211,8 +211,14 @@ func TestProvidersKeyListDoctorAndHelpAlignment(t *testing.T) {
 	if got := formatFetchContinueArgs("Missing", "chan", []string{`section "Missing" not found; showing page preview and heading outline`}, 2000); got != "--offset 2000" {
 		t.Fatalf("expected section miss with match to drop both --section and --match from continue args, got %q", got)
 	}
+	if got := formatFetchContinueArgs("Connection Handling", "6.2", []string{`section "Connection Handling" not found; showing page preview (no headings detected; try match)`}, 1708); got != "--offset 1708" {
+		t.Fatalf("expected headless section miss to drop both --section and --match from continue args, got %q", got)
+	}
 	if got := formatFetchContinueArgs("Concurrency", "chan", []string{`match "chan" had 0 hits in section "Concurrency"; showing section preview and outline`}, 800); got != `--section "Concurrency" --offset 800` {
 		t.Fatalf("expected match miss inside section to keep --section only, got %q", got)
+	}
+	if got := formatFetchContinueArgs("Notes", "chan", []string{`match "chan" had 0 hits in section "Notes"; showing section preview`}, 800); got != `--section "Notes" --offset 800` {
+		t.Fatalf("expected headless match miss inside section to keep --section only, got %q", got)
 	}
 }
 

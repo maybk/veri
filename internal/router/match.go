@@ -71,12 +71,18 @@ func extractMatchView(scope *core.Page, fullContent, sectionName, query string, 
 			if len(paged.Outline) == 0 {
 				paged.Outline = ExtractOutline(scope.Content, maxOutlineSections)
 			}
-			return paged, []string{fmt.Sprintf("match %q had 0 hits in section %q; showing section preview and outline", query, sectionName)}
+			if len(paged.Outline) > 0 {
+				return paged, []string{fmt.Sprintf("match %q had 0 hits in section %q; showing section preview and outline", query, sectionName)}
+			}
+			return paged, []string{fmt.Sprintf("match %q had 0 hits in section %q; showing section preview", query, sectionName)}
 		}
 		if len(paged.Outline) == 0 {
 			paged.Outline = ExtractOutline(fullContent, maxOutlineSections)
 		}
-		return paged, []string{fmt.Sprintf("match %q had 0 hits; showing top preview and outline", query)}
+		if len(paged.Outline) > 0 {
+			return paged, []string{fmt.Sprintf("match %q had 0 hits; showing top preview and outline", query)}
+		}
+		return paged, []string{fmt.Sprintf("match %q had 0 hits; showing top preview", query)}
 	}
 
 	slices.SortStableFunc(hits, func(a, b passageCandidate) int {

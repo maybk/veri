@@ -491,3 +491,56 @@ func TestApplyPageViewOffsetExceededNote(t *testing.T) {
 		t.Fatalf("match offset overflow mismatch: view=%+v notes=%v", matchView, matchNotes)
 	}
 }
+
+func TestApplyPageViewHeadlessPageMissNotes(t *testing.T) {
+	// 1. 整页位于围栏代码块内（如 IETF RFC 纯文本预格式化页面），围栏外无任何 ATX 标题。
+	headlessDoc := strings.Join([]string{
+		"```",
+		"Internet Engineering Task Force (IETF)",
+		"# not a real markdown heading inside fence",
+		"6.2. Recommendations",
+		"DNS clients SHOULD pipeline their queries.",
+		"```",
+	}, "\n")
+	headlessPage := &core.Page{URL: "https://datatracker.ietf.org/doc/html/rfc7766", Title: "RFC 7766", Content: headlessDoc}
+
+	secView, secNotes := ApplyPageView(headlessPage, &core.FetchRequest{Section: "Connection Handling"})
+	if len(secView.Outline) != 0 {
+		t.Fatalf("expected empty outline for fenced preformatted page, got %+v", secView.Outline)
+	}
+	wantSecNote := `section "Connection Handling" not found; showing page preview (no headings detected; try match)`
+	if len(secNotes) != 1 || secNotes[0] != wantSecNote {
+		t.Fatalf("headless section miss notes = %v, want [%q]", secNotes, wantSecNote)
+	}
+
+	matchView, matchNotes := ApplyPageView(headlessPage, &core.FetchRequest{Match: "nonexistent_term_xyz"})
+	if len(matchView.Outline) != 0 {
+		t.Fatalf("expected empty outline on headless match miss, got %+v", matchView.Outline)
+	}
+	wantMatchNote := `match "nonexistent_term_xyz" had 0 hits; showing top preview`
+	if len(matchNotes) != 1 || matchNotes[0] != wantMatchNote {
+		t.Fatalf("headless match miss notes = %v, want [%q]", matchNotes, wantMatchNote)
+	}
+
+	// 2. 章节作用域内无可用大纲时，match 0 命中不得声称附带 outline。
+	plainScope := &core.Page{URL: "https://example.com/plain", Content: "Body text without markdown headings."}
+	scopedView, scopedNotes := extractMatchView(plainScope, plainScope.Content, "Notes", "nonexistent_term_xyz", 0, 0, 0)
+	if len(scopedView.Outline) != 0 {
+		t.Fatalf("expected empty outline for headless section scope, got %+v", scopedView.Outline)
+	}
+	wantScopedNote := `match "nonexistent_term_xyz" had 0 hits in section "Notes"; showing section preview`
+	if len(scopedNotes) != 1 || scopedNotes[0] != wantScopedNote {
+		t.Fatalf("headless scoped match miss notes = %v, want [%q]", scopedNotes, wantScopedNote)
+	}
+
+	// 3. 含标题页面的常规降级提示保持附带 outline 说明不变。
+	headedPage := &core.Page{URL: "https://example.com/headed", Content: "## Intro\n\nOverview.\n\n## Details\n\nBody.\n"}
+	hSecView, hSecNotes := ApplyPageView(headedPage, &core.FetchRequest{Section: "Missing"})
+	if len(hSecView.Outline) != 2 || len(hSecNotes) != 1 || hSecNotes[0] != `section "Missing" not found; showing page preview and heading outline` {
+		t.Fatalf("headed section miss mismatch: outline=%+v notes=%v", hSecView.Outline, hSecNotes)
+	}
+	hMatchView, hMatchNotes := ApplyPageView(headedPage, &core.FetchRequest{Match: "nonexistent_term_xyz"})
+	if len(hMatchView.Outline) != 2 || len(hMatchNotes) != 1 || hMatchNotes[0] != `match "nonexistent_term_xyz" had 0 hits; showing top preview and outline` {
+		t.Fatalf("headed match miss mismatch: outline=%+v notes=%v", hMatchView.Outline, hMatchNotes)
+	}
+}

@@ -183,6 +183,39 @@ func TestFormatMCPFetchTextWithOptionsScopedPaginationOutlineAndBatchMeta(t *tes
 		t.Fatalf("expected section-only continuation after match miss in section, got:\n%s", missMatchText)
 	}
 
+	// 4b. 无大纲页面（如 RFC 纯围栏代码块）截断与未命中降级时，不应继续引导使用 section
+	headlessPage := *env.Page
+	headlessPage.Outline = nil
+	envHeadlessPlain := *env
+	envHeadlessPlain.Page = &headlessPage
+	headlessPlainText, err := FormatMCPFetchTextWithOptions(&envHeadlessPlain, spec.TextFormatMarkdown, MCPFetchFormatOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(headlessPlainText, "Call web_fetch with offset=2464 (or match) to continue.") || strings.Contains(headlessPlainText, "Outline:") {
+		t.Fatalf("expected match-only continuation without outline on headless page, got:\n%s", headlessPlainText)
+	}
+
+	envHeadlessSecMiss := envHeadlessPlain
+	envHeadlessSecMiss.Meta.Notes = []string{`section "Connection Handling" not found; showing page preview (no headings detected; try match)`}
+	headlessSecMissText, err := FormatMCPFetchTextWithOptions(&envHeadlessSecMiss, spec.TextFormatMarkdown, MCPFetchFormatOptions{Section: "Connection Handling", Match: "6.2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(headlessSecMissText, "Call web_fetch with offset=2464 (or match) to continue.") {
+		t.Fatalf("expected plain match continuation after headless section miss, got:\n%s", headlessSecMissText)
+	}
+
+	envHeadlessMatchMiss := envHeadlessPlain
+	envHeadlessMatchMiss.Meta.Notes = []string{`match "nope" had 0 hits; showing top preview`}
+	headlessMatchMissText, err := FormatMCPFetchTextWithOptions(&envHeadlessMatchMiss, spec.TextFormatMarkdown, MCPFetchFormatOptions{Match: "nope"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(headlessMatchMissText, "Call web_fetch with offset=2464 (or match) to continue.") {
+		t.Fatalf("expected plain match continuation after headless match miss, got:\n%s", headlessMatchMissText)
+	}
+
 	// 5. 批量抓取保留页面元数据行与 scoped 截断提示
 	batchNext := 500
 	batchEnv := &core.Envelope{
